@@ -1,0 +1,6 @@
+booking_date,amount,description,reference,counterparty,external_id,currency
+2026-03-01,15625.00,Inbetalning INV-000001,INV-000001,Nordic Retail,BTX-20260301-0001,SEK
+2026-03-02,7500.00,Inbetalning kundfaktura,INV-000002,Acme AB,BTX-20260302-0002,SEK
+2026-03-03,-499.00,Bankavgift mars,,Nordea,BTX-20260303-0003,SEK
+2026-03-04,1250.00,Delbetalning faktura,INV-000003,Svea Konsult,BTX-20260304-0004,SEK
+2026-03-05,99.00,Ränteintäkt,,,BTX-20260305-0005,SEK
