@@ -1,6 +1,7 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import type { NextRequest, NextResponse } from 'next/server';
 import type { Database } from '@/lib/supabase/database.types';
+import { getSupabaseCookieOptions } from '@/lib/supabase/cookies';
 
 export function createMiddlewareSupabaseClient(request: NextRequest, response: NextResponse) {
   return createServerClient<Database>(
@@ -12,12 +13,14 @@ export function createMiddlewareSupabaseClient(request: NextRequest, response: N
           return request.cookies.get(name)?.value;
         },
         set(name: string, value: string, options: CookieOptions) {
-          request.cookies.set({ name, value, ...options });
-          response.cookies.set({ name, value, ...options });
+          const cookieOptions = getSupabaseCookieOptions(options);
+          request.cookies.set({ name, value, ...cookieOptions });
+          response.cookies.set({ name, value, ...cookieOptions });
         },
         remove(name: string, options: CookieOptions) {
-          request.cookies.set({ name, value: '', ...options });
-          response.cookies.set({ name, value: '', ...options });
+          const cookieOptions = getSupabaseCookieOptions(options);
+          request.cookies.set({ name, value: '', ...cookieOptions });
+          response.cookies.set({ name, value: '', ...cookieOptions });
         }
       }
     }
