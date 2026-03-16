@@ -4,7 +4,40 @@ import { createMiddlewareSupabaseClient } from '@/lib/supabase/middleware';
 
 const ACTIVE_COMPANY_COOKIE = 'active_company_id';
 
+function hasSupabaseAuthCallbackParams(request: NextRequest) {
+  return (
+    request.nextUrl.searchParams.has('code') ||
+    request.nextUrl.searchParams.has('token_hash') ||
+    request.nextUrl.searchParams.has('access_token') ||
+    request.nextUrl.searchParams.has('refresh_token')
+  );
+}
+
+function buildAuthCallbackUrl(request: NextRequest) {
+  const callbackUrl = new URL('/auth/callback', request.url);
+  const nextUrl = new URL(request.url);
+
+  request.nextUrl.searchParams.forEach((value, key) => {
+    callbackUrl.searchParams.set(key, value);
+  });
+
+  nextUrl.searchParams.delete('code');
+  nextUrl.searchParams.delete('token_hash');
+  nextUrl.searchParams.delete('type');
+  nextUrl.searchParams.delete('access_token');
+  nextUrl.searchParams.delete('refresh_token');
+
+  const nextPath = `${nextUrl.pathname}${nextUrl.search}`;
+  callbackUrl.searchParams.set('next', nextPath || '/projects');
+
+  return callbackUrl;
+}
+
 export async function middleware(request: NextRequest) {
+  if (!request.nextUrl.pathname.startsWith('/auth') && hasSupabaseAuthCallbackParams(request)) {
+    return NextResponse.redirect(buildAuthCallbackUrl(request));
+  }
+
   const response = NextResponse.next({
     request
   });
@@ -46,4 +79,3 @@ export async function middleware(request: NextRequest) {
 export const config = {
   matcher: ['/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|icons).*)']
 };
-
