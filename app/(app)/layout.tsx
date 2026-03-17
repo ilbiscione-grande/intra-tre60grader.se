@@ -10,7 +10,7 @@ export default async function AppLayout({
 }: {
   children: React.ReactNode;
 }) {
-  await requireStaff();
+  const authContext = await requireStaff();
   const session = await getSession();
   const { active, companies } = await getCompanyAccess();
 
@@ -25,6 +25,7 @@ export default async function AppLayout({
           companyId: active.companyId,
           companyName: active.companyName,
           role: active.role,
+          authRole: authContext.role,
           userEmail: session.user.email,
           companies,
         }}

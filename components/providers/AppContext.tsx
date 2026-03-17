@@ -1,12 +1,13 @@
 'use client';
 
 import { createContext, useContext } from 'react';
-import type { AvailableCompany, Role } from '@/lib/types';
+import type { AvailableCompany, InternalAuthRole, Role } from '@/lib/types';
 
 type AppContextValue = {
   companyId: string;
   companyName: string;
   role: Role;
+  authRole: InternalAuthRole;
   userEmail?: string;
   companies: AvailableCompany[];
 };

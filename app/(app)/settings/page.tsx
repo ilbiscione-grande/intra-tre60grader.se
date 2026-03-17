@@ -2,9 +2,11 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import type { Route } from 'next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import RoleGate from '@/components/common/RoleGate';
+import MfaSettingsCard from '@/components/security/MfaSettingsCard';
 import { useAppContext } from '@/components/providers/AppContext';
 import {
   useAppPreferences,
@@ -65,20 +67,6 @@ type SecurityEventRow = {
   created_at: string;
 };
 
-type MfaFactor = {
-  id: string;
-  friendly_name?: string | null;
-  factor_type?: string;
-  status?: string;
-};
-
-type MfaStatus = {
-  currentLevel: 'aal1' | 'aal2' | null;
-  nextLevel: 'aal1' | 'aal2' | null;
-  verifiedFactors: MfaFactor[];
-  unverifiedFactors: MfaFactor[];
-};
-
 const SIDEBAR_KEY = 'desktop_sidebar_collapsed';
 
 export default function SettingsPage() {
@@ -92,9 +80,6 @@ export default function SettingsPage() {
   const [periodLockDate, setPeriodLockDate] = useState('');
   const [closePeriodStart, setClosePeriodStart] = useState(new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10));
   const [closePeriodEnd, setClosePeriodEnd] = useState(new Date().toISOString().slice(0, 10));
-  const [mfaCode, setMfaCode] = useState('');
-  const [enrollCode, setEnrollCode] = useState('');
-  const [pendingTotp, setPendingTotp] = useState<{ factorId: string; qrCode: string | null; secret: string | null } | null>(null);
   const isProduction = process.env.NODE_ENV === 'production';
 
   useEffect(() => {
@@ -131,27 +116,6 @@ export default function SettingsPage() {
       const payload = (await response.json().catch(() => null)) as { events?: SecurityEventRow[]; error?: string } | null;
       if (!response.ok) throw new Error(payload?.error ?? 'Kunde inte läsa säkerhetshändelser');
       return payload?.events ?? [];
-    },
-    enabled: role === 'admin'
-  });
-
-  const mfaStatusQuery = useQuery<MfaStatus>({
-    queryKey: ['mfa-status'],
-    queryFn: async () => {
-      const [aalResult, factorsResult] = await Promise.all([
-        supabase.auth.mfa.getAuthenticatorAssuranceLevel(),
-        supabase.auth.mfa.listFactors()
-      ]);
-
-      if (aalResult.error) throw aalResult.error;
-      if (factorsResult.error) throw factorsResult.error;
-
-      return {
-        currentLevel: aalResult.data?.currentLevel ?? null,
-        nextLevel: aalResult.data?.nextLevel ?? null,
-        verifiedFactors: ((factorsResult.data?.all ?? []) as MfaFactor[]).filter((factor) => factor.status === 'verified'),
-        unverifiedFactors: ((factorsResult.data?.all ?? []) as MfaFactor[]).filter((factor) => factor.status !== 'verified')
-      };
     },
     enabled: role === 'admin'
   });
@@ -238,102 +202,12 @@ export default function SettingsPage() {
     }
   });
 
-  const enrollTotpMutation = useMutation({
-    mutationFn: async () => {
-      const { data, error } = await supabase.auth.mfa.enroll({
-        factorType: 'totp',
-        friendlyName: 'Projectify Admin'
-      });
-
-      if (error) throw error;
-      const result = data as { id?: string; totp?: { qr_code?: string; secret?: string } } | null;
-      if (!result?.id) throw new Error('Kunde inte starta MFA-aktivering');
-      return {
-        factorId: result.id,
-        qrCode: result.totp?.qr_code ?? null,
-        secret: result.totp?.secret ?? null
-      };
-    },
-    onSuccess: (result) => {
-      setPendingTotp(result);
-      setEnrollCode('');
-      toast.success('Skanna QR-koden och verifiera med din autentiseringsapp');
-      void mfaStatusQuery.refetch();
-    },
-    onError: (error) => {
-      toast.error(toErrorMessage(error, 'Kunde inte starta MFA-aktivering'));
-    }
-  });
-
-  const verifyEnrollMutation = useMutation({
-    mutationFn: async () => {
-      if (!pendingTotp?.factorId) throw new Error('Ingen pågående MFA-aktivering');
-      const code = enrollCode.trim();
-      if (!code) throw new Error('Ange koden från autentiseringsappen');
-
-      const { error } = await supabase.auth.mfa.challengeAndVerify({
-        factorId: pendingTotp.factorId,
-        code
-      });
-
-      if (error) throw error;
-    },
-    onSuccess: async () => {
-      setPendingTotp(null);
-      setEnrollCode('');
-      await mfaStatusQuery.refetch();
-      toast.success('MFA aktiverad för adminkonto');
-    },
-    onError: (error) => {
-      toast.error(toErrorMessage(error, 'Kunde inte verifiera MFA-koden'));
-    }
-  });
-
-  const verifySessionMfaMutation = useMutation({
-    mutationFn: async () => {
-      const code = mfaCode.trim();
-      const factor = (mfaStatusQuery.data?.verifiedFactors ?? [])[0];
-      if (!factor?.id) throw new Error('Ingen verifierad MFA-faktor hittades');
-      if (!code) throw new Error('Ange MFA-koden');
-
-      const { error } = await supabase.auth.mfa.challengeAndVerify({
-        factorId: factor.id,
-        code
-      });
-
-      if (error) throw error;
-    },
-    onSuccess: async () => {
-      setMfaCode('');
-      await mfaStatusQuery.refetch();
-      toast.success('MFA verifierad för denna session');
-    },
-    onError: (error) => {
-      toast.error(toErrorMessage(error, 'Kunde inte verifiera MFA för sessionen'));
-    }
-  });
-
-  const unenrollMfaMutation = useMutation({
-    mutationFn: async (factorId: string) => {
-      const { error } = await supabase.auth.mfa.unenroll({ factorId });
-      if (error) throw error;
-    },
-    onSuccess: async () => {
-      await mfaStatusQuery.refetch();
-      toast.success('MFA-faktor borttagen');
-    },
-    onError: (error) => {
-      toast.error(toErrorMessage(error, 'Kunde inte ta bort MFA-faktor'));
-    }
-  });
-
   const securityAlerts = useMemo(() => {
     const events = securityEventsQuery.data ?? [];
     const now = Date.now();
     const last24h = events.filter((event) => now - new Date(event.created_at).getTime() <= 24 * 60 * 60 * 1000);
     const warningCount = last24h.filter((event) => event.severity === 'warning' || event.severity === 'critical').length;
     const stepUpBlocked = last24h.filter((event) => event.event_type.includes('step_up_blocked')).length;
-    const needsMfa = (mfaStatusQuery.data?.verifiedFactors ?? []).length === 0;
 
     const alerts: Array<{ severity: 'info' | 'warning' | 'critical'; title: string; detail: string }> = [];
 
@@ -359,16 +233,8 @@ export default function SettingsPage() {
       });
     }
 
-    if (needsMfa) {
-      alerts.push({
-        severity: 'info',
-        title: 'MFA saknas för admin',
-        detail: 'Aktivera TOTP-MFA för att låsa upp AAL2-skydd för känsliga åtgärder.'
-      });
-    }
-
     return alerts;
-  }, [mfaStatusQuery.data, securityEventsQuery.data]);
+  }, [securityEventsQuery.data]);
 
   function applySidebarDefault(next: 'expanded' | 'collapsed') {
     setSidebarDefault(next);
@@ -439,8 +305,14 @@ export default function SettingsPage() {
           <Button asChild variant="secondary">
             <Link href="/sync">Öppna synkcenter</Link>
           </Button>
+
+          <Button asChild variant="outline">
+            <Link href={'/settings/security' as Route}>Öppna säkerhet</Link>
+          </Button>
         </CardContent>
       </Card>
+
+      <MfaSettingsCard />
 
       <RoleGate role={role} allow={['admin']}>
         <BackupRetentionCard companyId={companyId} isAdmin={role === 'admin'} canWrite={role === 'admin'} />
@@ -508,75 +380,6 @@ export default function SettingsPage() {
                 ))}
               </div>
             )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>MFA för admin</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge>Nuvarande AAL: {mfaStatusQuery.data?.currentLevel ?? 'okänd'}</Badge>
-              <Badge>Nästa AAL: {mfaStatusQuery.data?.nextLevel ?? 'okänd'}</Badge>
-              <Badge>Verifierade faktorer: {(mfaStatusQuery.data?.verifiedFactors ?? []).length}</Badge>
-              <Button variant="secondary" onClick={() => mfaStatusQuery.refetch()} disabled={mfaStatusQuery.isFetching}>
-                {mfaStatusQuery.isFetching ? 'Uppdaterar...' : 'Uppdatera MFA-status'}
-              </Button>
-            </div>
-
-            {(mfaStatusQuery.data?.verifiedFactors ?? []).length > 0 ? (
-              <div className="space-y-2 rounded-lg border p-3">
-                <p className="font-medium">Verifiera MFA för denna session</p>
-                <p className="text-sm text-foreground/70">
-                  Om känsliga adminåtgärder kräver MFA måste den här sessionen lyftas till `aal2`.
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  <Input value={mfaCode} onChange={(event) => setMfaCode(event.target.value)} placeholder="6-siffrig kod" />
-                  <Button onClick={() => verifySessionMfaMutation.mutate()} disabled={verifySessionMfaMutation.isPending}>
-                    {verifySessionMfaMutation.isPending ? 'Verifierar...' : 'Verifiera session'}
-                  </Button>
-                </div>
-                {(mfaStatusQuery.data?.verifiedFactors ?? []).map((factor) => (
-                  <div key={factor.id} className="flex flex-wrap items-center gap-2 text-sm">
-                    <Badge>{factor.factor_type ?? 'factor'}</Badge>
-                    <span>{factor.friendly_name ?? factor.id}</span>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => unenrollMfaMutation.mutate(factor.id)}
-                      disabled={unenrollMfaMutation.isPending}
-                    >
-                      Ta bort
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="rounded-lg border p-3">
-                <p className="font-medium">Aktivera TOTP-MFA</p>
-                <p className="mt-1 text-sm text-foreground/70">
-                  Skanna QR-koden i en autentiseringsapp som 1Password, Bitwarden eller Google Authenticator.
-                </p>
-                <Button className="mt-3" onClick={() => enrollTotpMutation.mutate()} disabled={enrollTotpMutation.isPending}>
-                  {enrollTotpMutation.isPending ? 'Startar...' : 'Aktivera MFA'}
-                </Button>
-              </div>
-            )}
-
-            {pendingTotp ? (
-              <div className="space-y-3 rounded-lg border p-3">
-                <p className="font-medium">Slutför MFA-aktivering</p>
-                {pendingTotp.qrCode ? <img src={pendingTotp.qrCode} alt="MFA QR-kod" className="h-40 w-40 rounded border bg-white p-2" /> : null}
-                {pendingTotp.secret ? <p className="text-sm text-foreground/70">Hemlig nyckel: <span className="font-mono">{pendingTotp.secret}</span></p> : null}
-                <div className="flex flex-wrap gap-2">
-                  <Input value={enrollCode} onChange={(event) => setEnrollCode(event.target.value)} placeholder="6-siffrig kod" />
-                  <Button onClick={() => verifyEnrollMutation.mutate()} disabled={verifyEnrollMutation.isPending}>
-                    {verifyEnrollMutation.isPending ? 'Verifierar...' : 'Bekräfta MFA'}
-                  </Button>
-                </div>
-              </div>
-            ) : null}
           </CardContent>
         </Card>
 

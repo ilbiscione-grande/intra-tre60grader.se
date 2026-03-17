@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import DesktopSidebar from '@/components/nav/DesktopSidebar';
 import CompanySwitcher from '@/components/common/CompanySwitcher';
 import OfflineBanner from '@/components/common/OfflineBanner';
+import MfaReminder from '@/components/security/MfaReminder';
 import UserMenu from '@/components/common/UserMenu';
 import { Button } from '@/components/ui/button';
 import type { Role } from '@/lib/types';
@@ -77,7 +78,10 @@ export default function DesktopShell({
           </div>
         </header>
         <OfflineBanner />
-        <main className="flex-1 p-6">{children}</main>
+        <main className="flex-1 p-6">
+          <MfaReminder />
+          {children}
+        </main>
       </div>
     </div>
   );

@@ -4,6 +4,7 @@ import { usePathname } from 'next/navigation';
 import MobileBottomNav from '@/components/nav/MobileBottomNav';
 import MobileHeader from '@/components/common/MobileHeader';
 import OfflineBanner from '@/components/common/OfflineBanner';
+import MfaReminder from '@/components/security/MfaReminder';
 import type { Role } from '@/lib/types';
 
 function pageTitle(pathname: string | null) {
@@ -37,7 +38,10 @@ export default function MobileShell({
     <div className="min-h-screen lg:hidden">
       <MobileHeader title={pageTitle(pathname)} companyName={companyName} userEmail={userEmail} />
       <OfflineBanner />
-      <main className="safe-bottom px-4 pb-24 pt-4">{children}</main>
+      <main className="safe-bottom px-4 pb-24 pt-4">
+        <MfaReminder />
+        {children}
+      </main>
       <MobileBottomNav role={role} />
     </div>
   );

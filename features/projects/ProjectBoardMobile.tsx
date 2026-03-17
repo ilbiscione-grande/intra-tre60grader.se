@@ -113,12 +113,14 @@ function MobileColumn({
   status,
   title,
   count,
-  children
+  children,
+  isLocked
 }: {
   status: string;
   title: string;
   count: number;
   children: React.ReactNode;
+  isLocked: boolean;
 }) {
   const { setNodeRef, isOver } = useDroppable({
     id: columnId(status)
@@ -130,7 +132,9 @@ function MobileColumn({
       className={`mobile-column-panel w-[88vw] shrink-0 snap-center rounded-[22px] border p-4 shadow-sm transition ${
         isOver
           ? 'border-primary/70 bg-primary/5 ring-2 ring-primary/25'
-          : 'border-border/70 bg-gradient-to-b from-card to-card/90'
+          : isLocked
+            ? 'border-primary/45 bg-gradient-to-b from-card to-card/90 ring-2 ring-primary/15'
+            : 'border-border/70 bg-gradient-to-b from-card to-card/90'
       }`}
       aria-label={title}
     >
@@ -151,6 +155,7 @@ export default function ProjectBoardMobile({ companyId }: { companyId: string })
   const [selected, setSelected] = useState<Project | null>(null);
   const [board, setBoard] = useState<BoardState>({});
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [lockedStatus, setLockedStatus] = useState<string | null>(null);
   const trackRef = useRef<HTMLDivElement | null>(null);
   const edgeScrollRef = useRef<{ side: 'left' | 'right' | null; lastStepAt: number }>({
     side: null,
@@ -201,6 +206,16 @@ export default function ProjectBoardMobile({ companyId }: { companyId: string })
     nextChild?.scrollIntoView({ behavior: 'smooth', inline: 'start', block: 'nearest' });
   }, [activeIndex]);
 
+  useEffect(() => {
+    if (!lockedStatus) return;
+
+    const timeout = window.setTimeout(() => {
+      setLockedStatus((current) => (current === lockedStatus ? null : current));
+    }, 850);
+
+    return () => window.clearTimeout(timeout);
+  }, [lockedStatus]);
+
   function updateActiveFromScroll() {
     const track = trackRef.current;
     if (!track || columns.length === 0) return;
@@ -235,21 +250,27 @@ export default function ProjectBoardMobile({ companyId }: { companyId: string })
     if (!track || !translated) return;
 
     const rect = track.getBoundingClientRect();
-    const edgeThreshold = 64;
+    const edgeThreshold = 56;
     const stepWidth = rect.width * 0.9;
     const now = Date.now();
-    const cooldownMs = 950;
+    const cooldownMs = 1450;
 
     if (translated.right > rect.right - edgeThreshold) {
       const canAdvance =
         edgeScrollRef.current.side !== 'right' || now - edgeScrollRef.current.lastStepAt >= cooldownMs;
 
       if (canAdvance) {
+        const nextLeft = Math.min(track.scrollLeft + stepWidth, track.scrollWidth - rect.width);
         track.scrollTo({
-          left: Math.min(track.scrollLeft + stepWidth, track.scrollWidth - rect.width),
+          left: nextLeft,
           behavior: 'smooth'
         });
         edgeScrollRef.current = { side: 'right', lastStepAt: now };
+        const nextIndex = Math.min(columns.length - 1, activeIndex + 1);
+        const nextColumn = columns[nextIndex];
+        if (nextColumn) {
+          setLockedStatus(nextColumn.key);
+        }
       }
       return;
     }
@@ -259,11 +280,17 @@ export default function ProjectBoardMobile({ companyId }: { companyId: string })
         edgeScrollRef.current.side !== 'left' || now - edgeScrollRef.current.lastStepAt >= cooldownMs;
 
       if (canAdvance) {
+        const nextLeft = Math.max(track.scrollLeft - stepWidth, 0);
         track.scrollTo({
-          left: Math.max(track.scrollLeft - stepWidth, 0),
+          left: nextLeft,
           behavior: 'smooth'
         });
         edgeScrollRef.current = { side: 'left', lastStepAt: now };
+        const nextIndex = Math.max(0, activeIndex - 1);
+        const nextColumn = columns[nextIndex];
+        if (nextColumn) {
+          setLockedStatus(nextColumn.key);
+        }
       }
       return;
     }
@@ -307,6 +334,7 @@ export default function ProjectBoardMobile({ companyId }: { companyId: string })
     const activeProjectId = String(event.active.id);
     const overId = event.over?.id ? String(event.over.id) : null;
     setActiveId(null);
+    setLockedStatus(null);
     edgeScrollRef.current = { side: null, lastStepAt: 0 };
 
     if (!overId) {
@@ -426,8 +454,18 @@ export default function ProjectBoardMobile({ companyId }: { companyId: string })
             const list = board[column.key] ?? [];
 
             return (
-              <MobileColumn key={column.key} status={column.key} title={column.title} count={list.length}>
-                <p className="mb-4 text-xs font-semibold uppercase tracking-[0.24em] text-foreground/45">
+              <MobileColumn
+                key={column.key}
+                status={column.key}
+                title={column.title}
+                count={list.length}
+                isLocked={lockedStatus === column.key}
+              >
+                <p
+                  className={`mb-4 text-xs font-semibold uppercase tracking-[0.24em] transition ${
+                    lockedStatus === column.key ? 'text-primary' : 'text-foreground/45'
+                  }`}
+                >
                   Kolumn {columnIndex + 1} av {columns.length}
                 </p>
 
