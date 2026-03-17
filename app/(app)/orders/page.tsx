@@ -2,7 +2,8 @@
 
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowUpRight, FolderOpen } from 'lucide-react';
+import { Copy } from 'lucide-react';
+import { toast } from 'sonner';
 import { useAppContext } from '@/components/providers/AppContext';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -97,6 +98,18 @@ export default function OrdersPage() {
     }
   });
 
+  async function copyOrderId(event: React.MouseEvent<HTMLButtonElement>, orderId: string) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    try {
+      await navigator.clipboard.writeText(orderId);
+      toast.success('Ordernummer kopierat');
+    } catch {
+      toast.error('Kunde inte kopiera ordernummer');
+    }
+  }
+
   return (
     <section className="space-y-4">
       <div className="flex items-center justify-between gap-2">
@@ -116,53 +129,50 @@ export default function OrdersPage() {
         )}
 
         {(query.data ?? []).map((row) => (
-          <Card key={row.id} className="overflow-hidden p-0">
-            <div className="border-b border-border/70 bg-muted/30 px-4 py-3">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-xs font-medium uppercase tracking-[0.18em] text-foreground/45">Order</p>
-                  <p className="mt-1 font-mono text-sm">{row.id.slice(0, 8)}...</p>
-                </div>
-                <Badge>{orderStatusEtikett(row.status)}</Badge>
-              </div>
-            </div>
-
-            <div className="space-y-4 p-4">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="rounded-xl border border-border/70 bg-card px-3 py-2.5">
-                  <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-foreground/45">Projekt</p>
-                  <p className="mt-1 text-sm font-medium leading-snug">{row.projectTitle}</p>
-                </div>
-                <div className="rounded-xl border border-border/70 bg-card px-3 py-2.5">
-                  <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-foreground/45">Kund</p>
-                  <p className="mt-1 text-sm font-medium leading-snug">{row.customerName}</p>
-                </div>
-                <div className="rounded-xl border border-border/70 bg-card px-3 py-2.5">
-                  <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-foreground/45">Total</p>
-                  <p className="mt-1 text-sm font-semibold">{row.total.toFixed(2)} kr</p>
-                </div>
-                <div className="rounded-xl border border-border/70 bg-card px-3 py-2.5">
-                  <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-foreground/45">Skapad</p>
-                  <p className="mt-1 text-sm font-medium">{new Date(row.createdAt).toLocaleDateString('sv-SE')}</p>
+          <Link key={row.id} href={`/orders/${row.id}`} className="block">
+            <Card className="overflow-hidden p-0 transition hover:border-primary/40 hover:bg-muted/20">
+              <div className="border-b border-border/70 bg-muted/30 px-4 py-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-medium uppercase tracking-[0.18em] text-foreground/45">Order</p>
+                    <div className="mt-1 flex items-center gap-2">
+                      <p className="min-w-0 flex-1 break-all font-mono text-sm">{row.id}</p>
+                      <button
+                        type="button"
+                        aria-label="Kopiera ordernummer"
+                        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/70 bg-card text-foreground/70 transition hover:bg-muted"
+                        onClick={(event) => copyOrderId(event, row.id)}
+                      >
+                        <Copy className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                  <Badge>{orderStatusEtikett(row.status)}</Badge>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
-                <Button asChild className="w-full">
-                  <Link href={`/orders/${row.id}`}>
-                    <ArrowUpRight className="h-4 w-4" />
-                    Öppna order
-                  </Link>
-                </Button>
-                <Button asChild variant="outline" className="w-full">
-                  <Link href={`/projects/${row.projectId}`}>
-                    <FolderOpen className="h-4 w-4" />
-                    Till projekt
-                  </Link>
-                </Button>
+              <div className="space-y-4 p-4">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-xl border border-border/70 bg-card px-3 py-2.5">
+                    <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-foreground/45">Projekt</p>
+                    <p className="mt-1 text-sm font-medium leading-snug">{row.projectTitle}</p>
+                  </div>
+                  <div className="rounded-xl border border-border/70 bg-card px-3 py-2.5">
+                    <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-foreground/45">Kund</p>
+                    <p className="mt-1 text-sm font-medium leading-snug">{row.customerName}</p>
+                  </div>
+                  <div className="rounded-xl border border-border/70 bg-card px-3 py-2.5">
+                    <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-foreground/45">Total</p>
+                    <p className="mt-1 text-sm font-semibold">{row.total.toFixed(2)} kr</p>
+                  </div>
+                  <div className="rounded-xl border border-border/70 bg-card px-3 py-2.5">
+                    <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-foreground/45">Skapad</p>
+                    <p className="mt-1 text-sm font-medium">{new Date(row.createdAt).toLocaleDateString('sv-SE')}</p>
+                  </div>
+                </div>
               </div>
-            </div>
-          </Card>
+            </Card>
+          </Link>
         ))}
       </div>
 
