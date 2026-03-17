@@ -3,6 +3,7 @@
 import {
   closestCorners,
   DndContext,
+  DragOverlay,
   type DragEndEvent,
   type DragMoveEvent,
   type DragOverEvent,
@@ -126,7 +127,7 @@ function MobileColumn({
   return (
     <section
       ref={setNodeRef}
-      className={`mobile-column-panel min-w-full snap-center rounded-[22px] border p-4 shadow-sm transition ${
+      className={`mobile-column-panel w-[88vw] shrink-0 snap-center rounded-[22px] border p-4 shadow-sm transition ${
         isOver
           ? 'border-primary/70 bg-primary/5 ring-2 ring-primary/25'
           : 'border-border/70 bg-gradient-to-b from-card to-card/90'
@@ -151,6 +152,10 @@ export default function ProjectBoardMobile({ companyId }: { companyId: string })
   const [board, setBoard] = useState<BoardState>({});
   const [activeId, setActiveId] = useState<string | null>(null);
   const trackRef = useRef<HTMLDivElement | null>(null);
+  const edgeScrollRef = useRef<{ side: 'left' | 'right' | null; lastStepAt: number }>({
+    side: null,
+    lastStepAt: 0
+  });
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
   const projectsQuery = useProjects(companyId);
@@ -182,6 +187,10 @@ export default function ProjectBoardMobile({ companyId }: { companyId: string })
   const activeIndex = useMemo(
     () => Math.max(0, columns.findIndex((column) => column.key === activeStatus)),
     [activeStatus, columns]
+  );
+  const activeProject = useMemo(
+    () => (activeId ? projects.find((project) => project.id === activeId) ?? null : null),
+    [activeId, projects]
   );
 
   useEffect(() => {
@@ -217,6 +226,7 @@ export default function ProjectBoardMobile({ companyId }: { companyId: string })
 
   function handleDragStart(event: DragStartEvent) {
     setActiveId(String(event.active.id));
+    edgeScrollRef.current = { side: null, lastStepAt: 0 };
   }
 
   function handleDragMove(event: DragMoveEvent) {
@@ -226,13 +236,39 @@ export default function ProjectBoardMobile({ companyId }: { companyId: string })
 
     const rect = track.getBoundingClientRect();
     const edgeThreshold = 64;
-    const scrollStep = Math.max(18, rect.width * 0.045);
+    const stepWidth = rect.width * 0.9;
+    const now = Date.now();
+    const cooldownMs = 950;
 
     if (translated.right > rect.right - edgeThreshold) {
-      track.scrollLeft += scrollStep;
-    } else if (translated.left < rect.left + edgeThreshold) {
-      track.scrollLeft -= scrollStep;
+      const canAdvance =
+        edgeScrollRef.current.side !== 'right' || now - edgeScrollRef.current.lastStepAt >= cooldownMs;
+
+      if (canAdvance) {
+        track.scrollTo({
+          left: Math.min(track.scrollLeft + stepWidth, track.scrollWidth - rect.width),
+          behavior: 'smooth'
+        });
+        edgeScrollRef.current = { side: 'right', lastStepAt: now };
+      }
+      return;
     }
+
+    if (translated.left < rect.left + edgeThreshold) {
+      const canAdvance =
+        edgeScrollRef.current.side !== 'left' || now - edgeScrollRef.current.lastStepAt >= cooldownMs;
+
+      if (canAdvance) {
+        track.scrollTo({
+          left: Math.max(track.scrollLeft - stepWidth, 0),
+          behavior: 'smooth'
+        });
+        edgeScrollRef.current = { side: 'left', lastStepAt: now };
+      }
+      return;
+    }
+
+    edgeScrollRef.current = { side: null, lastStepAt: edgeScrollRef.current.lastStepAt };
   }
 
   function handleDragOver(event: DragOverEvent) {
@@ -271,6 +307,7 @@ export default function ProjectBoardMobile({ companyId }: { companyId: string })
     const activeProjectId = String(event.active.id);
     const overId = event.over?.id ? String(event.over.id) : null;
     setActiveId(null);
+    edgeScrollRef.current = { side: null, lastStepAt: 0 };
 
     if (!overId) {
       setBoard(initialBoard);
@@ -383,7 +420,7 @@ export default function ProjectBoardMobile({ companyId }: { companyId: string })
         <div
           ref={trackRef}
           onScroll={updateActiveFromScroll}
-          className="flex snap-x snap-mandatory gap-4 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          className="flex snap-x snap-mandatory gap-4 overflow-x-auto px-[6%] pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
           {columns.map((column, columnIndex) => {
             const list = board[column.key] ?? [];
@@ -414,6 +451,16 @@ export default function ProjectBoardMobile({ companyId }: { companyId: string })
             );
           })}
         </div>
+        <DragOverlay>
+          {activeProject ? (
+            <div className="w-[82vw] max-w-[340px] rotate-[1.2deg] touch-none">
+              <ProjectCard
+                project={activeProject}
+                statusLabel={titleByStatus.get(activeProject.status) ?? activeProject.status}
+              />
+            </div>
+          ) : null}
+        </DragOverlay>
         {activeId ? <div className="sr-only">Drar {activeId}</div> : null}
       </DndContext>
 
