@@ -13,10 +13,12 @@ function getLoginAppUrl() {
 }
 
 function getHandoffAuthHeader() {
-  const secret = process.env.LOGIN_APP_HANDOFF_SECRET?.trim();
+  const secret =
+    process.env.AUTH_HANDOFF_SHARED_SECRET?.trim() ||
+    process.env.LOGIN_APP_HANDOFF_SECRET?.trim();
 
   if (!secret) {
-    throw new Error('Missing LOGIN_APP_HANDOFF_SECRET');
+    throw new Error('Missing AUTH_HANDOFF_SHARED_SECRET');
   }
 
   return `Bearer ${secret}`;

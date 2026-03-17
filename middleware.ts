@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
+import { isAuthDebugEnabled } from '@/lib/auth/debug';
 import { getAuthContext, getLoginRedirectUrl, isStaff } from '@/lib/auth/authContext';
 import { createMiddlewareSupabaseClient } from '@/lib/supabase/middleware';
 
@@ -8,6 +9,7 @@ function hasSupabaseAuthCallbackParams(request: NextRequest) {
   return (
     request.nextUrl.searchParams.has('code') ||
     request.nextUrl.searchParams.has('token_hash') ||
+    request.nextUrl.searchParams.has('handoff') ||
     request.nextUrl.searchParams.has('access_token') ||
     request.nextUrl.searchParams.has('refresh_token')
   );
@@ -24,6 +26,7 @@ function buildAuthCallbackUrl(request: NextRequest) {
   nextUrl.searchParams.delete('code');
   nextUrl.searchParams.delete('token_hash');
   nextUrl.searchParams.delete('type');
+  nextUrl.searchParams.delete('handoff');
   nextUrl.searchParams.delete('access_token');
   nextUrl.searchParams.delete('refresh_token');
 
@@ -38,6 +41,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(buildAuthCallbackUrl(request));
   }
 
+  const debug = isAuthDebugEnabled(request.nextUrl);
   const response = NextResponse.next({
     request
   });
@@ -61,6 +65,27 @@ export async function middleware(request: NextRequest) {
   const redirectUrl = requiresAuth && !isStaff(authContext)
     ? getLoginRedirectUrl(authContext, returnTo)
     : null;
+
+  if (debug) {
+    return NextResponse.json({
+      stage: 'middleware',
+      path,
+      requires_auth: requiresAuth,
+      cookie_names: request.cookies.getAll().map((cookie) => cookie.name),
+      user_id: user?.id ?? null,
+      user_error: userError?.message ?? null,
+      auth_context: authContext ?? null,
+      is_staff: isStaff(authContext),
+      redirect_to: redirectUrl,
+      redirect_reason: redirectUrl
+        ? !user
+          ? 'missing_session'
+          : !authContext
+            ? 'missing_auth_context'
+            : 'not_staff'
+        : null
+    });
+  }
 
   if (redirectUrl) {
     return NextResponse.redirect(redirectUrl);
