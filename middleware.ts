@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
+import { isAuthDebugEnabled } from '@/lib/auth/debug';
 import { getAuthContext, getLoginRedirectUrl, isStaff } from '@/lib/auth/authContext';
 import { createMiddlewareSupabaseClient } from '@/lib/supabase/middleware';
 
@@ -38,6 +39,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(buildAuthCallbackUrl(request));
   }
 
+  const debug = isAuthDebugEnabled(request.nextUrl);
   const response = NextResponse.next({
     request
   });
@@ -52,12 +54,31 @@ export async function middleware(request: NextRequest) {
     !path.startsWith('/offline') &&
     !path.startsWith('/api/auth'); // Allow auth API routes
 
-  await supabase.auth.getUser();
+  const {
+    data: { user },
+    error: userError
+  } = await supabase.auth.getUser();
 
   const authContext = await getAuthContext(supabase);
+  const redirectUrl = requiresAuth && !isStaff(authContext)
+    ? getLoginRedirectUrl(authContext, returnTo)
+    : null;
 
-  if (requiresAuth && !isStaff(authContext)) {
-    const redirectUrl = getLoginRedirectUrl(authContext, returnTo);
+  if (debug) {
+    return NextResponse.json({
+      stage: 'middleware',
+      path,
+      requires_auth: requiresAuth,
+      cookie_names: request.cookies.getAll().map((cookie) => cookie.name),
+      user_id: user?.id ?? null,
+      user_error: userError?.message ?? null,
+      auth_context: authContext ?? null,
+      is_staff: isStaff(authContext),
+      redirect_to: redirectUrl
+    });
+  }
+
+  if (redirectUrl) {
     return NextResponse.redirect(redirectUrl);
   }
 
