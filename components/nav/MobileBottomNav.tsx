@@ -27,19 +27,14 @@ const navItems: NavItem[] = [
 export default function MobileBottomNav({ role }: { role: Role }) {
   const pathname = usePathname();
   const visibleItems = navItems.filter((item) => item.roles.includes(role));
-
-  const gridClass =
-    visibleItems.length >= 5
-      ? 'grid-cols-5'
-      : visibleItems.length === 4
-        ? 'grid-cols-4'
-        : visibleItems.length === 3
-          ? 'grid-cols-3'
-          : 'grid-cols-2';
+  const columns = Math.min(Math.max(visibleItems.length, 1), 7);
 
   return (
     <nav className="safe-bottom fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-card/95 px-3 pt-2 backdrop-blur">
-      <div className={cn('mx-auto grid max-w-xl gap-2', gridClass)}>
+      <div
+        className="mx-auto grid max-w-xl gap-2 pb-1"
+        style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
+      >
         {visibleItems.map((item) => {
           const isActive = pathname?.startsWith(item.href);
           const Icon = item.icon;
@@ -50,7 +45,7 @@ export default function MobileBottomNav({ role }: { role: Role }) {
               href={item.href}
               className={cn(
                 buttonVariants({ variant: isActive ? 'default' : 'secondary', size: 'sm' }),
-                'h-12 flex-col gap-1 px-1 text-[10px]'
+                'h-12 min-w-0 flex-col gap-1 px-1 text-[10px]'
               )}
             >
               <Icon className="h-4 w-4" />

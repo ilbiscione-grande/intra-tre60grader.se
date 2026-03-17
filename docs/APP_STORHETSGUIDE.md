@@ -47,6 +47,8 @@ Status:
 - B7 notering: Implementation klar i kod (action-baserad behörighetsmodell) men användarverifiering ej genomförd ännu.
 - C1 notering: SQL/migration körd men inte manuellt testad i UI ännu.
 - C4 notering: implementation klar i kod för serverstyrd rate limiting, säkerhetshändelser, säkerhetslarm i admin-UI, TOTP-MFA i settings, step-up för känsliga admin-API:er (AAL2 om tillgängligt, annars färsk inloggning) samt webhook-larm för kritiska säkerhetshändelser. Manuell runtime-verifiering återstår innan punkten kan markeras klar.
+- Auth notering 2026-03-17: intranätet använder nu säker handoff från login-appen via `/auth/callback?handoff=...`, delar auth-cookie-domän över `.tre60grader.se` och verifierar `tre60_auth_context()` server-side utan redirect-loop.
+- MFA notering 2026-03-17: frivillig TOTP-MFA för interna användare finns nu på `/settings/security` med status, enroll, verify och påminnelsebanner i intranätet. Enforcement vid själva login-tillfället är ännu inte aktiverat.
 - Auth notering: magic-link-test via app är för närvarande opålitligt p.g.a. Supabase email rate-limit/throttling i testmiljön. Lösenordsinloggning är tillagd som alternativ utvecklingsväg tills mailflödet kan verifieras igen.
 - B6 klar: ekonomi-testpaket med SQL smoke + golden tests, npm testkommandon, CI-workflow samt verifierad körning (green) i SQL Editor.
 - B5 klar: append-only revisionsspår med hashkedja (event_no/prev_hash/event_hash), verifierings-RPC och export av händelsekedja (JSON) från Rapporter.

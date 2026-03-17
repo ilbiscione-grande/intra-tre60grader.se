@@ -36,6 +36,14 @@ Notera:
 - `SECURITY_ALERT_WEBHOOK_URL` är valfri och används för att skicka webhook-larm på kritiska säkerhetshändelser.
 - `/auth/callback` stödjer både säkert `handoff`-flöde och token-baserad fallback (`access_token` + `refresh_token`) för kompatibilitet.
 
+## Authmodell
+
+- `login.tre60grader.se` är central login-entrypoint.
+- `intra.tre60grader.se` verifierar Supabase-session server-side och hämtar auth-beslut via `public.tre60_auth_context()`.
+- Intranätet släpper endast in interna användare med `role in ('admin', 'employee')` och `status = 'active'`.
+- Säker handoff stöds via opaque `handoff`-kod som byts in server-side mot sessionpayload från login-appen.
+- `auth_context` normaliseras i appen så att både objekt- och array-svar från RPC hanteras korrekt.
+
 ## Kör lokalt
 
 ```bash
@@ -141,10 +149,13 @@ Skriptet försöker även ge alla befintliga `auth.users` medlemskap i demo-bola
 
 - Login använder nu serverrouten `/api/auth/request-link` i stället för direkt klientkall.
 - Magic-link-inloggning har serverstyrd rate limiting per IP och per e-post.
+- Intranätets auth-callback stödjer säkert handoff-flöde via login-appens `/api/handoff/consume`.
 - Känsliga admin-API:er kräver antingen `aal2` (MFA verifierad session) eller färsk inloggning (`last_sign_in_at` inom 30 minuter) som fallback.
 - Säkerhetshändelser loggas i `security_events`.
 - Admin kan se bolagets senaste säkerhetshändelser och enkla larm på `/settings`.
-- Admin kan aktivera TOTP-MFA på `/settings` och verifiera aktuell session till `aal2`.
+- Interna användare kan aktivera frivillig TOTP-MFA på `/settings/security`.
+- Intranätet visar en diskret MFA-påminnelse för interna användare som saknar verifierad faktor.
+- Verifierad MFA-faktor innebär inte ännu att login alltid kräver kod; enforcement i login-flödet är ett senare steg.
 - Kritiska säkerhetshändelser kan skickas till extern webhook via `SECURITY_ALERT_WEBHOOK_URL`.
 - Ny migration: `supabase/migrations/20260309_000041_c4_security_ops.sql`
 
@@ -181,6 +192,9 @@ Skriptet försöker även ge alla befintliga `auth.users` medlemskap i demo-bola
 - Kolumner lagras per bolag i `project_columns` (`key`, `title`, `position`).
 - På `/projects` kan du lägga till, byta namn och ta bort kolumner.
 - Vid borttagning flyttas projekt i kolumnen automatiskt till en reservkolumn innan kolumnen tas bort.
+- Desktop använder drag-and-drop mellan kolumner.
+- Mobilvyn visar en kolumn i taget med horisontell swipe mellan kolumner.
+- I mobilvyn kan projektkort dras sidledes till nästa kolumn, med stegvis autoscroll och fallback-väljare för exakt flytt.
 
 ## SQL-smoketest (ekonomi)
 
