@@ -135,19 +135,19 @@ export default function OrdersPage() {
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
                     <p className="text-xs font-medium uppercase tracking-[0.18em] text-foreground/45">Order</p>
-                    <div className="mt-1 flex items-center gap-2">
-                      <p className="min-w-0 flex-1 break-all font-mono text-sm">{row.id}</p>
-                      <button
-                        type="button"
-                        aria-label="Kopiera ordernummer"
-                        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border/70 bg-card text-foreground/70 transition hover:bg-muted"
-                        onClick={(event) => copyOrderId(event, row.id)}
-                      >
-                        <Copy className="h-4 w-4" />
-                      </button>
-                    </div>
+                    <p className="mt-1 break-all font-mono text-sm">{row.id}</p>
                   </div>
-                  <Badge>{orderStatusEtikett(row.status)}</Badge>
+                  <div className="flex shrink-0 flex-col items-end gap-2">
+                    <Badge>{orderStatusEtikett(row.status)}</Badge>
+                    <button
+                      type="button"
+                      aria-label="Kopiera ordernummer"
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border/70 bg-card text-foreground/70 transition hover:bg-muted"
+                      onClick={(event) => copyOrderId(event, row.id)}
+                    >
+                      <Copy className="h-4 w-4" />
+                    </button>
+                  </div>
                 </div>
               </div>
 
