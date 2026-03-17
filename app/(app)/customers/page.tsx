@@ -2,7 +2,7 @@
 
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { MoreHorizontal } from 'lucide-react';
+import { MoreHorizontal, Plus, Search } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
@@ -55,6 +55,8 @@ export default function CustomersPage() {
   const supabase = useMemo(() => createClient(), []);
 
   const [view, setView] = useState<CustomerView>('active');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState<Customer | null>(null);
   const [archiveTarget, setArchiveTarget] = useState<Customer | null>(null);
   const [editDraft, setEditDraft] = useState<Partial<Customer>>({});
@@ -81,6 +83,28 @@ export default function CustomersPage() {
     }
   });
 
+  const filteredCustomers = useMemo(() => {
+    const customers = query.data ?? [];
+    const needle = searchTerm.trim().toLowerCase();
+
+    if (!needle) {
+      return customers;
+    }
+
+    return customers.filter((customer) =>
+      [
+        customer.name,
+        customer.org_no,
+        customer.vat_no,
+        customer.billing_email,
+        customer.phone,
+        customer.city
+      ]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(needle))
+    );
+  }, [query.data, searchTerm]);
+
   const refresh = async () => {
     await queryClient.invalidateQueries({ queryKey: ['customers', companyId] });
   };
@@ -90,6 +114,7 @@ export default function CustomersPage() {
     onSuccess: async (result) => {
       await refresh();
       form.reset({ name: '' });
+      setCreateOpen(false);
       if (result.created) toast.success('Kund skapad');
       else if (result.revived) toast.success('Kund återställd från arkiv');
       else toast.success('Kunden finns redan');
@@ -173,6 +198,12 @@ export default function CustomersPage() {
     setEditDraft((prev) => ({ ...prev, [key]: value }));
   }
 
+  function openCreateDialog() {
+    const initialName = searchTerm.trim();
+    form.reset({ name: initialName });
+    setCreateOpen(true);
+  }
+
   return (
     <section className="space-y-3">
       <div className="flex items-center justify-between">
@@ -190,28 +221,32 @@ export default function CustomersPage() {
       {view === 'active' && (
         <Card>
           <CardHeader className="p-3">
-            <CardTitle className="text-base">Skapa kund</CardTitle>
+            <CardTitle className="text-base">Sök kunder</CardTitle>
           </CardHeader>
-          <CardContent>
-            <form
-              className="flex flex-col gap-2 sm:flex-row"
-              onSubmit={form.handleSubmit(async (data) => {
-                await createMutation.mutateAsync(data.name);
-              })}
-            >
-              <Input placeholder="Kundnamn" {...form.register('name')} />
-              <Button type="submit" disabled={createMutation.isPending}>
-                {createMutation.isPending ? 'Sparar...' : 'Lägg till'}
+          <CardContent className="space-y-3">
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-foreground/45" />
+                <Input
+                  value={searchTerm}
+                  onChange={(event) => setSearchTerm(event.target.value)}
+                  className="pl-9"
+                  placeholder="Sök på namn, org.nr, e-post eller stad"
+                />
+              </div>
+              <Button type="button" size="icon" onClick={openCreateDialog} aria-label="Ny kund">
+                <Plus className="h-4 w-4" />
               </Button>
-            </form>
-            {form.formState.errors.name && (
-              <p className="mt-2 text-xs text-danger">{form.formState.errors.name.message}</p>
-            )}
+            </div>
+
+            <div className="rounded-lg border bg-muted/25 px-3 py-2 text-xs text-foreground/65">
+              {filteredCustomers.length} {filteredCustomers.length === 1 ? 'kund' : 'kunder'} visas
+            </div>
           </CardContent>
         </Card>
       )}
 
-      {(query.data ?? []).map((customer) => (
+      {filteredCustomers.map((customer) => (
         <Card key={customer.id}>
           <CardHeader className="p-3">
             <div className="flex items-center justify-between gap-2">
@@ -255,6 +290,50 @@ export default function CustomersPage() {
           </CardContent>
         </Card>
       ))}
+
+      {filteredCustomers.length === 0 && (
+        <Card>
+          <CardContent className="p-4 text-sm text-foreground/70">
+            Inga kunder matchar sökningen.
+          </CardContent>
+        </Card>
+      )}
+
+      <Dialog
+        open={createOpen}
+        onOpenChange={(open) => {
+          setCreateOpen(open);
+          if (!open) {
+            form.reset({ name: '' });
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Ny kund</DialogTitle>
+            <DialogDescription>Lägg till en ny kund i bolaget.</DialogDescription>
+          </DialogHeader>
+          <form
+            className="space-y-3"
+            onSubmit={form.handleSubmit(async (data) => {
+              await createMutation.mutateAsync(data.name);
+            })}
+          >
+            <Input placeholder="Kundnamn" {...form.register('name')} />
+            {form.formState.errors.name && (
+              <p className="text-xs text-danger">{form.formState.errors.name.message}</p>
+            )}
+            <div className="flex gap-2">
+              <Button type="button" variant="secondary" onClick={() => setCreateOpen(false)}>
+                Avbryt
+              </Button>
+              <Button type="submit" disabled={createMutation.isPending}>
+                {createMutation.isPending ? 'Sparar...' : 'Lägg till'}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={Boolean(editing)} onOpenChange={(open) => !open && setEditing(null)}>
         <DialogContent>
