@@ -42,6 +42,7 @@ export async function middleware(request: NextRequest) {
   }
 
   const debug = isAuthDebugEnabled(request.nextUrl);
+  const isAuthCallbackPath = request.nextUrl.pathname === '/auth/callback';
   const response = NextResponse.next({
     request
   });
@@ -66,7 +67,7 @@ export async function middleware(request: NextRequest) {
     ? getLoginRedirectUrl(authContext, returnTo)
     : null;
 
-  if (debug) {
+  if (debug && !isAuthCallbackPath) {
     return NextResponse.json({
       stage: 'middleware',
       path,
