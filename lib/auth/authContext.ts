@@ -22,6 +22,7 @@ export type StaffAuthContext = AuthContext & {
 };
 
 type ServerSupabaseClient = SupabaseClient<Database>;
+type AuthContextResult = AuthContext | AuthContext[] | null;
 
 function getLoginAppBaseUrl() {
   return (process.env.NEXT_PUBLIC_LOGIN_APP_URL || 'https://login.tre60grader.se').replace(/\/+$/, '');
@@ -69,7 +70,8 @@ export async function getAuthContext(supabase: ServerSupabaseClient = createServ
     return null;
   }
 
-  return data as AuthContext;
+  const normalized = Array.isArray(data) ? data[0] ?? null : data;
+  return (normalized as AuthContextResult) as AuthContext | null;
 }
 
 export function isStaff(authContext: AuthContext | null): authContext is StaffAuthContext {
