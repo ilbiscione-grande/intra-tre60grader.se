@@ -34,6 +34,7 @@ Notera:
 - `AUTH_HANDOFF_SHARED_SECRET` är server-only och används när intranätet byter in `handoff` mot sessionpayload via login-appens `/api/handoff/consume`.
 - `NEXT_PUBLIC_LOGIN_APP_URL` är URL:en till den gemensamma login-appen för Tre60 Grader.
 - `SECURITY_ALERT_WEBHOOK_URL` är valfri och används för att skicka webhook-larm på kritiska säkerhetshändelser.
+- `/auth/callback` stödjer både säkert `handoff`-flöde och token-baserad fallback (`access_token` + `refresh_token`) för kompatibilitet.
 
 ## Kör lokalt
 

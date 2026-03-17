@@ -1,5 +1,4 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { isAuthDebugEnabled } from '@/lib/auth/debug';
 import { getAuthContext, getLoginRedirectUrl, isStaff } from '@/lib/auth/authContext';
 import { createMiddlewareSupabaseClient } from '@/lib/supabase/middleware';
 
@@ -41,8 +40,6 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(buildAuthCallbackUrl(request));
   }
 
-  const debug = isAuthDebugEnabled(request.nextUrl);
-  const isAuthCallbackPath = request.nextUrl.pathname === '/auth/callback';
   const response = NextResponse.next({
     request
   });
@@ -66,27 +63,6 @@ export async function middleware(request: NextRequest) {
   const redirectUrl = requiresAuth && !isStaff(authContext)
     ? getLoginRedirectUrl(authContext, returnTo)
     : null;
-
-  if (debug && !isAuthCallbackPath) {
-    return NextResponse.json({
-      stage: 'middleware',
-      path,
-      requires_auth: requiresAuth,
-      cookie_names: request.cookies.getAll().map((cookie) => cookie.name),
-      user_id: user?.id ?? null,
-      user_error: userError?.message ?? null,
-      auth_context: authContext ?? null,
-      is_staff: isStaff(authContext),
-      redirect_to: redirectUrl,
-      redirect_reason: redirectUrl
-        ? !user
-          ? 'missing_session'
-          : !authContext
-            ? 'missing_auth_context'
-            : 'not_staff'
-        : null
-    });
-  }
 
   if (redirectUrl) {
     return NextResponse.redirect(redirectUrl);
