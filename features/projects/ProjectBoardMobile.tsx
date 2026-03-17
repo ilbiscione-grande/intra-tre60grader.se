@@ -1,65 +1,165 @@
 'use client';
 
-import { ChevronLeft, ChevronRight, GripHorizontal } from 'lucide-react';
+import {
+  closestCorners,
+  DndContext,
+  type DragEndEvent,
+  type DragMoveEvent,
+  type DragOverEvent,
+  type DragStartEvent,
+  PointerSensor,
+  useDroppable,
+  useSensor,
+  useSensors
+} from '@dnd-kit/core';
+import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import ActionSheet from '@/components/common/ActionSheet';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import ProjectCard from '@/features/projects/ProjectCard';
-import { useProjectColumns, useProjects, useSetProjectStatus } from '@/features/projects/projectQueries';
+import { useMoveProject, useProjectColumns, useProjects } from '@/features/projects/projectQueries';
 import type { Project } from '@/lib/types';
 
-function MobileMoveButtons({
-  canMoveLeft,
-  canMoveRight,
-  onMoveLeft,
-  onMoveRight
+type BoardState = Record<string, Project[]>;
+
+function columnId(status: string) {
+  return `mobile-column:${status}`;
+}
+
+function statusFromColumnId(id: string) {
+  if (!id.startsWith('mobile-column:')) return null;
+  return id.replace('mobile-column:', '');
+}
+
+function buildBoardState(projects: Project[], statuses: string[]): BoardState {
+  const base: BoardState = Object.fromEntries(statuses.map((status) => [status, []]));
+
+  for (const project of projects) {
+    if (!base[project.status]) {
+      base[project.status] = [];
+    }
+
+    base[project.status].push(project);
+  }
+
+  Object.values(base).forEach((list) => list.sort((a, b) => a.position - b.position));
+  return base;
+}
+
+function findContainer(projectId: string, board: BoardState) {
+  for (const [status, list] of Object.entries(board)) {
+    if (list.some((project) => project.id === projectId)) {
+      return status;
+    }
+  }
+
+  return null;
+}
+
+function SortableProjectCard({
+  project,
+  statusLabel,
+  onOpenMoveMenu
 }: {
-  canMoveLeft: boolean;
-  canMoveRight: boolean;
-  onMoveLeft: () => void;
-  onMoveRight: () => void;
+  project: Project;
+  statusLabel: string;
+  onOpenMoveMenu: () => void;
 }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: project.id
+  });
+
   return (
-    <div className="flex items-center gap-1">
-      <Button
-        type="button"
-        variant="outline"
-        size="icon"
-        className="h-8 w-8"
-        disabled={!canMoveLeft}
-        onClick={onMoveLeft}
-        aria-label="Flytta åt vänster"
-      >
-        <ChevronLeft className="h-4 w-4" />
-      </Button>
-      <Button
-        type="button"
-        variant="outline"
-        size="icon"
-        className="h-8 w-8"
-        disabled={!canMoveRight}
-        onClick={onMoveRight}
-        aria-label="Flytta åt höger"
-      >
-        <ChevronRight className="h-4 w-4" />
-      </Button>
+    <div
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.85 : 1,
+        zIndex: isDragging ? 20 : 1
+      }}
+      className={isDragging ? 'project-card-dragging touch-none' : 'project-card-idle touch-pan-y'}
+      {...attributes}
+      {...listeners}
+    >
+      <ProjectCard
+        project={project}
+        statusLabel={statusLabel}
+        actions={
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onOpenMoveMenu();
+            }}
+          >
+            Flytta
+          </Button>
+        }
+      />
     </div>
+  );
+}
+
+function MobileColumn({
+  status,
+  title,
+  count,
+  children
+}: {
+  status: string;
+  title: string;
+  count: number;
+  children: React.ReactNode;
+}) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: columnId(status)
+  });
+
+  return (
+    <section
+      ref={setNodeRef}
+      className={`mobile-column-panel min-w-full snap-center rounded-[22px] border p-4 shadow-sm transition ${
+        isOver
+          ? 'border-primary/70 bg-primary/5 ring-2 ring-primary/25'
+          : 'border-border/70 bg-gradient-to-b from-card to-card/90'
+      }`}
+      aria-label={title}
+    >
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div>
+          <h3 className="text-lg font-semibold">{title}</h3>
+          <p className="mt-1 text-xs uppercase tracking-[0.22em] text-foreground/45">Dra kort sidledes mellan kolumner</p>
+        </div>
+        <Badge>{count}</Badge>
+      </div>
+      {children}
+    </section>
   );
 }
 
 export default function ProjectBoardMobile({ companyId }: { companyId: string }) {
   const [activeStatus, setActiveStatus] = useState<string>('');
   const [selected, setSelected] = useState<Project | null>(null);
-  const [pendingMoveId, setPendingMoveId] = useState<string | null>(null);
+  const [board, setBoard] = useState<BoardState>({});
+  const [activeId, setActiveId] = useState<string | null>(null);
   const trackRef = useRef<HTMLDivElement | null>(null);
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
   const projectsQuery = useProjects(companyId);
   const columnsQuery = useProjectColumns(companyId);
-  const setStatusMutation = useSetProjectStatus(companyId);
+  const moveMutation = useMoveProject(companyId);
 
   const columns = columnsQuery.data ?? [];
   const projects = projectsQuery.data ?? [];
+  const statuses = useMemo(() => columns.map((column) => column.key), [columns]);
 
   useEffect(() => {
     if (!activeStatus && columns.length > 0) {
@@ -73,25 +173,11 @@ export default function ProjectBoardMobile({ companyId }: { companyId: string })
   }, [activeStatus, columns]);
 
   const titleByStatus = useMemo(() => new Map(columns.map((c) => [c.key, c.title])), [columns]);
-  const projectsByStatus = useMemo(() => {
-    const base = new Map<string, Project[]>();
-    columns.forEach((column) => base.set(column.key, []));
+  const initialBoard = useMemo(() => buildBoardState(projects, statuses), [projects, statuses]);
 
-    for (const project of projects) {
-      const list = base.get(project.status);
-      if (list) {
-        list.push(project);
-      } else {
-        base.set(project.status, [project]);
-      }
-    }
-
-    for (const list of base.values()) {
-      list.sort((a, b) => a.position - b.position);
-    }
-
-    return base;
-  }, [columns, projects]);
+  useEffect(() => {
+    setBoard(initialBoard);
+  }, [initialBoard]);
 
   const activeIndex = useMemo(
     () => Math.max(0, columns.findIndex((column) => column.key === activeStatus)),
@@ -121,14 +207,112 @@ export default function ProjectBoardMobile({ companyId }: { companyId: string })
     }
   }
 
-  function moveProject(project: Project, status: string) {
-    setPendingMoveId(project.id);
-    setStatusMutation.mutate(
-      { project, toStatus: status },
-      {
-        onSettled: () => setPendingMoveId(null)
+  function commitMove(project: Project, status: string, toPosition: number) {
+    moveMutation.mutate({
+      project,
+      toStatus: status,
+      toPosition
+    });
+  }
+
+  function handleDragStart(event: DragStartEvent) {
+    setActiveId(String(event.active.id));
+  }
+
+  function handleDragMove(event: DragMoveEvent) {
+    const track = trackRef.current;
+    const translated = event.active.rect.current.translated;
+    if (!track || !translated) return;
+
+    const rect = track.getBoundingClientRect();
+    const edgeThreshold = 64;
+    const scrollStep = Math.max(18, rect.width * 0.045);
+
+    if (translated.right > rect.right - edgeThreshold) {
+      track.scrollLeft += scrollStep;
+    } else if (translated.left < rect.left + edgeThreshold) {
+      track.scrollLeft -= scrollStep;
+    }
+  }
+
+  function handleDragOver(event: DragOverEvent) {
+    const activeProjectId = String(event.active.id);
+    const overId = event.over?.id ? String(event.over.id) : null;
+    if (!overId) return;
+
+    setBoard((current) => {
+      const sourceStatus = findContainer(activeProjectId, current);
+      const targetStatus = statusFromColumnId(overId) ?? findContainer(overId, current);
+
+      if (!sourceStatus || !targetStatus) return current;
+
+      if (sourceStatus === targetStatus) {
+        return current;
       }
-    );
+
+      const sourceItems = current[sourceStatus] ?? [];
+      const targetItems = current[targetStatus] ?? [];
+      const sourceIndex = sourceItems.findIndex((project) => project.id === activeProjectId);
+      if (sourceIndex < 0) return current;
+
+      const moving = { ...sourceItems[sourceIndex], status: targetStatus };
+      const nextSource = [...sourceItems.slice(0, sourceIndex), ...sourceItems.slice(sourceIndex + 1)];
+      const nextTarget = [...targetItems, moving];
+
+      return {
+        ...current,
+        [sourceStatus]: nextSource,
+        [targetStatus]: nextTarget
+      };
+    });
+  }
+
+  function handleDragEnd(event: DragEndEvent) {
+    const activeProjectId = String(event.active.id);
+    const overId = event.over?.id ? String(event.over.id) : null;
+    setActiveId(null);
+
+    if (!overId) {
+      setBoard(initialBoard);
+      return;
+    }
+
+    const project = projects.find((item) => item.id === activeProjectId);
+    if (!project) {
+      setBoard(initialBoard);
+      return;
+    }
+
+    const targetStatus = statusFromColumnId(overId) ?? findContainer(overId, board);
+    if (!targetStatus) {
+      setBoard(initialBoard);
+      return;
+    }
+
+    const targetList = board[targetStatus] ?? [];
+    const targetIndex = targetList.findIndex((item) => item.id === activeProjectId);
+    const before = targetIndex > 0 ? targetList[targetIndex - 1] : null;
+    const after = targetIndex >= 0 && targetIndex < targetList.length - 1 ? targetList[targetIndex + 1] : null;
+
+    let toPosition = project.position;
+    if (before && after) {
+      toPosition = Math.floor((before.position + after.position) / 2);
+      if (toPosition === before.position || toPosition === after.position) {
+        toPosition = after.position;
+      }
+    } else if (before) {
+      toPosition = before.position + 1;
+    } else if (after) {
+      toPosition = Math.max(1, after.position - 1);
+    } else {
+      toPosition = 1;
+    }
+
+    if (project.status !== targetStatus || project.position !== toPosition) {
+      commitMove(project, targetStatus, toPosition);
+    } else {
+      setBoard(initialBoard);
+    }
   }
 
   if (columns.length === 0) {
@@ -142,7 +326,7 @@ export default function ProjectBoardMobile({ companyId }: { companyId: string })
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-foreground/55">Projektflöde</p>
           <div className="mt-2 flex items-center gap-2">
             <h2 className="text-lg font-semibold">{titleByStatus.get(activeStatus) ?? activeStatus}</h2>
-            <Badge>{projectsByStatus.get(activeStatus)?.length ?? 0}</Badge>
+            <Badge>{board[activeStatus]?.length ?? 0}</Badge>
           </div>
         </div>
         <div className="flex items-center gap-1">
@@ -188,77 +372,50 @@ export default function ProjectBoardMobile({ companyId }: { companyId: string })
         ))}
       </div>
 
-      <div
-        ref={trackRef}
-        onScroll={updateActiveFromScroll}
-        className="flex snap-x snap-mandatory gap-4 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCorners}
+        onDragStart={handleDragStart}
+        onDragMove={handleDragMove}
+        onDragOver={handleDragOver}
+        onDragEnd={handleDragEnd}
       >
-        {columns.map((column, columnIndex) => {
-          const list = projectsByStatus.get(column.key) ?? [];
+        <div
+          ref={trackRef}
+          onScroll={updateActiveFromScroll}
+          className="flex snap-x snap-mandatory gap-4 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
+          {columns.map((column, columnIndex) => {
+            const list = board[column.key] ?? [];
 
-          return (
-            <section
-              key={column.key}
-              className="mobile-column-panel min-w-full snap-center rounded-[22px] border border-border/70 bg-gradient-to-b from-card to-card/90 p-4 shadow-sm"
-              aria-label={column.title}
-            >
-              <div className="mb-4 flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-foreground/45">
-                    Kolumn {columnIndex + 1} av {columns.length}
-                  </p>
-                  <h3 className="mt-1 text-lg font-semibold">{column.title}</h3>
-                </div>
-                <Badge>{list.length}</Badge>
-              </div>
+            return (
+              <MobileColumn key={column.key} status={column.key} title={column.title} count={list.length}>
+                <p className="mb-4 text-xs font-semibold uppercase tracking-[0.24em] text-foreground/45">
+                  Kolumn {columnIndex + 1} av {columns.length}
+                </p>
 
-              <div className="space-y-3">
-                {list.map((project) => {
-                  const leftColumn = columns[columnIndex - 1] ?? null;
-                  const rightColumn = columns[columnIndex + 1] ?? null;
-                  const isMoving = pendingMoveId === project.id || setStatusMutation.isPending;
+                <SortableContext items={list.map((project) => project.id)} strategy={verticalListSortingStrategy}>
+                  <div className="space-y-3">
+                    {list.map((project) => (
+                      <SortableProjectCard
+                        key={project.id}
+                        project={project}
+                        statusLabel={titleByStatus.get(project.status) ?? project.status}
+                        onOpenMoveMenu={() => setSelected(project)}
+                      />
+                    ))}
 
-                  return (
-                    <ProjectCard
-                      key={project.id}
-                      project={project}
-                      statusLabel={titleByStatus.get(project.status) ?? project.status}
-                      actions={
-                        <div className="flex items-center gap-2">
-                          <MobileMoveButtons
-                            canMoveLeft={Boolean(leftColumn) && !isMoving}
-                            canMoveRight={Boolean(rightColumn) && !isMoving}
-                            onMoveLeft={() => {
-                              if (leftColumn) moveProject(project, leftColumn.key);
-                            }}
-                            onMoveRight={() => {
-                              if (rightColumn) moveProject(project, rightColumn.key);
-                            }}
-                          />
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="icon"
-                            className="h-8 w-8"
-                            onClick={() => setSelected(project)}
-                            aria-label="Fler flyttval"
-                          >
-                            <GripHorizontal className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      }
-                    />
-                  );
-                })}
-
-                {list.length === 0 && (
-                  <p className="rounded-2xl bg-muted/60 p-4 text-sm text-foreground/70">Inga projekt i kolumnen.</p>
-                )}
-              </div>
-            </section>
-          );
-        })}
-      </div>
+                    {list.length === 0 && (
+                      <p className="rounded-2xl bg-muted/60 p-4 text-sm text-foreground/70">Inga projekt i kolumnen.</p>
+                    )}
+                  </div>
+                </SortableContext>
+              </MobileColumn>
+            );
+          })}
+        </div>
+        {activeId ? <div className="sr-only">Drar {activeId}</div> : null}
+      </DndContext>
 
       <ActionSheet
         open={Boolean(selected)}
@@ -272,10 +429,10 @@ export default function ProjectBoardMobile({ companyId }: { companyId: string })
               key={column.key}
               variant={selected?.status === column.key ? 'secondary' : 'outline'}
               className="justify-start"
-              disabled={!selected || selected.status === column.key || setStatusMutation.isPending}
+              disabled={!selected || selected.status === column.key || moveMutation.isPending}
               onClick={() => {
                 if (!selected) return;
-                moveProject(selected, column.key);
+                commitMove(selected, column.key, 1);
                 setSelected(null);
               }}
             >
