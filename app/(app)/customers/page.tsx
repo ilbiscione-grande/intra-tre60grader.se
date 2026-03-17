@@ -29,7 +29,16 @@ import { Input } from '@/components/ui/input';
 import { createClient } from '@/lib/supabase/client';
 
 const schema = z.object({
-  name: z.string().min(2, 'Ange kundnamn')
+  name: z.string().min(2, 'Ange kundnamn'),
+  org_no: z.string().optional(),
+  vat_no: z.string().optional(),
+  billing_email: z.string().optional(),
+  phone: z.string().optional(),
+  address_line1: z.string().optional(),
+  address_line2: z.string().optional(),
+  postal_code: z.string().optional(),
+  city: z.string().optional(),
+  country: z.string().optional()
 });
 
 type FormData = z.infer<typeof schema>;
@@ -63,7 +72,18 @@ export default function CustomersPage() {
 
   const form = useForm<FormData>({
     resolver: zodResolver(schema),
-    defaultValues: { name: '' }
+    defaultValues: {
+      name: '',
+      org_no: '',
+      vat_no: '',
+      billing_email: '',
+      phone: '',
+      address_line1: '',
+      address_line2: '',
+      postal_code: '',
+      city: '',
+      country: ''
+    }
   });
 
   const query = useQuery<Customer[]>({
@@ -110,10 +130,54 @@ export default function CustomersPage() {
   };
 
   const createMutation = useMutation({
-    mutationFn: async (name: string) => ensureCustomerByName(companyId, name),
+    mutationFn: async (data: FormData) => {
+      const name = data.name.trim();
+      const existingCustomer = await ensureCustomerByName(companyId, name);
+
+      const supabaseUntyped = supabase as unknown as {
+        from: (table: 'customers') => {
+          update: (values: Record<string, unknown>) => {
+            eq: (column: string, value: string) => {
+              eq: (column2: string, value2: string) => Promise<{ error: { message: string } | null }>;
+            };
+          };
+        };
+      };
+
+      const { error } = await supabaseUntyped
+        .from('customers')
+        .update({
+          org_no: nullIfEmpty(data.org_no),
+          vat_no: nullIfEmpty(data.vat_no),
+          billing_email: nullIfEmpty(data.billing_email),
+          phone: nullIfEmpty(data.phone),
+          address_line1: nullIfEmpty(data.address_line1),
+          address_line2: nullIfEmpty(data.address_line2),
+          postal_code: nullIfEmpty(data.postal_code),
+          city: nullIfEmpty(data.city),
+          country: nullIfEmpty(data.country)
+        })
+        .eq('company_id', companyId)
+        .eq('id', existingCustomer.id);
+
+      if (error) throw new Error(error.message);
+
+      return existingCustomer;
+    },
     onSuccess: async (result) => {
       await refresh();
-      form.reset({ name: '' });
+      form.reset({
+        name: '',
+        org_no: '',
+        vat_no: '',
+        billing_email: '',
+        phone: '',
+        address_line1: '',
+        address_line2: '',
+        postal_code: '',
+        city: '',
+        country: ''
+      });
       setCreateOpen(false);
       if (result.created) toast.success('Kund skapad');
       else if (result.revived) toast.success('Kund återställd från arkiv');
@@ -200,7 +264,18 @@ export default function CustomersPage() {
 
   function openCreateDialog() {
     const initialName = searchTerm.trim();
-    form.reset({ name: initialName });
+    form.reset({
+      name: initialName,
+      org_no: '',
+      vat_no: '',
+      billing_email: '',
+      phone: '',
+      address_line1: '',
+      address_line2: '',
+      postal_code: '',
+      city: '',
+      country: ''
+    });
     setCreateOpen(true);
   }
 
@@ -304,7 +379,18 @@ export default function CustomersPage() {
         onOpenChange={(open) => {
           setCreateOpen(open);
           if (!open) {
-            form.reset({ name: '' });
+            form.reset({
+              name: '',
+              org_no: '',
+              vat_no: '',
+              billing_email: '',
+              phone: '',
+              address_line1: '',
+              address_line2: '',
+              postal_code: '',
+              city: '',
+              country: ''
+            });
           }
         }}
       >
@@ -316,13 +402,33 @@ export default function CustomersPage() {
           <form
             className="space-y-3"
             onSubmit={form.handleSubmit(async (data) => {
-              await createMutation.mutateAsync(data.name);
+              await createMutation.mutateAsync(data);
             })}
           >
-            <Input placeholder="Kundnamn" {...form.register('name')} />
-            {form.formState.errors.name && (
-              <p className="text-xs text-danger">{form.formState.errors.name.message}</p>
-            )}
+            <div className="space-y-3">
+              <div>
+                <p className="text-sm font-medium">Grunduppgifter</p>
+                <div className="mt-2 grid gap-2 md:grid-cols-2">
+                  <InputWithLabel label="Namn" value={String(form.watch('name') ?? '')} onChange={(v) => form.setValue('name', v)} />
+                  <InputWithLabel label="Organisationsnummer" value={String(form.watch('org_no') ?? '')} onChange={(v) => form.setValue('org_no', v)} />
+                  <InputWithLabel label="Momsregistreringsnummer" value={String(form.watch('vat_no') ?? '')} onChange={(v) => form.setValue('vat_no', v)} />
+                  <InputWithLabel label="Telefon" value={String(form.watch('phone') ?? '')} onChange={(v) => form.setValue('phone', v)} />
+                </div>
+              </div>
+
+              <div>
+                <p className="text-sm font-medium">Fakturering</p>
+                <div className="mt-2 grid gap-2 md:grid-cols-2">
+                  <InputWithLabel label="Faktura e-post" value={String(form.watch('billing_email') ?? '')} onChange={(v) => form.setValue('billing_email', v)} />
+                  <InputWithLabel label="Adressrad 1" value={String(form.watch('address_line1') ?? '')} onChange={(v) => form.setValue('address_line1', v)} />
+                  <InputWithLabel label="Adressrad 2" value={String(form.watch('address_line2') ?? '')} onChange={(v) => form.setValue('address_line2', v)} />
+                  <InputWithLabel label="Postnummer" value={String(form.watch('postal_code') ?? '')} onChange={(v) => form.setValue('postal_code', v)} />
+                  <InputWithLabel label="Stad" value={String(form.watch('city') ?? '')} onChange={(v) => form.setValue('city', v)} />
+                  <InputWithLabel label="Land" value={String(form.watch('country') ?? '')} onChange={(v) => form.setValue('country', v)} />
+                </div>
+              </div>
+            </div>
+            {form.formState.errors.name && <p className="text-xs text-danger">{form.formState.errors.name.message}</p>}
             <div className="flex gap-2">
               <Button type="button" variant="secondary" onClick={() => setCreateOpen(false)}>
                 Avbryt
@@ -341,17 +447,28 @@ export default function CustomersPage() {
             <DialogTitle>Redigera kund</DialogTitle>
             <DialogDescription>Uppdatera kundens fakturauppgifter.</DialogDescription>
           </DialogHeader>
-          <div className="grid gap-2 md:grid-cols-2">
-            <InputWithLabel label="Namn" value={String(editDraft.name ?? '')} onChange={(v) => setEditField('name', v)} />
-            <InputWithLabel label="Organisationsnummer" value={String(editDraft.org_no ?? '')} onChange={(v) => setEditField('org_no', v)} />
-            <InputWithLabel label="Momsregistreringsnummer" value={String(editDraft.vat_no ?? '')} onChange={(v) => setEditField('vat_no', v)} />
-            <InputWithLabel label="E-post" value={String(editDraft.billing_email ?? '')} onChange={(v) => setEditField('billing_email', v)} />
-            <InputWithLabel label="Telefon" value={String(editDraft.phone ?? '')} onChange={(v) => setEditField('phone', v)} />
-            <InputWithLabel label="Adressrad 1" value={String(editDraft.address_line1 ?? '')} onChange={(v) => setEditField('address_line1', v)} />
-            <InputWithLabel label="Adressrad 2" value={String(editDraft.address_line2 ?? '')} onChange={(v) => setEditField('address_line2', v)} />
-            <InputWithLabel label="Postnummer" value={String(editDraft.postal_code ?? '')} onChange={(v) => setEditField('postal_code', v)} />
-            <InputWithLabel label="Stad" value={String(editDraft.city ?? '')} onChange={(v) => setEditField('city', v)} />
-            <InputWithLabel label="Land" value={String(editDraft.country ?? '')} onChange={(v) => setEditField('country', v)} />
+          <div className="space-y-3">
+            <div>
+              <p className="text-sm font-medium">Grunduppgifter</p>
+              <div className="mt-2 grid gap-2 md:grid-cols-2">
+                <InputWithLabel label="Namn" value={String(editDraft.name ?? '')} onChange={(v) => setEditField('name', v)} />
+                <InputWithLabel label="Organisationsnummer" value={String(editDraft.org_no ?? '')} onChange={(v) => setEditField('org_no', v)} />
+                <InputWithLabel label="Momsregistreringsnummer" value={String(editDraft.vat_no ?? '')} onChange={(v) => setEditField('vat_no', v)} />
+                <InputWithLabel label="Telefon" value={String(editDraft.phone ?? '')} onChange={(v) => setEditField('phone', v)} />
+              </div>
+            </div>
+
+            <div>
+              <p className="text-sm font-medium">Fakturering</p>
+              <div className="mt-2 grid gap-2 md:grid-cols-2">
+                <InputWithLabel label="Faktura e-post" value={String(editDraft.billing_email ?? '')} onChange={(v) => setEditField('billing_email', v)} />
+                <InputWithLabel label="Adressrad 1" value={String(editDraft.address_line1 ?? '')} onChange={(v) => setEditField('address_line1', v)} />
+                <InputWithLabel label="Adressrad 2" value={String(editDraft.address_line2 ?? '')} onChange={(v) => setEditField('address_line2', v)} />
+                <InputWithLabel label="Postnummer" value={String(editDraft.postal_code ?? '')} onChange={(v) => setEditField('postal_code', v)} />
+                <InputWithLabel label="Stad" value={String(editDraft.city ?? '')} onChange={(v) => setEditField('city', v)} />
+                <InputWithLabel label="Land" value={String(editDraft.country ?? '')} onChange={(v) => setEditField('country', v)} />
+              </div>
+            </div>
           </div>
           <div className="flex gap-2">
             <Button
