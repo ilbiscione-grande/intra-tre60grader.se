@@ -46,6 +46,13 @@ function orderStatusEtikett(status: string) {
   return map[status] ?? status;
 }
 
+function orderStatusIconClass(status: string) {
+  if (status === 'paid' || status === 'invoiced') return 'text-emerald-600';
+  if (status === 'cancelled') return 'text-rose-600';
+  if (status === 'sent') return 'text-sky-600';
+  return 'text-amber-600';
+}
+
 function fakturaStatusEtikett(status: string) {
   const map: Record<string, string> = {
     issued: 'Utfärdad',
@@ -210,7 +217,10 @@ export default function OrderDetailsPage() {
                   <ArrowLeft className="h-4 w-4" />
                 </Link>
               </Button>
-              <CardTitle>Orderdetaljer</CardTitle>
+              <div>
+                <CardTitle>Orderdetaljer</CardTitle>
+                <p className="mt-0.5 text-[11px] text-foreground/60">{projectQuery.data?.title ?? order.project_id}</p>
+              </div>
             </div>
             <Button asChild variant="outline" size="icon" aria-label="Öppna projekt">
               <Link href={`/projects/${order.project_id}`}>
@@ -225,9 +235,12 @@ export default function OrderDetailsPage() {
               <Hash className="h-3 w-3" />
               {order.order_no ?? order.id}
             </Badge>
-            <Badge className="gap-1.5 px-2 py-1 text-[11px]">
-              <ShieldCheck className="h-3 w-3" />
-              {orderStatusEtikett(order.status)}
+            <Badge
+              className="px-2 py-1"
+              aria-label={`Status: ${orderStatusEtikett(order.status)}`}
+              title={orderStatusEtikett(order.status)}
+            >
+              <ShieldCheck className={`h-3.5 w-3.5 ${orderStatusIconClass(order.status)}`} />
             </Badge>
             <Badge className="gap-1.5 px-2 py-1 text-[11px]">
               <CircleDollarSign className="h-3 w-3" />
@@ -238,8 +251,6 @@ export default function OrderDetailsPage() {
               {new Date(order.created_at).toLocaleDateString('sv-SE')}
             </Badge>
           </div>
-
-          <p className="text-xs text-foreground/70">Projekt: {projectQuery.data?.title ?? order.project_id}</p>
         </CardContent>
       </Card>
 
