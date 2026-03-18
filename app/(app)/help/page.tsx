@@ -1,81 +1,16 @@
+'use client';
+
 import Link from 'next/link';
 import type { Route } from 'next';
-import { AlertTriangle, CircleHelp, FileText, FolderKanban, LifeBuoy, ReceiptText, ShieldAlert, Users } from 'lucide-react';
+import { ArrowRight, BookOpenText, CircleHelp, LifeBuoy, Search, Sparkles } from 'lucide-react';
+import { useMemo, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { helpArticles } from '@/lib/help/articles';
 
-const quickGuides = [
-  {
-    title: 'Kom igang snabbt',
-    text: 'Börja med att välja rätt bolag i profilmenyn, skapa sedan kund, projekt och order i den ordningen för ett rent flöde.',
-    icon: CircleHelp
-  },
-  {
-    title: 'Så jobbar du i appen',
-    text: 'Projekt används för planering, ordrar för utförande, och ekonomi för verifikationer, fakturor och uppföljning.',
-    icon: FolderKanban
-  },
-  {
-    title: 'Säkerhet',
-    text: 'Interna användare bör aktivera TOTP-MFA under Säkerhet för att skydda projekt- och bolagsdata bättre.',
-    icon: ShieldAlert
-  }
-] as const;
-
-const workflowSteps = [
-  'Skapa eller hitta kunden under Kunder.',
-  'Skapa projekt och koppla arbetet till rätt kund.',
-  'Lägg order och orderrader för det som ska utföras eller faktureras.',
-  'Följ upp ekonomi, verifikationer och fakturor under Ekonomi och Fakturor.'
-] as const;
-
-const faqItems = [
-  {
-    title: 'Jag har råkat skapa en felaktig faktura och måste ta bort den',
-    icon: ReceiptText,
-    steps: [
-      'Öppna fakturan eller ordern som fakturan skapades från.',
-      'Kontrollera först om fakturan redan har bokförts eller skickats vidare.',
-      'Om den inte ska gälla längre, använd makulering eller kreditflöde enligt ert arbetssätt i ekonomin.',
-      'Om projektets ekonomi är låst efter utställning behöver du korrigera via rätt ekonomiflöde i stället för att ändra historiken direkt.'
-    ],
-    cta: { href: '/invoices' as Route, label: 'Öppna fakturor' }
-  },
-  {
-    title: 'Jag har fått en reklamation, hur gör jag då',
-    icon: AlertTriangle,
-    steps: [
-      'Öppna rätt kund och projekt så du arbetar i rätt kontext.',
-      'Dokumentera reklamationen i uppdateringar eller bilagor om underlag finns.',
-      'Avgör om ni ska justera orderrader, skapa kredit eller lägga till nytt åtgärdsarbete.',
-      'Följ upp ekonomin först när ni vet om reklamationen påverkar pris eller fakturering.'
-    ],
-    cta: { href: '/projects' as Route, label: 'Öppna projekt' }
-  },
-  {
-    title: 'Jag behöver lägga till en ny verifikation',
-    icon: FileText,
-    steps: [
-      'Gå till Ekonomi och välj Ny verifikation.',
-      'Lägg till foto, galleri eller dokument som underlag i första steget.',
-      'Fyll i datum, beskrivning och bokföringsrader innan du slutför.',
-      'Kontrollera att totalsumman och konton stämmer innan du sparar.'
-    ],
-    cta: { href: '/finance/verifications/new' as Route, label: 'Ny verifikation' }
-  },
-  {
-    title: 'Jag behöver bjuda in eller ändra en intern användare',
-    icon: Users,
-    steps: [
-      'Öppna Medlemmar om du har administratörsbehörighet.',
-      'Lägg till nya användare med rätt intern roll och kontrollera status.',
-      'Använd Säkerhet för att följa upp MFA och känsligare kontohändelser.',
-      'Inaktivera eller justera åtkomst direkt om någon inte längre ska ha åtkomst.'
-    ],
-    cta: { href: '/team' as Route, label: 'Öppna medlemmar' }
-  }
-] as const;
+type FilterKey = 'all' | 'featured' | 'guide' | 'faq';
 
 const shortcutLinks = [
   { href: '/customers' as Route, label: 'Kunder' },
@@ -83,131 +18,217 @@ const shortcutLinks = [
   { href: '/orders' as Route, label: 'Ordrar' },
   { href: '/finance' as Route, label: 'Ekonomi' },
   { href: '/settings/security' as Route, label: 'Säkerhet' }
-] as const satisfies ReadonlyArray<{ href: Route; label: string }>;
+] as const;
 
 export default function HelpPage() {
+  const [query, setQuery] = useState('');
+  const [filter, setFilter] = useState<FilterKey>('all');
+
+  const filteredArticles = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+
+    return helpArticles.filter((article) => {
+      const matchesFilter =
+        filter === 'all'
+          ? true
+          : filter === 'featured'
+            ? Boolean(article.featured)
+            : article.category === filter;
+
+      if (!matchesFilter) return false;
+      if (!normalizedQuery) return true;
+
+      const haystack = [article.title, article.summary, article.audience, ...article.keywords].filter(Boolean).join(' ').toLowerCase();
+      return haystack.includes(normalizedQuery);
+    });
+  }, [filter, query]);
+
+  const guideArticles = filteredArticles.filter((article) => article.category === 'guide');
+  const faqArticles = filteredArticles.filter((article) => article.category === 'faq');
+  const featuredArticles = filteredArticles.filter((article) => article.featured);
+  const totalGuides = helpArticles.filter((article) => article.category === 'guide').length;
+  const totalFaqs = helpArticles.filter((article) => article.category === 'faq').length;
+  const totalFeatured = helpArticles.filter((article) => article.featured).length;
+
+  const filterChips: Array<{ key: FilterKey; label: string; count: number }> = [
+    { key: 'all', label: 'Alla', count: helpArticles.length },
+    { key: 'featured', label: 'Mest använda', count: totalFeatured },
+    { key: 'guide', label: 'Guider', count: totalGuides },
+    { key: 'faq', label: 'Vanliga frågor', count: totalFaqs }
+  ];
+
   return (
     <section className="space-y-5">
-      <div className="rounded-card border border-border/80 bg-card p-5 shadow-card">
-        <div className="flex items-start gap-3">
-          <span className="mt-0.5 inline-flex h-10 w-10 items-center justify-center rounded-full bg-primary/12 text-primary">
-            <LifeBuoy className="h-5 w-5" />
-          </span>
-          <div className="min-w-0 space-y-3">
-            <div>
-              <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-foreground/45">Hjälp</p>
-              <h1 className="mt-1 text-2xl font-semibold tracking-tight">Guide och snabblösningar</h1>
-            </div>
-            <p className="max-w-3xl text-sm text-foreground/72">
-              Här hittar du en kort guide till hur appen används och svar på vanliga situationer i vardagen. Målet är att du ska hitta rätt
-              flöde direkt, utan att behöva leta runt i flera vyer.
-            </p>
-            <div className="flex flex-wrap gap-2">
-              <Badge>Snabbguide</Badge>
-              <Badge>Vanliga frågor</Badge>
-              <Badge>Praktiska lösningar</Badge>
+      <div className="overflow-hidden rounded-card border border-border/80 bg-card shadow-card">
+        <div className="border-b border-border/70 bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.12),transparent_36%),linear-gradient(180deg,rgba(255,255,255,0.02),transparent)] p-5">
+          <div className="flex items-start gap-3">
+            <span className="mt-0.5 inline-flex h-11 w-11 items-center justify-center rounded-full bg-primary/12 text-primary">
+              <LifeBuoy className="h-5 w-5" />
+            </span>
+            <div className="min-w-0 space-y-3">
+              <div>
+                <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-foreground/45">Supportcenter</p>
+                <h1 className="mt-1 text-2xl font-semibold tracking-tight">Guider, svar och nästa steg</h1>
+              </div>
+              <p className="max-w-3xl text-sm text-foreground/72">
+                Sök efter det du behöver hjälp med eller öppna en artikel direkt. Guiderna är skrivna för att vara korta, konkreta och lätta att
+                använda i vardagen.
+              </p>
             </div>
           </div>
         </div>
-      </div>
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        {quickGuides.map((item) => {
-          const Icon = item.icon;
-          return (
-            <Card key={item.title}>
-              <CardHeader className="space-y-3">
-                <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
-                  <Icon className="h-5 w-5" />
-                </span>
-                <CardTitle className="text-base lg:text-lg">{item.title}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-foreground/72">{item.text}</p>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Så använder du appen</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {workflowSteps.map((step, index) => (
-            <div key={step} className="flex items-start gap-3 rounded-xl border border-border/70 bg-muted/15 px-3 py-3">
-              <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
-                {index + 1}
-              </span>
-              <p className="text-sm text-foreground/80">{step}</p>
+        <div className="grid gap-3 border-b border-border/70 p-5 lg:grid-cols-[minmax(0,1.7fr)_minmax(280px,1fr)]">
+          <div className="space-y-3">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-foreground/45" />
+              <Input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Sök efter faktura, reklamation, verifikation, medlemmar..."
+                className="pl-10"
+              />
             </div>
-          ))}
-          <div className="flex flex-wrap gap-2 pt-1">
+            <div className="flex flex-wrap gap-2">
+              {filterChips.map((chip) => {
+                const active = filter === chip.key;
+                return (
+                  <button
+                    key={chip.key}
+                    type="button"
+                    onClick={() => setFilter(chip.key)}
+                    className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                      active
+                        ? 'border-primary bg-primary text-primary-foreground'
+                        : 'border-border/70 bg-muted/25 text-foreground/78 hover:bg-muted/45'
+                    }`}
+                  >
+                    <span>{chip.label}</span>
+                    <span className={`${active ? 'text-primary-foreground/85' : 'text-foreground/45'}`}>{chip.count}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
+            <div className="rounded-2xl border border-border/70 bg-muted/15 p-4">
+              <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Tillgängligt nu</p>
+              <p className="mt-2 text-2xl font-semibold">{filteredArticles.length}</p>
+              <p className="mt-1 text-sm text-foreground/68">artiklar matchar det du ser just nu</p>
+            </div>
+            <div className="rounded-2xl border border-border/70 bg-muted/15 p-4">
+              <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Vanligast</p>
+              <p className="mt-2 text-base font-semibold">Fakturor, reklamationer och verifikationer</p>
+              <p className="mt-1 text-sm text-foreground/68">är de mest återkommande hjälpärena</p>
+            </div>
+            <div className="rounded-2xl border border-border/70 bg-muted/15 p-4">
+              <div className="flex items-center gap-2 text-primary">
+                <Sparkles className="h-4 w-4" />
+                <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Tips</p>
+              </div>
+              <p className="mt-2 text-sm text-foreground/72">Öppna en artikel om du vill ha steg-för-steg, inte bara en kort sammanfattning.</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="p-5">
+          <div className="flex flex-wrap gap-2">
             {shortcutLinks.map((item) => (
               <Button key={item.href} asChild variant="secondary" size="sm">
                 <Link href={item.href}>{item.label}</Link>
               </Button>
             ))}
           </div>
-        </CardContent>
-      </Card>
-
-      <div className="space-y-4">
-        <div>
-          <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-foreground/45">Vanliga frågor</p>
-          <h2 className="mt-1 text-xl font-semibold tracking-tight">Snabba lösningar</h2>
-        </div>
-
-        <div className="grid gap-4">
-          {faqItems.map((item) => {
-            const Icon = item.icon;
-            return (
-              <Card key={item.title}>
-                <CardHeader className="space-y-3">
-                  <div className="flex items-start gap-3">
-                    <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-secondary text-secondary-foreground">
-                      <Icon className="h-5 w-5" />
-                    </span>
-                    <div className="space-y-1">
-                      <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Fråga</p>
-                      <CardTitle className="text-base leading-snug lg:text-lg">{item.title}</CardTitle>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {item.steps.map((step, index) => (
-                    <div key={step} className="flex items-start gap-3">
-                      <span className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-border/70 text-[11px] font-semibold text-foreground/70">
-                        {index + 1}
-                      </span>
-                      <p className="text-sm text-foreground/78">{step}</p>
-                    </div>
-                  ))}
-                  <div className="pt-1">
-                    <Button asChild size="sm" variant="outline">
-                      <Link href={item.cta.href}>{item.cta.label}</Link>
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
         </div>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Behöver du mer hjälp?</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2 text-sm text-foreground/72">
-          <p>Börja med att öppna rätt kund, projekt eller order. De flesta åtgärder blir enklare när du jobbar i rätt kontext.</p>
-          <p>
-            Om något ser låst ut i ekonomin beror det ofta på att historik redan har bokförts eller fakturerats. Då ska du korrigera via ett nytt
-            ekonomiflöde i stället för att skriva om gamla uppgifter.
-          </p>
-        </CardContent>
-      </Card>
+      <HelpSection
+        title="Mest använda frågor"
+        eyebrow="Vanligt just nu"
+        emptyText="Inga utvalda hjälpartiklar matchar din sökning."
+        items={featuredArticles}
+        compactSummary
+      />
+
+      <HelpSection
+        title="Guider"
+        eyebrow="Arbetssätt"
+        emptyText="Inga guider matchar din sökning."
+        items={guideArticles}
+      />
+
+      <HelpSection
+        title="Vanliga frågor"
+        eyebrow="Snabba lösningar"
+        emptyText="Inga hjälpartiklar matchar din sökning."
+        items={faqArticles}
+      />
     </section>
+  );
+}
+
+function HelpSection({
+  title,
+  eyebrow,
+  emptyText,
+  items,
+  compactSummary = false
+}: {
+  title: string;
+  eyebrow: string;
+  emptyText: string;
+  items: typeof helpArticles;
+  compactSummary?: boolean;
+}) {
+  return (
+    <div className="space-y-4">
+      <div>
+        <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-foreground/45">{eyebrow}</p>
+        <h2 className="mt-1 text-xl font-semibold tracking-tight">{title}</h2>
+      </div>
+
+      {items.length ? (
+        <div className="grid gap-4 md:grid-cols-2">
+          {items.map((article) => (
+            <Link key={article.slug} href={`/help/${article.slug}` as Route} className="block">
+              <Card className="h-full transition-colors hover:border-primary/45 hover:bg-muted/10">
+                <CardHeader className="space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                      {article.category === 'guide' ? <BookOpenText className="h-5 w-5" /> : <CircleHelp className="h-5 w-5" />}
+                    </span>
+                    <div className="flex flex-wrap justify-end gap-2">
+                      {article.featured ? <Badge>Mest använd</Badge> : null}
+                      <Badge>{article.category === 'guide' ? 'Guide' : 'Vanlig fråga'}</Badge>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <CardTitle className="text-base leading-snug lg:text-lg">{article.title}</CardTitle>
+                    <p className={`text-sm text-foreground/72 ${compactSummary ? 'line-clamp-2' : ''}`}>{article.summary}</p>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {article.audience ? <p className="text-[11px] uppercase tracking-[0.16em] text-foreground/45">{article.audience}</p> : null}
+                  <div className="flex flex-wrap gap-2">
+                    {article.keywords.slice(0, 3).map((keyword) => (
+                      <Badge key={keyword}>{keyword}</Badge>
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-2 pt-1 text-sm font-medium text-primary">
+                    <span>Öppna artikel</span>
+                    <ArrowRight className="h-4 w-4" />
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
+          ))}
+        </div>
+      ) : (
+        <Card>
+          <CardContent className="py-6 text-sm text-foreground/70">{emptyText}</CardContent>
+        </Card>
+      )}
+    </div>
   );
 }
