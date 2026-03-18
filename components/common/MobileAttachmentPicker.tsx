@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Camera, FileText, Image as ImageIcon, X } from 'lucide-react';
+import ActionSheet from '@/components/common/ActionSheet';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/ui/cn';
 
@@ -50,6 +51,7 @@ export default function MobileAttachmentPicker({
 
   const [pickedMeta, setPickedMeta] = useState<PickedMeta | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   useEffect(() => {
     if (!valueLabel) {
@@ -80,33 +82,75 @@ export default function MobileAttachmentPicker({
 
   return (
     <div className={cn('space-y-2', className)}>
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:flex lg:flex-wrap">
-        <Button type="button" variant="outline" className="h-11 justify-start" onClick={() => cameraRef.current?.click()}>
-          <Camera className="mr-2 h-4 w-4" /> Ta foto
+      <div className="space-y-2">
+        <Button
+          type="button"
+          className="h-14 w-full rounded-full text-base"
+          onClick={() => setSheetOpen(true)}
+        >
+          <PlusIcon />
+          Lägg till bilaga
         </Button>
-        <Button type="button" variant="outline" className="h-11 justify-start" onClick={() => galleryRef.current?.click()}>
-          <ImageIcon className="mr-2 h-4 w-4" /> Galleri
-        </Button>
-        {includeFileButton ? (
-          <Button type="button" variant="outline" className="h-11 justify-start" onClick={() => fileRef.current?.click()}>
-            <FileText className="mr-2 h-4 w-4" /> Fil
-          </Button>
-        ) : null}
         {statusName && onClear ? (
           <Button
             type="button"
             variant="ghost"
-            className="h-11 justify-start"
+            className="h-11 w-full rounded-full"
             onClick={() => {
               setPickedMeta(null);
               setError(null);
               onClear();
             }}
           >
-            <X className="mr-2 h-4 w-4" /> Rensa
+            <X className="mr-2 h-4 w-4" /> Rensa bilaga
           </Button>
         ) : null}
       </div>
+
+      <ActionSheet
+        open={sheetOpen}
+        onClose={() => setSheetOpen(false)}
+        title="Lägg till bilaga"
+        description="Välj hur du vill lägga till underlaget."
+      >
+        <div className="grid gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            className="h-12 justify-start rounded-2xl"
+            onClick={() => {
+              setSheetOpen(false);
+              cameraRef.current?.click();
+            }}
+          >
+            <Camera className="mr-2 h-4 w-4" /> Ta foto
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="h-12 justify-start rounded-2xl"
+            onClick={() => {
+              setSheetOpen(false);
+              galleryRef.current?.click();
+            }}
+          >
+            <ImageIcon className="mr-2 h-4 w-4" /> Galleri
+          </Button>
+          {includeFileButton ? (
+            <Button
+              type="button"
+              variant="outline"
+              className="h-12 justify-start rounded-2xl"
+              onClick={() => {
+                setSheetOpen(false);
+                fileRef.current?.click();
+              }}
+            >
+              <FileText className="mr-2 h-4 w-4" /> Dokument
+            </Button>
+          ) : null}
+        </div>
+      </ActionSheet>
 
       <input
         ref={cameraRef}
@@ -161,5 +205,13 @@ export default function MobileAttachmentPicker({
         )}
       </div>
     </div>
+  );
+}
+
+function PlusIcon() {
+  return (
+    <span className="mr-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-white/15 text-current">
+      +
+    </span>
   );
 }
