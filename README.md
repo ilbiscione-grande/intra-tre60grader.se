@@ -159,6 +159,84 @@ Skriptet försöker även ge alla befintliga `auth.users` medlemskap i demo-bola
 - Kritiska säkerhetshändelser kan skickas till extern webhook via `SECURITY_ALERT_WEBHOOK_URL`.
 - Ny migration: `supabase/migrations/20260309_000041_c4_security_ops.sql`
 
+## Framtida AI-assistent
+
+Det finns en möjlig framtida riktning att lägga till en AI-assistent/chatbot i intranätet. Detta är inte planerat för implementation just nu, men följande vägval är dokumenterade för senare arbete.
+
+Rekommenderad startnivå:
+
+- Börja med en `read-only contextual copilot` i stället för en agent som gör ändringar direkt.
+- Assistenten bör känna till aktuell sida, roll, aktivt bolag och relevant objektkontext som order, projekt eller kund.
+- Assistenten bör initialt läsa servergenererad kontext och hjälpartiklar, inte ha fri databastillgång.
+
+Föreslagen mognadstrappa:
+
+1. Hjälpbot
+   - svarar på frågor om hur appen används
+   - bygger främst på hjälpartiklar och UI-kontext
+   - låg teknisk risk
+2. Kontextuell copilot
+   - vet vilken sida användaren befinner sig på
+   - kan förklara aktuell order, projektstatus eller ekonomisk vy
+   - rekommenderad första riktiga implementation
+3. Läsande assistent med verktyg
+   - kan hämta strukturerad data via säkra serververktyg
+   - exempel: aktuell order, projektöversikt, öppna fakturor, reskontra
+4. Handlande agent
+   - kan föreslå eller förbereda åtgärder
+   - ska i så fall alltid arbeta via explicita serververktyg och tydlig användarbekräftelse
+
+Arkitekturrekommendation:
+
+- Använd en serverroute i Next.js som mellanlager mellan UI och modell-API.
+- Skicka bara kontrollerad kontext till modellen:
+  - route
+  - roll
+  - aktivt bolag
+  - relevant objekt-ID
+  - kort servergenererad sammanfattning
+- Låt modellen använda explicita verktyg i stället för direkt databasåtkomst.
+- Exempel på framtida verktyg:
+  - `getCurrentOrder()`
+  - `getProjectFinanceSummary()`
+  - `findOpenInvoices()`
+  - `draftCustomerMessage()`
+
+Rekommenderad implementation om detta tas upp senare:
+
+- UI: högerpanel eller flyout som kan öppnas från alla sidor
+- Fas 1: endast läsande hjälp på `orders`, `projects` och `customers`
+- Fas 2: säkra read-only verktyg för att läsa relevant data
+- Fas 3: förslag eller utkast till åtgärder med manuell bekräftelse
+
+Grov arbetsinsats:
+
+- enkel hjälpbot: cirka `2-4 dagar`
+- kontextuell copilot: cirka `1-2 veckor`
+- läsande assistent med verktyg: cirka `2-3 veckor`
+- handlande agent: cirka `3-6 veckor`
+
+Grov kostnadsbild:
+
+- själva tokenkostnaden är sannolikt låg i förhållande till utvecklingskostnaden för en första intern assistent
+- största kostnaden ligger normalt i:
+  - verktygsdesign
+  - säkerhetsmodell
+  - kvalitetskontroll
+  - UI-integrering
+
+Föreslaget teknikspår vid framtida implementation:
+
+- OpenAI Responses API som första val
+- initialt en mindre och billigare modell för standardfrågor
+- uppgradera bara till större modell för mer komplex sammanfattning eller verktygsflöden
+
+Viktigt:
+
+- modellen ska inte få fri databasåtkomst
+- all åtkomst ska gå via serverstyrd kontext och explicita verktyg
+- eventuella skrivande åtgärder ska kräva tydlig användarbekräftelse
+
 ## Multi-tenant
 
 - Aktivt bolag styrs av cookie `active_company_id`.

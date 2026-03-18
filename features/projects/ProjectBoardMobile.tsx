@@ -157,6 +157,8 @@ export default function ProjectBoardMobile({ companyId }: { companyId: string })
   const [activeId, setActiveId] = useState<string | null>(null);
   const [lockedStatus, setLockedStatus] = useState<string | null>(null);
   const trackRef = useRef<HTMLDivElement | null>(null);
+  const activeStatusRef = useRef<string>('');
+  const activeIndexRef = useRef(0);
   const edgeScrollRef = useRef<{ side: 'left' | 'right' | null; lastStepAt: number }>({
     side: null,
     lastStepAt: 0
@@ -199,6 +201,11 @@ export default function ProjectBoardMobile({ companyId }: { companyId: string })
   );
 
   useEffect(() => {
+    activeStatusRef.current = activeStatus;
+    activeIndexRef.current = Math.max(0, columns.findIndex((column) => column.key === activeStatus));
+  }, [activeStatus, columns]);
+
+  useEffect(() => {
     const track = trackRef.current;
     if (!track || activeIndex < 0) return;
 
@@ -216,6 +223,29 @@ export default function ProjectBoardMobile({ companyId }: { companyId: string })
     return () => window.clearTimeout(timeout);
   }, [lockedStatus]);
 
+  function scrollToColumn(columnIndex: number, behavior: ScrollBehavior = 'smooth') {
+    const track = trackRef.current;
+    if (!track) return;
+
+    const nextChild = track.children.item(columnIndex) as HTMLElement | null;
+    nextChild?.scrollIntoView({ behavior, inline: 'start', block: 'nearest' });
+  }
+
+  function setActiveColumn(nextStatus: string, options?: { scroll?: boolean; behavior?: ScrollBehavior }) {
+    if (!nextStatus) return;
+
+    const nextIndex = columns.findIndex((column) => column.key === nextStatus);
+    if (nextIndex < 0) return;
+
+    activeStatusRef.current = nextStatus;
+    activeIndexRef.current = nextIndex;
+    setActiveStatus(nextStatus);
+
+    if (options?.scroll !== false) {
+      scrollToColumn(nextIndex, options?.behavior ?? 'smooth');
+    }
+  }
+
   function updateActiveFromScroll() {
     const track = trackRef.current;
     if (!track || columns.length === 0) return;
@@ -226,7 +256,9 @@ export default function ProjectBoardMobile({ companyId }: { companyId: string })
     const nextIndex = Math.round(track.scrollLeft / width);
     const nextColumn = columns[Math.max(0, Math.min(columns.length - 1, nextIndex))];
 
-    if (nextColumn && nextColumn.key !== activeStatus) {
+    if (nextColumn && nextColumn.key !== activeStatusRef.current) {
+      activeStatusRef.current = nextColumn.key;
+      activeIndexRef.current = Math.max(0, Math.min(columns.length - 1, nextIndex));
       setActiveStatus(nextColumn.key);
     }
   }
@@ -251,24 +283,20 @@ export default function ProjectBoardMobile({ companyId }: { companyId: string })
 
     const rect = track.getBoundingClientRect();
     const edgeThreshold = 56;
-    const stepWidth = rect.width * 0.9;
     const now = Date.now();
     const cooldownMs = 1450;
+    const currentIndex = activeIndexRef.current;
 
     if (translated.right > rect.right - edgeThreshold) {
       const canAdvance =
         edgeScrollRef.current.side !== 'right' || now - edgeScrollRef.current.lastStepAt >= cooldownMs;
 
       if (canAdvance) {
-        const nextLeft = Math.min(track.scrollLeft + stepWidth, track.scrollWidth - rect.width);
-        track.scrollTo({
-          left: nextLeft,
-          behavior: 'smooth'
-        });
         edgeScrollRef.current = { side: 'right', lastStepAt: now };
-        const nextIndex = Math.min(columns.length - 1, activeIndex + 1);
+        const nextIndex = Math.min(columns.length - 1, currentIndex + 1);
         const nextColumn = columns[nextIndex];
         if (nextColumn) {
+          setActiveColumn(nextColumn.key);
           setLockedStatus(nextColumn.key);
         }
       }
@@ -280,15 +308,11 @@ export default function ProjectBoardMobile({ companyId }: { companyId: string })
         edgeScrollRef.current.side !== 'left' || now - edgeScrollRef.current.lastStepAt >= cooldownMs;
 
       if (canAdvance) {
-        const nextLeft = Math.max(track.scrollLeft - stepWidth, 0);
-        track.scrollTo({
-          left: nextLeft,
-          behavior: 'smooth'
-        });
         edgeScrollRef.current = { side: 'left', lastStepAt: now };
-        const nextIndex = Math.max(0, activeIndex - 1);
+        const nextIndex = Math.max(0, currentIndex - 1);
         const nextColumn = columns[nextIndex];
         if (nextColumn) {
+          setActiveColumn(nextColumn.key);
           setLockedStatus(nextColumn.key);
         }
       }
@@ -401,7 +425,7 @@ export default function ProjectBoardMobile({ companyId }: { companyId: string })
             size="icon"
             className="h-9 w-9"
             disabled={activeIndex <= 0}
-            onClick={() => setActiveStatus(columns[Math.max(0, activeIndex - 1)]?.key ?? activeStatus)}
+            onClick={() => setActiveColumn(columns[Math.max(0, activeIndex - 1)]?.key ?? activeStatus)}
             aria-label="Föregående kolumn"
           >
             <ChevronLeft className="h-4 w-4" />
@@ -412,7 +436,7 @@ export default function ProjectBoardMobile({ companyId }: { companyId: string })
             size="icon"
             className="h-9 w-9"
             disabled={activeIndex >= columns.length - 1}
-            onClick={() => setActiveStatus(columns[Math.min(columns.length - 1, activeIndex + 1)]?.key ?? activeStatus)}
+            onClick={() => setActiveColumn(columns[Math.min(columns.length - 1, activeIndex + 1)]?.key ?? activeStatus)}
             aria-label="Nästa kolumn"
           >
             <ChevronRight className="h-4 w-4" />
@@ -425,7 +449,7 @@ export default function ProjectBoardMobile({ companyId }: { companyId: string })
           <button
             key={column.key}
             type="button"
-            onClick={() => setActiveStatus(column.key)}
+            onClick={() => setActiveColumn(column.key)}
             className={`shrink-0 rounded-full border px-3 py-1.5 text-sm transition ${
               activeStatus === column.key
                 ? 'border-primary bg-primary text-primary-foreground'
