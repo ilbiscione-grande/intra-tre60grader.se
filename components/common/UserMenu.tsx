@@ -1,16 +1,25 @@
 'use client';
 
 import { CircleUserRound } from 'lucide-react';
-import CompanySwitcher from '@/components/common/CompanySwitcher';
+import { useAppContext } from '@/components/providers/AppContext';
 import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
+import type { Role } from '@/lib/types';
+
+const roleLabel: Record<Role, string> = {
+  member: 'Medlem',
+  finance: 'Ekonomi',
+  admin: 'Admin',
+  auditor: 'Revisor'
+};
 
 function getFirstName(userEmail?: string) {
   const localPart = userEmail?.split('@')[0]?.trim();
@@ -26,6 +35,8 @@ function getFirstName(userEmail?: string) {
 }
 
 export default function UserMenu({ userEmail, compact = false }: { userEmail?: string; compact?: boolean }) {
+  const { companyId, companies } = useAppContext();
+
   async function signOut() {
     const supabase = createClient();
     const { error } = await supabase.auth.signOut();
@@ -36,6 +47,11 @@ export default function UserMenu({ userEmail, compact = false }: { userEmail?: s
 
     toast.success('Utloggad');
     window.location.href = '/login';
+  }
+
+  function switchCompany(nextCompanyId: string) {
+    document.cookie = `active_company_id=${nextCompanyId}; path=/; max-age=31536000; samesite=lax`;
+    window.location.reload();
   }
 
   return (
@@ -50,10 +66,20 @@ export default function UserMenu({ userEmail, compact = false }: { userEmail?: s
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-[280px]">
         {userEmail ? <DropdownMenuItem disabled>{userEmail}</DropdownMenuItem> : null}
-        <div className="my-1 rounded-md border border-border/70 bg-muted/20 p-2">
-          <p className="mb-2 px-1 text-xs font-medium uppercase tracking-[0.18em] text-foreground/45">Aktivt bolag</p>
-          <CompanySwitcher />
-        </div>
+        {companies.length > 1 ? (
+          <div className="my-1 rounded-md border border-border/70 bg-muted/20 p-1">
+            <p className="mb-1 px-2 py-1 text-xs font-medium uppercase tracking-[0.18em] text-foreground/45">Aktivt bolag</p>
+            {companies.map((company) => (
+              <DropdownMenuCheckboxItem
+                key={company.companyId}
+                checked={company.companyId === companyId}
+                onCheckedChange={() => switchCompany(company.companyId)}
+              >
+                {company.companyName} ({roleLabel[company.role]})
+              </DropdownMenuCheckboxItem>
+            ))}
+          </div>
+        ) : null}
         <DropdownMenuItem onClick={() => (window.location.href = '/settings')}>Inställningar</DropdownMenuItem>
         <DropdownMenuItem onClick={signOut}>Logga ut</DropdownMenuItem>
       </DropdownMenuContent>
