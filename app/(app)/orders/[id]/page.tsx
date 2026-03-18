@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { ArrowLeft, FolderOpen } from 'lucide-react';
 import { useParams } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -200,18 +201,23 @@ export default function OrderDetailsPage() {
 
   return (
     <section className="space-y-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <Button asChild variant="secondary">
-          <Link href="/orders">Tillbaka till ordrar</Link>
-        </Button>
-        <Button asChild variant="outline">
-          <Link href={`/projects/${order.project_id}`}>Öppna projekt</Link>
-        </Button>
-      </div>
-
       <Card>
         <CardHeader>
-          <CardTitle>Orderdetaljer</CardTitle>
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <Button asChild variant="secondary" size="icon" aria-label="Tillbaka till ordrar">
+                <Link href="/orders">
+                  <ArrowLeft className="h-4 w-4" />
+                </Link>
+              </Button>
+              <CardTitle>Orderdetaljer</CardTitle>
+            </div>
+            <Button asChild variant="outline" size="icon" aria-label="Öppna projekt">
+              <Link href={`/projects/${order.project_id}`}>
+                <FolderOpen className="h-4 w-4" />
+              </Link>
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex flex-wrap items-center gap-2">
