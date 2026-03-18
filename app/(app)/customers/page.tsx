@@ -1,8 +1,10 @@
 'use client';
 
+import Link from 'next/link';
+import type { Route } from 'next';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { MoreHorizontal, Plus, Search } from 'lucide-react';
+import { ChevronRight, MoreHorizontal, Plus, Search } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
@@ -325,10 +327,12 @@ export default function CustomersPage() {
         <Card key={customer.id}>
           <CardHeader className="p-3">
             <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <CardTitle className="text-base">{customer.name}</CardTitle>
-                {customer.archived_at && <Badge>Arkiverad</Badge>}
-              </div>
+              <Link href={`/customers/${customer.id}` as Route} className="min-w-0 flex-1">
+                <div className="flex min-w-0 items-center gap-2">
+                  <CardTitle className="truncate text-base">{customer.name}</CardTitle>
+                  {customer.archived_at && <Badge>Arkiverad</Badge>}
+                </div>
+              </Link>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" size="icon" aria-label="Åtgärder">
@@ -356,12 +360,20 @@ export default function CustomersPage() {
               </DropdownMenu>
             </div>
           </CardHeader>
-          <CardContent className="space-y-1 pt-0 text-xs text-foreground/70">
-            <p>Kund-ID: {customer.id}</p>
-            <p>Org.nr: {customer.org_no ?? '-'}</p>
-            <p>Momsnr: {customer.vat_no ?? '-'}</p>
-            <p>E-post: {customer.billing_email ?? '-'}</p>
-            <p>Adress: {[customer.address_line1, customer.postal_code, customer.city].filter(Boolean).join(', ') || '-'}</p>
+          <CardContent className="pt-0">
+            <Link href={`/customers/${customer.id}` as Route} className="block">
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-muted/15 px-3 py-3 transition hover:border-primary/35 hover:bg-muted/25">
+                <div className="min-w-0 space-y-1 text-sm">
+                  {customer.org_no ? <p className="truncate text-foreground/75">Org.nr {customer.org_no}</p> : null}
+                  {customer.city ? <p className="truncate text-foreground/65">{customer.city}</p> : null}
+                  {customer.billing_email ? <p className="truncate text-foreground/65">{customer.billing_email}</p> : null}
+                  {!customer.org_no && !customer.city && !customer.billing_email ? (
+                    <p className="text-foreground/60">Öppna kund för fler uppgifter</p>
+                  ) : null}
+                </div>
+                <ChevronRight className="h-4 w-4 shrink-0 text-foreground/45" />
+              </div>
+            </Link>
           </CardContent>
         </Card>
       ))}

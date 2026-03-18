@@ -17,6 +17,7 @@ import { createInvoiceFromOrder } from '@/lib/rpc';
 import { createClient } from '@/lib/supabase/client';
 import type { Json, TableRow as DbRow } from '@/lib/supabase/database.types';
 import type { Role } from '@/lib/types';
+import { useAutoScrollActiveTab } from '@/lib/ui/useAutoScrollActiveTab';
 import { useSwipeTabs } from '@/lib/ui/useSwipeTabs';
 
 type OrderRow = Pick<DbRow<'orders'>, 'id' | 'order_no' | 'project_id' | 'status' | 'total' | 'created_at'>;
@@ -88,6 +89,7 @@ export default function OrderDetailsPage() {
     activeTab,
     onChange: setActiveTab
   });
+  const { containerRef, registerItem } = useAutoScrollActiveTab(activeTab);
 
   const orderQuery = useQuery<OrderRow | null>({
     queryKey: ['order', companyId, orderId],
@@ -229,22 +231,25 @@ export default function OrderDetailsPage() {
                 <p className="mt-0.5 text-[11px] text-foreground/60">{projectQuery.data?.title ?? order.project_id}</p>
               </div>
             </div>
-            <Button asChild variant="outline" size="icon" aria-label="Öppna projekt">
-              <Link href={`/projects/${order.project_id}`}>
-                <FolderOpen className="h-4 w-4" />
-              </Link>
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="icon"
+                aria-label={`Status: ${orderStatusEtikett(order.status)}`}
+                title={orderStatusEtikett(order.status)}
+              >
+                <ShieldCheck className={`h-4 w-4 ${orderStatusIconClass(order.status)}`} />
+              </Button>
+              <Button asChild variant="outline" size="icon" aria-label="Öppna projekt">
+                <Link href={`/projects/${order.project_id}`}>
+                  <FolderOpen className="h-4 w-4" />
+                </Link>
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-2.5">
           <div className="flex flex-wrap items-center gap-2">
-            <Badge
-              className="px-2 py-1"
-              aria-label={`Status: ${orderStatusEtikett(order.status)}`}
-              title={orderStatusEtikett(order.status)}
-            >
-              <ShieldCheck className={`h-3.5 w-3.5 ${orderStatusIconClass(order.status)}`} />
-            </Badge>
             <Badge className="gap-1.5 px-2 py-1 text-[11px]">
               <CircleDollarSign className="h-3 w-3" />
               {Number(order.total).toFixed(2)} kr
@@ -257,10 +262,11 @@ export default function OrderDetailsPage() {
         </CardContent>
       </Card>
 
-      <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+      <div ref={containerRef} className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
         {orderTabs.map((tab) => (
           <Button
             key={tab.id}
+            ref={registerItem(tab.id)}
             type="button"
             variant={activeTab === tab.id ? 'default' : 'outline'}
             className="shrink-0"

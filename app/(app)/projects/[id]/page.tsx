@@ -26,6 +26,7 @@ import ProjectFinancePanel from '@/features/projects/ProjectFinancePanel';
 import { createClient } from '@/lib/supabase/client';
 import type { Json, TableRow as DbRow } from '@/lib/supabase/database.types';
 import type { ProjectStatus, Role } from '@/lib/types';
+import { useAutoScrollActiveTab } from '@/lib/ui/useAutoScrollActiveTab';
 import { useSwipeTabs } from '@/lib/ui/useSwipeTabs';
 
 type ProjectRow = Pick<
@@ -135,6 +136,7 @@ export default function ProjectDetailsPage() {
     activeTab,
     onChange: setActiveTab
   });
+  const { containerRef, registerItem } = useAutoScrollActiveTab(activeTab);
 
   function addLocalActivity(text: string) {
     setLocalActivity((prev) => [
@@ -519,10 +521,11 @@ export default function ProjectDetailsPage() {
         </CardContent>
       </Card>
 
-      <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+      <div ref={containerRef} className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
         {projectTabs.map((tab) => (
           <Button
             key={tab.id}
+            ref={registerItem(tab.id)}
             type="button"
             variant={activeTab === tab.id ? 'default' : 'outline'}
             className="shrink-0"
