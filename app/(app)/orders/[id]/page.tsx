@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { ArrowLeft, FolderOpen } from 'lucide-react';
+import { ArrowLeft, CalendarDays, CircleDollarSign, FolderOpen, Hash, ShieldCheck } from 'lucide-react';
 import { useParams } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -18,7 +18,7 @@ import { createClient } from '@/lib/supabase/client';
 import type { Json, TableRow as DbRow } from '@/lib/supabase/database.types';
 import type { Role } from '@/lib/types';
 
-type OrderRow = Pick<DbRow<'orders'>, 'id' | 'project_id' | 'status' | 'total' | 'created_at'>;
+type OrderRow = Pick<DbRow<'orders'>, 'id' | 'order_no' | 'project_id' | 'status' | 'total' | 'created_at'>;
 type ProjectRow = Pick<DbRow<'projects'>, 'id' | 'title'>;
 type OrderLineRow = Pick<DbRow<'order_lines'>, 'id' | 'title' | 'qty' | 'unit_price' | 'vat_rate' | 'total' | 'created_at'>;
 type InvoiceRow = Pick<DbRow<'invoices'>, 'id' | 'invoice_no' | 'status' | 'currency' | 'total' | 'created_at'>;
@@ -81,7 +81,7 @@ export default function OrderDetailsPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('orders')
-        .select('id,project_id,status,total,created_at')
+        .select('id,order_no,project_id,status,total,created_at')
         .eq('company_id', companyId)
         .eq('id', orderId)
         .maybeSingle<OrderRow>();
@@ -221,10 +221,22 @@ export default function OrderDetailsPage() {
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex flex-wrap items-center gap-2">
-            <Badge>ID: {order.id.slice(0, 8)}...</Badge>
-            <Badge>Status: {orderStatusEtikett(order.status)}</Badge>
-            <Badge>Total: {Number(order.total).toFixed(2)} kr</Badge>
-            <Badge>Skapad: {new Date(order.created_at).toLocaleDateString('sv-SE')}</Badge>
+            <Badge className="gap-1.5">
+              <Hash className="h-3.5 w-3.5" />
+              {order.order_no ?? order.id}
+            </Badge>
+            <Badge className="gap-1.5">
+              <ShieldCheck className="h-3.5 w-3.5" />
+              {orderStatusEtikett(order.status)}
+            </Badge>
+            <Badge className="gap-1.5">
+              <CircleDollarSign className="h-3.5 w-3.5" />
+              {Number(order.total).toFixed(2)} kr
+            </Badge>
+            <Badge className="gap-1.5">
+              <CalendarDays className="h-3.5 w-3.5" />
+              {new Date(order.created_at).toLocaleDateString('sv-SE')}
+            </Badge>
           </div>
 
           <p className="text-sm text-foreground/80">Projekt: {projectQuery.data?.title ?? order.project_id}</p>

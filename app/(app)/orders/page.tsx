@@ -12,7 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { createClient } from '@/lib/supabase/client';
 import type { TableRow as DbRow } from '@/lib/supabase/database.types';
 
-type OrderRow = Pick<DbRow<'orders'>, 'id' | 'project_id' | 'status' | 'total' | 'created_at'>;
+type OrderRow = Pick<DbRow<'orders'>, 'id' | 'order_no' | 'project_id' | 'status' | 'total' | 'created_at'>;
 type ProjectRow = Pick<DbRow<'projects'>, 'id' | 'title' | 'customer_id'>;
 type CustomerRow = Pick<DbRow<'customers'>, 'id' | 'name'>;
 
@@ -29,6 +29,7 @@ function orderStatusEtikett(status: string) {
 
 type OrderListItem = {
   id: string;
+  orderNo: string | null;
   projectId: string;
   projectTitle: string;
   customerName: string;
@@ -46,7 +47,7 @@ export default function OrdersPage() {
     queryFn: async () => {
       const { data: ordersData, error: ordersError } = await supabase
         .from('orders')
-        .select('id,project_id,status,total,created_at')
+        .select('id,order_no,project_id,status,total,created_at')
         .eq('company_id', companyId)
         .order('created_at', { ascending: false })
         .returns<OrderRow[]>();
@@ -87,6 +88,7 @@ export default function OrdersPage() {
 
         return {
           id: order.id,
+          orderNo: order.order_no,
           projectId: order.project_id,
           projectTitle: project?.title ?? order.project_id,
           customerName,
@@ -135,7 +137,7 @@ export default function OrdersPage() {
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
                     <p className="text-xs font-medium uppercase tracking-[0.18em] text-foreground/45">Order</p>
-                    <p className="mt-1 break-all font-mono text-sm">{row.id}</p>
+                    <p className="mt-1 font-mono text-sm">{row.orderNo ?? row.id}</p>
                   </div>
                   <div className="flex shrink-0 flex-col items-end gap-2">
                     <Badge>{orderStatusEtikett(row.status)}</Badge>
@@ -206,7 +208,7 @@ export default function OrdersPage() {
 
             {(query.data ?? []).map((row) => (
               <TableRow key={row.id}>
-                <TableCell className="font-mono text-xs">{row.id.slice(0, 8)}...</TableCell>
+                <TableCell className="font-mono text-xs">{row.orderNo ?? row.id}</TableCell>
                 <TableCell>{row.projectTitle}</TableCell>
                 <TableCell>{row.customerName}</TableCell>
                 <TableCell>

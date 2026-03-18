@@ -189,31 +189,34 @@ export type Database = {
           },
         ]
       }
-      orders: {
-        Row: {
-          company_id: string
-          created_at: string
-          id: string
-          project_id: string
-          status: string
-          total: number
-        }
-        Insert: {
-          company_id: string
-          created_at?: string
-          id?: string
-          project_id: string
-          status?: string
-          total?: number
-        }
-        Update: {
-          company_id?: string
-          created_at?: string
-          id?: string
-          project_id?: string
-          status?: string
-          total?: number
-        }
+        orders: {
+          Row: {
+            company_id: string
+            created_at: string
+            id: string
+            order_no: string | null
+            project_id: string
+            status: string
+            total: number
+          }
+          Insert: {
+            company_id: string
+            created_at?: string
+            id?: string
+            order_no?: string | null
+            project_id: string
+            status?: string
+            total?: number
+          }
+          Update: {
+            company_id?: string
+            created_at?: string
+            id?: string
+            order_no?: string | null
+            project_id?: string
+            status?: string
+            total?: number
+          }
         Relationships: [
           {
             foreignKeyName: "orders_company_id_fkey"
@@ -286,11 +289,11 @@ export type Database = {
           },
         ]
       }
-      invoice_counters: {
-        Row: {
-          company_id: string
-          last_number: number
-          updated_at: string
+        invoice_counters: {
+          Row: {
+            company_id: string
+            last_number: number
+            updated_at: string
         }
         Insert: {
           company_id: string
@@ -309,10 +312,36 @@ export type Database = {
             isOneToOne: true
             referencedRelation: "companies"
             referencedColumns: ["id"]
-          },
-        ]
-      }
-      invoices: {
+            },
+          ]
+        }
+        order_counters: {
+          Row: {
+            company_id: string
+            last_number: number
+            updated_at: string
+          }
+          Insert: {
+            company_id: string
+            last_number?: number
+            updated_at?: string
+          }
+          Update: {
+            company_id?: string
+            last_number?: number
+            updated_at?: string
+          }
+          Relationships: [
+            {
+              foreignKeyName: "order_counters_company_id_fkey"
+              columns: ["company_id"]
+              isOneToOne: true
+              referencedRelation: "companies"
+              referencedColumns: ["id"]
+            },
+          ]
+        }
+        invoices: {
         Row: {
           company_id: string
           company_snapshot: Json
@@ -1133,7 +1162,6 @@ export const Constants = {
 export type TableRow<T extends keyof Database['public']['Tables']> = Database['public']['Tables'][T]['Row'];
 export type TableInsertRow<T extends keyof Database['public']['Tables']> = Database['public']['Tables'][T]['Insert'];
 export type TableUpdateRow<T extends keyof Database['public']['Tables']> = Database['public']['Tables'][T]['Update'];
-
 
 
 
