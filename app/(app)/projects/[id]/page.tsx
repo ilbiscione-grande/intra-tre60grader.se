@@ -26,6 +26,7 @@ import ProjectFinancePanel from '@/features/projects/ProjectFinancePanel';
 import { createClient } from '@/lib/supabase/client';
 import type { Json, TableRow as DbRow } from '@/lib/supabase/database.types';
 import type { ProjectStatus, Role } from '@/lib/types';
+import { useSwipeTabs } from '@/lib/ui/useSwipeTabs';
 
 type ProjectRow = Pick<
   DbRow<'projects'>,
@@ -129,6 +130,11 @@ export default function ProjectDetailsPage() {
   const [pendingOrderStatus, setPendingOrderStatus] = useState<OrderStatus | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<OrderLineRow | null>(null);
   const [activeTab, setActiveTab] = useState<ProjectTab>('overview');
+  const swipeHandlers = useSwipeTabs({
+    tabs: projectTabs.map((tab) => tab.id),
+    activeTab,
+    onChange: setActiveTab
+  });
 
   function addLocalActivity(text: string) {
     setLocalActivity((prev) => [
@@ -528,7 +534,7 @@ export default function ProjectDetailsPage() {
       </div>
 
       {activeTab === 'overview' && (
-        <div className="space-y-4">
+        <div className="space-y-4" {...swipeHandlers}>
           <Card>
             <CardHeader>
               <CardTitle>Översikt</CardTitle>
@@ -609,7 +615,7 @@ export default function ProjectDetailsPage() {
       )}
 
       {activeTab === 'updates' && (
-        <Card>
+        <Card {...swipeHandlers}>
           <CardHeader>
             <CardTitle>Uppdateringar</CardTitle>
           </CardHeader>
@@ -631,7 +637,7 @@ export default function ProjectDetailsPage() {
       )}
 
       {activeTab === 'economy' && (
-        <div className="space-y-4">
+        <div className="space-y-4" {...swipeHandlers}>
           <ProjectFinancePanel companyId={companyId} projectId={projectId} role={role} isLocked={isEconomyLocked} />
 
           <Card>
@@ -806,7 +812,7 @@ export default function ProjectDetailsPage() {
       )}
 
       {activeTab === 'attachments' && (
-        <Card>
+        <Card {...swipeHandlers}>
           <CardHeader>
             <CardTitle>Bilagor</CardTitle>
           </CardHeader>
@@ -817,7 +823,7 @@ export default function ProjectDetailsPage() {
       )}
 
       {activeTab === 'members' && (
-        <Card>
+        <Card {...swipeHandlers}>
           <CardHeader>
             <CardTitle>Medlemmar</CardTitle>
           </CardHeader>
@@ -831,7 +837,7 @@ export default function ProjectDetailsPage() {
       )}
 
       {activeTab === 'logs' && (
-        <Card>
+        <Card {...swipeHandlers}>
           <CardHeader>
             <CardTitle>Loggar</CardTitle>
           </CardHeader>

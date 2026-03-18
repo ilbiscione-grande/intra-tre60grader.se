@@ -17,6 +17,7 @@ import { createInvoiceFromOrder } from '@/lib/rpc';
 import { createClient } from '@/lib/supabase/client';
 import type { Json, TableRow as DbRow } from '@/lib/supabase/database.types';
 import type { Role } from '@/lib/types';
+import { useSwipeTabs } from '@/lib/ui/useSwipeTabs';
 
 type OrderRow = Pick<DbRow<'orders'>, 'id' | 'order_no' | 'project_id' | 'status' | 'total' | 'created_at'>;
 type ProjectRow = Pick<DbRow<'projects'>, 'id' | 'title'>;
@@ -82,6 +83,11 @@ export default function OrderDetailsPage() {
   const supabase = createClient();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<OrderTab>('overview');
+  const swipeHandlers = useSwipeTabs({
+    tabs: orderTabs.map((tab) => tab.id),
+    activeTab,
+    onChange: setActiveTab
+  });
 
   const orderQuery = useQuery<OrderRow | null>({
     queryKey: ['order', companyId, orderId],
@@ -220,6 +226,7 @@ export default function OrderDetailsPage() {
               <div>
                 <p className="text-[10px] uppercase tracking-[0.16em] text-foreground/45">Order</p>
                 <CardTitle className="text-lg">{order.order_no ?? order.id}</CardTitle>
+                <p className="mt-0.5 text-[11px] text-foreground/60">{projectQuery.data?.title ?? order.project_id}</p>
               </div>
             </div>
             <Button asChild variant="outline" size="icon" aria-label="Öppna projekt">
@@ -265,7 +272,7 @@ export default function OrderDetailsPage() {
       </div>
 
       {activeTab === 'overview' && (
-        <div className="space-y-4">
+        <div className="space-y-4" {...swipeHandlers}>
           <div className="grid gap-3 md:grid-cols-3">
             <Card>
               <CardContent className="p-4">
@@ -363,7 +370,7 @@ export default function OrderDetailsPage() {
       )}
 
       {activeTab === 'updates' && (
-        <Card>
+        <Card {...swipeHandlers}>
           <CardHeader>
             <CardTitle>Uppdateringar</CardTitle>
           </CardHeader>
@@ -383,7 +390,7 @@ export default function OrderDetailsPage() {
       )}
 
       {activeTab === 'economy' && (
-        <div className="space-y-4">
+        <div className="space-y-4" {...swipeHandlers}>
           <Card>
             <CardHeader>
               <CardTitle>Ekonomi</CardTitle>
@@ -463,7 +470,7 @@ export default function OrderDetailsPage() {
       )}
 
       {activeTab === 'attachments' && (
-        <Card>
+        <Card {...swipeHandlers}>
           <CardHeader>
             <CardTitle>Bilagor</CardTitle>
           </CardHeader>
@@ -474,7 +481,7 @@ export default function OrderDetailsPage() {
       )}
 
       {activeTab === 'members' && (
-        <Card>
+        <Card {...swipeHandlers}>
           <CardHeader>
             <CardTitle>Medlemmar</CardTitle>
           </CardHeader>
@@ -488,7 +495,7 @@ export default function OrderDetailsPage() {
       )}
 
       {activeTab === 'logs' && (
-        <Card>
+        <Card {...swipeHandlers}>
           <CardHeader>
             <CardTitle>Loggar</CardTitle>
           </CardHeader>
