@@ -676,9 +676,14 @@ export default function VerificationWizard({
     >
       <CardHeader className={`space-y-3 ${fullscreen ? 'px-4 pb-4 pt-5 md:px-6' : ''}`}>
         <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
             <CardTitle>Ny verifikation</CardTitle>
             <span className="rounded bg-muted px-2 py-1 text-xs">Steg {step}/4</span>
           </div>
+          <Button type="button" variant="ghost" size="sm" onClick={() => router.push('/finance')}>
+            Avbryt
+          </Button>
+        </div>
 
         <div className="grid grid-cols-4 gap-2">
           {[1, 2, 3, 4].map((item) => {
