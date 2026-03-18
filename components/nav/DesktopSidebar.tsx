@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import type { Route } from 'next';
 import { usePathname } from 'next/navigation';
-import { Activity, BarChart3, BriefcaseBusiness, Building2, ChevronLeft, ChevronRight, Receipt, ScrollText, Settings, Shield, WalletCards, Landmark } from 'lucide-react';
+import { Activity, BarChart3, BriefcaseBusiness, Building2, ChevronLeft, ChevronRight, CircleHelp, Receipt, ScrollText, Settings, Shield, WalletCards, Landmark } from 'lucide-react';
 import { buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/ui/cn';
 import type { Role } from '@/lib/types';
@@ -25,6 +25,7 @@ const items: NavItem[] = [
   { href: '/receivables', label: 'Kundreskontra', roles: ['finance', 'admin', 'auditor'], icon: WalletCards },
   { href: '/payables', label: 'Leverantörsreskontra', roles: ['finance', 'admin', 'auditor'], icon: Landmark },
   { href: '/sync', label: 'Synk', roles: ['member', 'finance', 'admin'], icon: Activity },
+  { href: '/help' as Route, label: 'Hjälp', roles: ['member', 'finance', 'admin', 'auditor'], icon: CircleHelp },
   { href: '/settings', label: 'Inställningar', roles: ['member', 'finance', 'admin', 'auditor'], icon: Settings },
   { href: '/team', label: 'Medlemmar', roles: ['admin'], icon: Shield }
 ];

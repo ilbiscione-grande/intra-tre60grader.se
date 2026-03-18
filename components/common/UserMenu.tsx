@@ -80,6 +80,7 @@ export default function UserMenu({ userEmail, compact = false }: { userEmail?: s
             ))}
           </div>
         ) : null}
+        <DropdownMenuItem onClick={() => (window.location.href = '/help')}>Hjälp</DropdownMenuItem>
         <DropdownMenuItem onClick={() => (window.location.href = '/settings')}>Inställningar</DropdownMenuItem>
         <DropdownMenuItem onClick={signOut}>Logga ut</DropdownMenuItem>
       </DropdownMenuContent>
