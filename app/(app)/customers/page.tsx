@@ -363,13 +363,19 @@ export default function CustomersPage() {
           <CardContent className="pt-0">
             <Link href={`/customers/${customer.id}` as Route} className="block">
               <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-muted/15 px-3 py-3 transition hover:border-primary/35 hover:bg-muted/25">
-                <div className="min-w-0 space-y-1 text-sm">
-                  {customer.org_no ? <p className="truncate text-foreground/75">Org.nr {customer.org_no}</p> : null}
-                  {customer.city ? <p className="truncate text-foreground/65">{customer.city}</p> : null}
-                  {customer.billing_email ? <p className="truncate text-foreground/65">{customer.billing_email}</p> : null}
-                  {!customer.org_no && !customer.city && !customer.billing_email ? (
-                    <p className="text-foreground/60">Öppna kund för fler uppgifter</p>
-                  ) : null}
+                <div className="min-w-0 space-y-2 text-sm">
+                  <div className="flex flex-wrap gap-2">
+                    {customer.org_no ? <Badge className="bg-muted text-foreground/80">Org.nr {customer.org_no}</Badge> : null}
+                    {customer.phone ? <Badge className="bg-muted text-foreground/80">{customer.phone}</Badge> : null}
+                    {customer.city ? <Badge className="bg-muted text-foreground/80">{customer.city}</Badge> : null}
+                  </div>
+                  <div className="space-y-1 text-foreground/65">
+                    {customer.billing_email ? <p className="truncate">Faktura: {customer.billing_email}</p> : null}
+                    {customer.vat_no ? <p className="truncate">Momsnr: {customer.vat_no}</p> : null}
+                    {!customer.org_no && !customer.phone && !customer.city && !customer.billing_email && !customer.vat_no ? (
+                      <p className="text-foreground/60">Inga kompletterande uppgifter ännu.</p>
+                    ) : null}
+                  </div>
                 </div>
                 <ChevronRight className="h-4 w-4 shrink-0 text-foreground/45" />
               </div>
