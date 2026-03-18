@@ -1,5 +1,6 @@
 'use client';
 
+import { usePathname } from 'next/navigation';
 import DesktopShell from '@/components/layout/DesktopShell';
 import MobileShell from '@/components/layout/MobileShell';
 import AutoSync from '@/components/common/AutoSync';
@@ -20,6 +21,8 @@ export default function AppShell({
 }) {
   const breakpointMode = useBreakpointMode();
   const { interfaceMode } = useAppPreferences();
+  const pathname = usePathname();
+  const isFullscreenFlow = pathname === '/finance/verifications/new';
 
   const mode =
     interfaceMode === 'auto'
@@ -27,6 +30,15 @@ export default function AppShell({
       : interfaceMode === 'mobile'
         ? 'mobile'
         : 'desktop';
+
+  if (isFullscreenFlow) {
+    return (
+      <>
+        <AutoSync />
+        <div className="min-h-screen bg-background">{children}</div>
+      </>
+    );
+  }
 
   if (mode === 'mobile') {
     return (

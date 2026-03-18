@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus } from 'lucide-react';
+import { FileText, Plus } from 'lucide-react';
 import { useOnlineStatus } from '@/lib/ui/useOnlineStatus';
 import { useBreakpointMode } from '@/lib/ui/useBreakpointMode';
 import { createClient } from '@/lib/supabase/client';
@@ -412,7 +412,13 @@ const stepTitles: Record<Step, string> = {
   4: 'Granska'
 };
 
-export default function VerificationWizard({ companyId }: { companyId: string }) {
+export default function VerificationWizard({
+  companyId,
+  fullscreen = false
+}: {
+  companyId: string;
+  fullscreen?: boolean;
+}) {
   const [step, setStep] = useState<Step>(1);
   const [attachmentName, setAttachmentName] = useState<string>('');
   const [attachment, setAttachment] = useState<VerificationAttachment | undefined>();
@@ -661,12 +667,18 @@ export default function VerificationWizard({ companyId }: { companyId: string })
     : [];
 
   return (
-    <Card className="flex h-[calc(100dvh-10.5rem)] min-h-[560px] flex-col md:h-[calc(100dvh-9rem)]">
-      <CardHeader className="space-y-3">
+    <Card
+      className={`flex flex-col ${
+        fullscreen
+          ? 'min-h-[100dvh] rounded-none border-0 shadow-none'
+          : 'h-[calc(100dvh-10.5rem)] min-h-[560px] md:h-[calc(100dvh-9rem)]'
+      }`}
+    >
+      <CardHeader className={`space-y-3 ${fullscreen ? 'px-4 pb-4 pt-5 md:px-6' : ''}`}>
         <div className="flex items-center justify-between gap-2">
-          <CardTitle>Ny verifikation</CardTitle>
-          <span className="rounded bg-muted px-2 py-1 text-xs">Steg {step}/4</span>
-        </div>
+            <CardTitle>Ny verifikation</CardTitle>
+            <span className="rounded bg-muted px-2 py-1 text-xs">Steg {step}/4</span>
+          </div>
 
         <div className="grid grid-cols-4 gap-2">
           {[1, 2, 3, 4].map((item) => {
@@ -689,8 +701,8 @@ export default function VerificationWizard({ companyId }: { companyId: string })
         </div>
       </CardHeader>
 
-            <CardContent className="flex min-h-0 flex-1 flex-col overflow-hidden p-0">
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-6">
+      <CardContent className="flex min-h-0 flex-1 flex-col overflow-hidden p-0">
+        <div className={`min-h-0 flex-1 space-y-4 overflow-y-auto ${fullscreen ? 'px-4 py-4 md:px-6' : 'p-6'}`}>
           {step === 1 ? (
             <div className={isMobile ? 'space-y-4 pt-2' : 'space-y-4'}>
               <p className={isMobile ? 'text-center text-sm font-medium' : 'text-sm font-medium'}>Lägg till underlag</p>
@@ -705,6 +717,26 @@ export default function VerificationWizard({ companyId }: { companyId: string })
                   setAttachmentName('');
                 }}
               />
+              {attachment ? (
+                <div className="rounded-xl border border-border/70 bg-card p-3">
+                  <p className="mb-2 text-xs font-medium uppercase tracking-[0.16em] text-foreground/45">Förhandsvisning</p>
+                  {attachment.type.startsWith('image/') ? (
+                    <img
+                      src={attachment.dataUrl}
+                      alt={attachment.name}
+                      className="max-h-44 w-auto rounded-lg border border-border/70 bg-muted/20 object-contain"
+                    />
+                  ) : attachment.type === 'application/pdf' ? (
+                    <div className="flex items-center gap-3 rounded-lg border border-border/70 bg-muted/20 px-3 py-3">
+                      <FileText className="h-5 w-5 text-foreground/65" />
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium">{attachment.name}</p>
+                        <p className="text-xs text-foreground/60">PDF bifogad</p>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           ) : null}
 
@@ -859,7 +891,7 @@ export default function VerificationWizard({ companyId }: { companyId: string })
           ) : null}
         </div>
 
-        <div className="border-t bg-card p-4">
+        <div className={`border-t bg-card ${fullscreen ? 'sticky bottom-0 p-4 md:px-6' : 'p-4'}`}>
           {step === 1 ? (
             <div className="space-y-2">
               {form.formState.errors.direction ? (

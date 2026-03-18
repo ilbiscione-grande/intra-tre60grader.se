@@ -9,7 +9,7 @@ export default function NewVerificationPage() {
 
   return (
     <RoleGate role={role} allow={['finance', 'admin']}>
-      <VerificationWizard companyId={companyId} />
+      <VerificationWizard companyId={companyId} fullscreen />
     </RoleGate>
   );
 }
