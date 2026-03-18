@@ -275,11 +275,11 @@ export default function OrderDetailsPage() {
                   <div key={line.id} className="rounded-xl border border-border/80 bg-card p-3">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-foreground/45">Titel</p>
-                        <p className="mt-1 text-sm font-medium leading-snug">{line.title}</p>
+                        <p className="text-sm font-medium leading-snug">{line.title}</p>
                       </div>
-                      <div className="shrink-0 rounded-full border border-border/70 bg-muted/30 px-2.5 py-1 text-sm font-semibold">
-                        {Number(line.total).toFixed(2)} kr
+                      <div className="shrink-0 rounded-xl border border-primary/20 bg-primary/10 px-3 py-2 text-right">
+                        <p className="text-[10px] font-medium uppercase tracking-[0.16em] text-primary/80">Radtotal</p>
+                        <p className="mt-1 text-sm font-semibold text-primary">{Number(line.total).toFixed(2)} kr</p>
                       </div>
                     </div>
 
