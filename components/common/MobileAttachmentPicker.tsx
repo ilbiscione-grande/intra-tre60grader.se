@@ -83,14 +83,16 @@ export default function MobileAttachmentPicker({
   return (
     <div className={cn('space-y-2', className)}>
       <div className="space-y-2">
-        <Button
-          type="button"
-          className="h-14 w-full rounded-full text-base"
-          onClick={() => setSheetOpen(true)}
-        >
-          <PlusIcon />
-          Lägg till bilaga
-        </Button>
+        <div className="flex justify-center">
+          <Button
+            type="button"
+            className="h-40 w-40 flex-col rounded-full text-base"
+            onClick={() => setSheetOpen(true)}
+          >
+            <PlusIcon />
+            <span className="mt-2 text-center leading-tight">Lägg till bilaga</span>
+          </Button>
+        </div>
         {statusName && onClear ? (
           <Button
             type="button"
@@ -210,7 +212,7 @@ export default function MobileAttachmentPicker({
 
 function PlusIcon() {
   return (
-    <span className="mr-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-white/15 text-current">
+    <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/15 text-2xl leading-none text-current">
       +
     </span>
   );
