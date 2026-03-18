@@ -23,6 +23,7 @@ import { Button } from '@/components/ui/button';
 import ProjectCard from '@/features/projects/ProjectCard';
 import { useMoveProject, useProjectColumns, useProjects } from '@/features/projects/projectQueries';
 import type { Project } from '@/lib/types';
+import { useAutoScrollActiveTab } from '@/lib/ui/useAutoScrollActiveTab';
 
 type BoardState = Record<string, Project[]>;
 
@@ -164,6 +165,7 @@ export default function ProjectBoardMobile({ companyId }: { companyId: string })
     lastStepAt: 0
   });
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
+  const { containerRef: columnTabsRef, registerItem: registerColumnTab } = useAutoScrollActiveTab(activeStatus);
 
   const projectsQuery = useProjects(companyId);
   const columnsQuery = useProjectColumns(companyId);
@@ -444,10 +446,14 @@ export default function ProjectBoardMobile({ companyId }: { companyId: string })
         </div>
       </div>
 
-      <div className="flex items-center gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div
+        ref={columnTabsRef}
+        className="flex items-center gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      >
         {columns.map((column, index) => (
           <button
             key={column.key}
+            ref={registerColumnTab(column.key)}
             type="button"
             onClick={() => setActiveColumn(column.key)}
             className={`shrink-0 rounded-full border px-3 py-1.5 text-sm transition ${
