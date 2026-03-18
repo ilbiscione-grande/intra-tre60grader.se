@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import type { Route } from 'next';
 import { usePathname } from 'next/navigation';
-import { BriefcaseBusiness, Building2, ScrollText, Activity, Settings, Landmark } from 'lucide-react';
+import { BriefcaseBusiness, Building2, ScrollText, Activity, Landmark } from 'lucide-react';
 import { buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/ui/cn';
 import type { Role } from '@/lib/types';
@@ -20,8 +20,7 @@ const navItems: NavItem[] = [
   { href: '/customers', label: 'Kunder', roles: ['member', 'finance', 'admin'], icon: Building2 },
   { href: '/orders', label: 'Ordrar', roles: ['member', 'finance', 'admin'], icon: ScrollText },
   { href: '/finance', label: 'Ekonomi', roles: ['finance', 'admin', 'auditor'], icon: Activity },
-  { href: '/payables', label: 'Lev.resk', roles: ['finance', 'admin', 'auditor'], icon: Landmark },
-  { href: '/settings', label: 'Inställningar', roles: ['member', 'finance', 'admin', 'auditor'], icon: Settings }
+  { href: '/payables', label: 'Lev.resk', roles: ['finance', 'admin', 'auditor'], icon: Landmark }
 ];
 
 export default function MobileBottomNav({ role }: { role: Role }) {

@@ -698,17 +698,30 @@ export default function ProjectDetailsPage() {
               <div className="rounded-lg border p-3">
                 <p className="mb-2 text-sm font-medium">Lägg till orderrad</p>
                 <div className="grid gap-2 md:grid-cols-5">
-                  <Input value={lineTitle} onChange={(e) => setLineTitle(e.target.value)} placeholder="Titel" className="md:col-span-2" disabled={isEconomyLocked} />
-                  <Input value={lineQty} onChange={(e) => setLineQty(e.target.value)} type="number" min="0" step="0.01" placeholder="Antal" disabled={isEconomyLocked} />
-                  <Input
-                    value={lineUnitPrice}
-                    onChange={(e) => setLineUnitPrice(e.target.value)}
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    placeholder="A-pris" disabled={isEconomyLocked}
-                  />
-                  <Input value={lineVatRate} onChange={(e) => setLineVatRate(e.target.value)} type="number" min="0" step="0.01" placeholder="Moms %" disabled={isEconomyLocked} />
+                  <label className="space-y-1 md:col-span-2">
+                    <span className="text-xs font-medium uppercase tracking-[0.16em] text-foreground/55">Titel</span>
+                    <Input value={lineTitle} onChange={(e) => setLineTitle(e.target.value)} placeholder="T.ex. Designarbete" disabled={isEconomyLocked} />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-xs font-medium uppercase tracking-[0.16em] text-foreground/55">Antal</span>
+                    <Input value={lineQty} onChange={(e) => setLineQty(e.target.value)} type="number" min="0" step="0.01" placeholder="1" disabled={isEconomyLocked} />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-xs font-medium uppercase tracking-[0.16em] text-foreground/55">A-pris</span>
+                    <Input
+                      value={lineUnitPrice}
+                      onChange={(e) => setLineUnitPrice(e.target.value)}
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      placeholder="0.00"
+                      disabled={isEconomyLocked}
+                    />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-xs font-medium uppercase tracking-[0.16em] text-foreground/55">Moms %</span>
+                    <Input value={lineVatRate} onChange={(e) => setLineVatRate(e.target.value)} type="number" min="0" step="0.01" placeholder="25" disabled={isEconomyLocked} />
+                  </label>
                 </div>
                 <Button className="mt-2" onClick={() => addLineMutation.mutate()} disabled={addLineMutation.isPending || isEconomyLocked}>
                   {addLineMutation.isPending ? 'Lägger till...' : 'Lägg till rad'}
