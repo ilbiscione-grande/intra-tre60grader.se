@@ -142,7 +142,6 @@ function MobileColumn({
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
           <h3 className="text-lg font-semibold">{title}</h3>
-          <p className="mt-1 text-xs uppercase tracking-[0.22em] text-foreground/45">Dra kort sidledes mellan kolumner</p>
         </div>
         <Badge>{count}</Badge>
       </div>
@@ -456,10 +455,10 @@ export default function ProjectBoardMobile({ companyId }: { companyId: string })
             ref={registerColumnTab(column.key)}
             type="button"
             onClick={() => setActiveColumn(column.key)}
-            className={`shrink-0 rounded-full border px-3 py-1.5 text-sm transition ${
+            className={`shrink-0 border-b-2 px-1 pb-2 pt-1 text-sm font-medium transition ${
               activeStatus === column.key
-                ? 'border-primary bg-primary text-primary-foreground'
-                : 'border-border bg-background text-foreground/75'
+                ? 'border-primary text-foreground'
+                : 'border-transparent text-foreground/55'
             }`}
           >
             {index + 1}. {column.title}
