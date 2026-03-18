@@ -449,7 +449,57 @@ export default function FinancePage() {
           </CardContent>
         </Card>
 
-        <Card className="p-0">
+        <div className="space-y-3 md:hidden">
+          {filteredRows.length === 0 ? (
+            <Card>
+              <CardContent className="p-4 text-sm text-foreground/70">Inga verifikationer matchar filtret.</CardContent>
+            </Card>
+          ) : (
+            filteredRows.map((row) => (
+              <Link key={row.id} href={`/finance/verifications/${row.id}`} className="block">
+                <Card className="overflow-hidden p-0 transition hover:border-primary/35 hover:bg-muted/20">
+                  <div className="border-b border-border/70 bg-muted/25 px-4 py-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-foreground/45">Verifikation</p>
+                        <p className="mt-1 font-medium">{verificationNumberLabel(row.fiscal_year, row.verification_no)}</p>
+                      </div>
+                      <div className="flex flex-col items-end gap-2">
+                        <Badge>{statusLabel(row.status)}</Badge>
+                        <span className="rounded-full border border-border/70 bg-card px-2.5 py-1 text-sm font-semibold">
+                          {Number(row.total).toFixed(2)} kr
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="space-y-3 p-4">
+                    <p className="text-sm font-medium leading-snug">{row.description}</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="rounded-lg border border-border/70 bg-muted/20 px-3 py-2">
+                        <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Datum</p>
+                        <p className="mt-1 text-sm">{formatDate(row.date)}</p>
+                      </div>
+                      <div className="rounded-lg border border-border/70 bg-muted/20 px-3 py-2">
+                        <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Källa</p>
+                        <p className="mt-1 text-sm">{sourceLabel(row.source)}</p>
+                      </div>
+                      <div className="rounded-lg border border-border/70 bg-muted/20 px-3 py-2">
+                        <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Skapad</p>
+                        <p className="mt-1 text-sm">{formatDateTime(row.created_at)}</p>
+                      </div>
+                      <div className="rounded-lg border border-border/70 bg-muted/20 px-3 py-2">
+                        <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Bilaga</p>
+                        <p className="mt-1 text-sm">{row.attachment_path ? 'Ja' : 'Nej'}</p>
+                      </div>
+                    </div>
+                  </div>
+                </Card>
+              </Link>
+            ))
+          )}
+        </div>
+
+        <Card className="hidden p-0 md:block">
           <Table>
             <TableHeader className="bg-muted">
               <TableRow>
