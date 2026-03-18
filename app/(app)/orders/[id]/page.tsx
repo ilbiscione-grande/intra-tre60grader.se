@@ -218,7 +218,8 @@ export default function OrderDetailsPage() {
                 </Link>
               </Button>
               <div>
-                <CardTitle>Orderdetaljer</CardTitle>
+                <p className="text-[10px] uppercase tracking-[0.16em] text-foreground/45">Order</p>
+                <CardTitle className="text-lg">{order.order_no ?? order.id}</CardTitle>
                 <p className="mt-0.5 text-[11px] text-foreground/60">{projectQuery.data?.title ?? order.project_id}</p>
               </div>
             </div>
