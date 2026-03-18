@@ -726,18 +726,28 @@ export default function VerificationWizard({
                 <div className="rounded-xl border border-border/70 bg-card p-3">
                   <p className="mb-2 text-xs font-medium uppercase tracking-[0.16em] text-foreground/45">Förhandsvisning</p>
                   {attachment.type.startsWith('image/') ? (
-                    <img
-                      src={attachment.dataUrl}
-                      alt={attachment.name}
-                      className="max-h-28 w-auto rounded-lg border border-border/70 bg-muted/20 object-contain"
-                    />
+                    <div>
+                      <img
+                        src={attachment.dataUrl}
+                        alt={attachment.name}
+                        className="max-h-28 w-auto rounded-lg border border-border/70 bg-muted/20 object-contain"
+                      />
+                      <p className="mt-2 text-[11px] text-foreground/60">
+                        {attachment.name} · {(attachment.size / (1024 * 1024)).toFixed(2)} MB
+                      </p>
+                    </div>
                   ) : attachment.type === 'application/pdf' ? (
-                    <div className="flex items-center gap-3 rounded-lg border border-border/70 bg-muted/20 px-3 py-3">
-                      <FileText className="h-5 w-5 text-foreground/65" />
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium">{attachment.name}</p>
-                        <p className="text-xs text-foreground/60">PDF bifogad</p>
+                    <div>
+                      <div className="flex items-center gap-3 rounded-lg border border-border/70 bg-muted/20 px-3 py-3">
+                        <FileText className="h-5 w-5 text-foreground/65" />
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium">{attachment.name}</p>
+                          <p className="text-xs text-foreground/60">PDF bifogad</p>
+                        </div>
                       </div>
+                      <p className="mt-2 text-[11px] text-foreground/60">
+                        {(attachment.size / (1024 * 1024)).toFixed(2)} MB
+                      </p>
                     </div>
                   ) : null}
                 </div>

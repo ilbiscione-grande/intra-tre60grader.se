@@ -191,17 +191,12 @@ export default function MobileAttachmentPicker({
       <div
         className={cn(
           'rounded-md border px-3 py-2 text-xs',
-          statusName ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'bg-muted/40 text-foreground/70',
+          statusName ? 'hidden' : 'bg-muted/40 text-foreground/70',
           error ? 'border-destructive/40 bg-destructive/5 text-destructive' : ''
         )}
       >
         {error ? (
           <span>{error}</span>
-        ) : statusName ? (
-          <span>
-            {label}: {statusName}
-            {pickedMeta ? ` · ${formatBytes(pickedMeta.size)} · ${pickedMeta.type}` : ''}
-          </span>
         ) : (
           <span>{label}: ingen vald</span>
         )}
