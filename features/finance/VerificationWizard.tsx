@@ -670,7 +670,7 @@ export default function VerificationWizard({
     <Card
       className={`flex flex-col ${
         fullscreen
-          ? 'min-h-[100dvh] rounded-none border-0 shadow-none'
+          ? 'h-[100dvh] rounded-none border-0 shadow-none'
           : 'h-[calc(100dvh-10.5rem)] min-h-[560px] md:h-[calc(100dvh-9rem)]'
       }`}
     >
@@ -729,7 +729,7 @@ export default function VerificationWizard({
                     <img
                       src={attachment.dataUrl}
                       alt={attachment.name}
-                      className="max-h-44 w-auto rounded-lg border border-border/70 bg-muted/20 object-contain"
+                      className="max-h-28 w-auto rounded-lg border border-border/70 bg-muted/20 object-contain"
                     />
                   ) : attachment.type === 'application/pdf' ? (
                     <div className="flex items-center gap-3 rounded-lg border border-border/70 bg-muted/20 px-3 py-3">
@@ -896,7 +896,9 @@ export default function VerificationWizard({
           ) : null}
         </div>
 
-        <div className={`border-t bg-card ${fullscreen ? 'sticky bottom-0 p-4 md:px-6' : 'p-4'}`}>
+        <div
+          className={`border-t bg-card ${fullscreen ? 'sticky bottom-0 z-20 mt-auto p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] md:px-6' : 'p-4'}`}
+        >
           {step === 1 ? (
             <div className="space-y-2">
               {form.formState.errors.direction ? (
