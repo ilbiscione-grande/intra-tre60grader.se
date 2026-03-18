@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { ArrowLeft, CalendarDays, CircleDollarSign, FolderOpen, Hash, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, CalendarDays, CircleDollarSign, FolderOpen, ShieldCheck } from 'lucide-react';
 import { useParams } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -231,10 +231,6 @@ export default function OrderDetailsPage() {
         </CardHeader>
         <CardContent className="space-y-2.5">
           <div className="flex flex-wrap items-center gap-2">
-            <Badge className="gap-1.5 px-2 py-1 text-[11px]">
-              <Hash className="h-3 w-3" />
-              {order.order_no ?? order.id}
-            </Badge>
             <Badge
               className="px-2 py-1"
               aria-label={`Status: ${orderStatusEtikett(order.status)}`}
