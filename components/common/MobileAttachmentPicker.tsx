@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Camera, FileText, Image as ImageIcon, X } from 'lucide-react';
+import { Camera, FileText, Image as ImageIcon } from 'lucide-react';
 import ActionSheet from '@/components/common/ActionSheet';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/ui/cn';
@@ -93,20 +93,6 @@ export default function MobileAttachmentPicker({
             <span className="mt-2 text-center leading-tight">Lägg till bilaga</span>
           </Button>
         </div>
-        {statusName && onClear ? (
-          <Button
-            type="button"
-            variant="ghost"
-            className="h-11 w-full rounded-full"
-            onClick={() => {
-              setPickedMeta(null);
-              setError(null);
-              onClear();
-            }}
-          >
-            <X className="mr-2 h-4 w-4" /> Rensa bilaga
-          </Button>
-        ) : null}
       </div>
 
       <ActionSheet

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { FileText, Plus } from 'lucide-react';
+import { FileText, Plus, X } from 'lucide-react';
 import { useOnlineStatus } from '@/lib/ui/useOnlineStatus';
 import { useBreakpointMode } from '@/lib/ui/useBreakpointMode';
 import { createClient } from '@/lib/supabase/client';
@@ -726,7 +726,18 @@ export default function VerificationWizard({
                 <div className="rounded-xl border border-border/70 bg-card p-3">
                   <p className="mb-2 text-xs font-medium uppercase tracking-[0.16em] text-foreground/45">Förhandsvisning</p>
                   {attachment.type.startsWith('image/') ? (
-                    <div>
+                    <div className="relative w-fit">
+                      <button
+                        type="button"
+                        aria-label="Rensa bilaga"
+                        className="absolute right-2 top-2 inline-flex h-7 w-7 items-center justify-center rounded-full border border-border/70 bg-card/95 text-foreground/70 shadow-sm"
+                        onClick={() => {
+                          setAttachment(undefined);
+                          setAttachmentName('');
+                        }}
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
                       <img
                         src={attachment.dataUrl}
                         alt={attachment.name}
@@ -737,8 +748,19 @@ export default function VerificationWizard({
                       </p>
                     </div>
                   ) : attachment.type === 'application/pdf' ? (
-                    <div>
-                      <div className="flex items-center gap-3 rounded-lg border border-border/70 bg-muted/20 px-3 py-3">
+                    <div className="relative">
+                      <button
+                        type="button"
+                        aria-label="Rensa bilaga"
+                        className="absolute right-2 top-2 inline-flex h-7 w-7 items-center justify-center rounded-full border border-border/70 bg-card/95 text-foreground/70 shadow-sm"
+                        onClick={() => {
+                          setAttachment(undefined);
+                          setAttachmentName('');
+                        }}
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                      <div className="flex items-center gap-3 rounded-lg border border-border/70 bg-muted/20 px-3 py-3 pr-12">
                         <FileText className="h-5 w-5 text-foreground/65" />
                         <div className="min-w-0">
                           <p className="truncate text-sm font-medium">{attachment.name}</p>
