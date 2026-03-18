@@ -412,7 +412,7 @@ export default function CustomersPage() {
           }
         }}
       >
-        <DialogContent>
+        <DialogContent className="max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Ny kund</DialogTitle>
             <DialogDescription>Lägg till en ny kund i bolaget.</DialogDescription>
@@ -460,7 +460,7 @@ export default function CustomersPage() {
       </Dialog>
 
       <Dialog open={Boolean(editing)} onOpenChange={(open) => !open && setEditing(null)}>
-        <DialogContent>
+        <DialogContent className="max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Redigera kund</DialogTitle>
             <DialogDescription>Uppdatera kundens fakturauppgifter.</DialogDescription>
@@ -512,7 +512,7 @@ export default function CustomersPage() {
       </Dialog>
 
       <Dialog open={Boolean(archiveTarget)} onOpenChange={(open) => !open && setArchiveTarget(null)}>
-        <DialogContent>
+        <DialogContent className="max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Arkivera kund</DialogTitle>
             <DialogDescription>

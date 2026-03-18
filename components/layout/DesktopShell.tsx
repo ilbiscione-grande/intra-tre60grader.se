@@ -1,6 +1,7 @@
 'use client';
 
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import QuickCreateMenu from '@/components/common/QuickCreateMenu';
 import { useEffect, useState } from 'react';
 import DesktopSidebar from '@/components/nav/DesktopSidebar';
 import OfflineBanner from '@/components/common/OfflineBanner';
@@ -52,6 +53,7 @@ export default function DesktopShell({
               <p className="text-xs uppercase tracking-wide text-foreground/70">{companyName}</p>
             </div>
             <div className="flex items-center gap-2">
+              <QuickCreateMenu role={role} />
               <UserMenu userEmail={userEmail} />
             </div>
           </div>
