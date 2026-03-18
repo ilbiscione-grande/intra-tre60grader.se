@@ -1,5 +1,6 @@
 'use client';
 
+import { CircleUserRound } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
 import {
@@ -10,7 +11,20 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
 
-export default function UserMenu({ userEmail }: { userEmail?: string }) {
+function getFirstName(userEmail?: string) {
+  const localPart = userEmail?.split('@')[0]?.trim();
+  if (!localPart) return 'Profil';
+
+  const firstToken = localPart
+    .split(/[._-]+/)
+    .map((part) => part.trim())
+    .find(Boolean);
+
+  if (!firstToken) return 'Profil';
+  return firstToken.charAt(0).toUpperCase() + firstToken.slice(1);
+}
+
+export default function UserMenu({ userEmail, compact = false }: { userEmail?: string; compact?: boolean }) {
   async function signOut() {
     const supabase = createClient();
     const { error } = await supabase.auth.signOut();
@@ -26,11 +40,15 @@ export default function UserMenu({ userEmail }: { userEmail?: string }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="secondary" size="sm">
-          {userEmail ?? 'Användare'}
+        <Button variant="secondary" size={compact ? 'icon' : 'sm'} className={compact ? 'h-10 w-10 rounded-full' : 'gap-2 rounded-full pl-2 pr-3'}>
+          <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-primary/12 text-primary">
+            <CircleUserRound className="h-4 w-4" />
+          </span>
+          {!compact ? <span>{getFirstName(userEmail)}</span> : null}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
+        {userEmail ? <DropdownMenuItem disabled>{userEmail}</DropdownMenuItem> : null}
         <DropdownMenuItem onClick={() => (window.location.href = '/settings')}>Inställningar</DropdownMenuItem>
         <DropdownMenuItem onClick={signOut}>Logga ut</DropdownMenuItem>
       </DropdownMenuContent>

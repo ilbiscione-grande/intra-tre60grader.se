@@ -20,7 +20,7 @@ export default function MobileHeader({
             <p className="text-xs uppercase tracking-wide text-foreground/70">{companyName}</p>
             <h1 className="text-lg font-semibold">{title}</h1>
           </div>
-          <UserMenu userEmail={userEmail} />
+          <UserMenu userEmail={userEmail} compact />
         </div>
         <CompanySwitcher compact />
       </div>
