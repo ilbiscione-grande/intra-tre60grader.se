@@ -1,6 +1,7 @@
 'use client';
 
 import { CircleUserRound } from 'lucide-react';
+import CompanySwitcher from '@/components/common/CompanySwitcher';
 import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
 import {
@@ -47,8 +48,12 @@ export default function UserMenu({ userEmail, compact = false }: { userEmail?: s
           {!compact ? <span>{getFirstName(userEmail)}</span> : null}
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
+      <DropdownMenuContent align="end" className="w-[280px]">
         {userEmail ? <DropdownMenuItem disabled>{userEmail}</DropdownMenuItem> : null}
+        <div className="my-1 rounded-md border border-border/70 bg-muted/20 p-2">
+          <p className="mb-2 px-1 text-xs font-medium uppercase tracking-[0.18em] text-foreground/45">Aktivt bolag</p>
+          <CompanySwitcher />
+        </div>
         <DropdownMenuItem onClick={() => (window.location.href = '/settings')}>Inställningar</DropdownMenuItem>
         <DropdownMenuItem onClick={signOut}>Logga ut</DropdownMenuItem>
       </DropdownMenuContent>

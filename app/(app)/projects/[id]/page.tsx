@@ -46,9 +46,18 @@ type ActivityItem = {
   text: string;
   source: 'system' | 'user';
 };
+type ProjectTab = 'overview' | 'updates' | 'economy' | 'attachments' | 'members' | 'logs';
 
 const orderStatuses = ['draft', 'sent', 'paid', 'cancelled', 'invoiced'] as const;
 type OrderStatus = (typeof orderStatuses)[number];
+const projectTabs: Array<{ id: ProjectTab; label: string }> = [
+  { id: 'overview', label: 'Översikt' },
+  { id: 'updates', label: 'Uppdateringar' },
+  { id: 'economy', label: 'Ekonomi' },
+  { id: 'attachments', label: 'Bilagor' },
+  { id: 'members', label: 'Medlemmar' },
+  { id: 'logs', label: 'Loggar' }
+];
 
 function toNumber(value: string, fallback = 0) {
   const parsed = Number(value);
@@ -119,6 +128,7 @@ export default function ProjectDetailsPage() {
   const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
   const [pendingOrderStatus, setPendingOrderStatus] = useState<OrderStatus | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<OrderLineRow | null>(null);
+  const [activeTab, setActiveTab] = useState<ProjectTab>('overview');
 
   function addLocalActivity(text: string) {
     setLocalActivity((prev) => [
@@ -494,233 +504,350 @@ export default function ProjectDetailsPage() {
           <CardTitle>Projektdetaljer</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <div className="grid gap-3 md:grid-cols-2">
-            <label className="space-y-1">
-              <span className="text-sm">Titel</span>
-              <Input value={draftTitle} onChange={(event) => setDraftTitle(event.target.value)} disabled={isEconomyLocked} />
-            </label>
-
-            <label className="space-y-1">
-              <span className="text-sm">Kolumn</span>
-              <Select value={draftStatus} onValueChange={(value) => setDraftStatus(value as ProjectStatus)}>
-                <SelectTrigger disabled={isEconomyLocked}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {statusColumns.map((column) => (
-                    <SelectItem key={column.key} value={column.key}>
-                      {column.title}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </label>
-
-            <label className="space-y-1 md:col-span-2">
-              <span className="text-sm">Kund</span>
-              <Select value={draftCustomerId} onValueChange={setDraftCustomerId}>
-                <SelectTrigger disabled={isEconomyLocked}>
-                  <SelectValue placeholder="Välj kund" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Ingen kund</SelectItem>
-                  {(customersQuery.data ?? []).map((customer) => (
-                    <SelectItem key={customer.id} value={customer.id}>
-                      {customer.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </label>
-          </div>
-
           <div className="flex flex-wrap items-center gap-2">
-            <Button onClick={() => saveProjectMutation.mutate()} disabled={saveProjectMutation.isPending || isEconomyLocked}>
-              {saveProjectMutation.isPending ? 'Sparar...' : 'Spara projekt'}
-            </Button>
             <Badge>Skapad: {new Date(project.created_at).toLocaleDateString('sv-SE')}</Badge>
             <Badge>Uppdaterad: {new Date(project.updated_at).toLocaleString('sv-SE')}</Badge>
+            {project.customer_id ? <Badge>Kund kopplad</Badge> : <Badge>Ingen kund</Badge>}
+            {isEconomyLocked ? <Badge>Låst efter fakturering</Badge> : null}
           </div>
         </CardContent>
       </Card>
 
-      <ProjectFinancePanel companyId={companyId} projectId={projectId} role={role} isLocked={isEconomyLocked} />
+      <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+        {projectTabs.map((tab) => (
+          <Button
+            key={tab.id}
+            type="button"
+            variant={activeTab === tab.id ? 'default' : 'outline'}
+            className="shrink-0"
+            onClick={() => setActiveTab(tab.id)}
+          >
+            {tab.label}
+          </Button>
+        ))}
+      </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Order</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge>Total: {Number(orderQuery.data?.total ?? 0).toFixed(2)} kr</Badge>{isEconomyLocked && <Badge>Låst efter fakturering</Badge>}
+      {activeTab === 'overview' && (
+        <div className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Översikt</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="grid gap-3 md:grid-cols-2">
+                <label className="space-y-1">
+                  <span className="text-sm">Titel</span>
+                  <Input value={draftTitle} onChange={(event) => setDraftTitle(event.target.value)} disabled={isEconomyLocked} />
+                </label>
 
-            <RoleGate
-              role={role}
-              allow={['finance', 'admin']}
-              fallback={<p className="text-sm text-foreground/70">Ekonomi/Admin kan ändra orderstatus och skapa faktura.</p>}
-            >
-              <div className="w-52">
-                <Select
-                  value={statusValue}
-                  onValueChange={(value) => {
-                    const next = value as OrderStatus;
-                    if (next === 'cancelled' && statusValue !== 'cancelled') {
-                      setPendingOrderStatus(next);
-                      setCancelConfirmOpen(true);
-                      return;
-                    }
-                    updateOrderStatusMutation.mutate(next);
-                  }}
-                >
-                  <SelectTrigger disabled={isEconomyLocked}>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {orderStatuses.map((status) => (
-                      <SelectItem key={status} value={status}>
-                        {orderStatusEtikett(status)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <label className="space-y-1">
+                  <span className="text-sm">Kolumn</span>
+                  <Select value={draftStatus} onValueChange={(value) => setDraftStatus(value as ProjectStatus)}>
+                    <SelectTrigger disabled={isEconomyLocked}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {statusColumns.map((column) => (
+                        <SelectItem key={column.key} value={column.key}>
+                          {column.title}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </label>
+
+                <label className="space-y-1 md:col-span-2">
+                  <span className="text-sm">Kund</span>
+                  <Select value={draftCustomerId} onValueChange={setDraftCustomerId}>
+                    <SelectTrigger disabled={isEconomyLocked}>
+                      <SelectValue placeholder="Välj kund" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Ingen kund</SelectItem>
+                      {(customersQuery.data ?? []).map((customer) => (
+                        <SelectItem key={customer.id} value={customer.id}>
+                          {customer.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </label>
               </div>
 
-              <Button
-                variant="secondary"
-                onClick={() => invoiceMutation.mutate()}
-                disabled={invoiceMutation.isPending || !orderId || !canManageOrder(role) || isEconomyLocked}
-              >
-                {invoiceMutation.isPending ? 'Skapar...' : 'Skapa faktura'}
-              </Button>
-            </RoleGate>
-          </div>
+              <div className="grid gap-3 md:grid-cols-4">
+                <div className="rounded-lg border p-3">
+                  <p className="text-sm text-foreground/70">Kund</p>
+                  <p className="mt-1 font-medium">{(customersQuery.data ?? []).find((c) => c.id === draftCustomerId)?.name ?? 'Ingen kund'}</p>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <p className="text-sm text-foreground/70">Orderrader</p>
+                  <p className="mt-1 font-medium">{lines.length}</p>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <p className="text-sm text-foreground/70">Fakturor</p>
+                  <p className="mt-1 font-medium">{invoicesQuery.data?.length ?? 0}</p>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <p className="text-sm text-foreground/70">Ordertotal</p>
+                  <p className="mt-1 font-medium">{Number(orderQuery.data?.total ?? 0).toFixed(2)} kr</p>
+                </div>
+              </div>
 
-          {latestInvoiceResult && (
-            <Card className="border-dashed">
-              <CardContent className="p-3 text-sm">
-                <p className="font-medium">Senaste fakturasvar</p>
-                <p className="text-foreground/70">{extractInvoiceSummary(latestInvoiceResult)}</p>
-                <pre className="mt-2 overflow-x-auto rounded bg-muted p-2 text-xs">
-                  {JSON.stringify(latestInvoiceResult, null, 2)}
-                </pre>
-              </CardContent>
-            </Card>
-          )}
+              <div className="flex flex-wrap items-center gap-2">
+                <Button onClick={() => saveProjectMutation.mutate()} disabled={saveProjectMutation.isPending || isEconomyLocked}>
+                  {saveProjectMutation.isPending ? 'Sparar...' : 'Spara projekt'}
+                </Button>
+                {orderId ? (
+                  <Button asChild variant="outline">
+                    <Link href={`/orders/${orderId}`}>Öppna order</Link>
+                  </Button>
+                ) : null}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
-          <div className="rounded-lg border p-3">
-            <p className="mb-2 text-sm font-medium">Lägg till orderrad</p>
-            <div className="grid gap-2 md:grid-cols-5">
-              <Input value={lineTitle} onChange={(e) => setLineTitle(e.target.value)} placeholder="Titel" className="md:col-span-2" disabled={isEconomyLocked} />
-              <Input value={lineQty} onChange={(e) => setLineQty(e.target.value)} type="number" min="0" step="0.01" placeholder="Antal" disabled={isEconomyLocked} />
-              <Input
-                value={lineUnitPrice}
-                onChange={(e) => setLineUnitPrice(e.target.value)}
-                type="number"
-                min="0"
-                step="0.01"
-                placeholder="A-pris" disabled={isEconomyLocked}
-              />
-              <Input value={lineVatRate} onChange={(e) => setLineVatRate(e.target.value)} type="number" min="0" step="0.01" placeholder="Moms %" disabled={isEconomyLocked} />
+      {activeTab === 'updates' && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Uppdateringar</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {activity.length === 0 && <p className="text-sm text-foreground/70">Inga aktiviteter ännu.</p>}
+              {activity.map((item) => (
+                <div key={item.id} className="rounded-lg border p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-medium">{item.text}</p>
+                    <Badge>{item.source}</Badge>
+                  </div>
+                  <p className="mt-1 text-xs text-foreground/70">{new Date(item.at).toLocaleString('sv-SE')}</p>
+                </div>
+              ))}
             </div>
-            <Button className="mt-2" onClick={() => addLineMutation.mutate()} disabled={addLineMutation.isPending || isEconomyLocked}>
-              {addLineMutation.isPending ? 'Lägger till...' : 'Lägg till rad'}
-            </Button>
-          </div>
+          </CardContent>
+        </Card>
+      )}
 
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Titel</TableHead>
-                <TableHead>Antal</TableHead>
-                <TableHead>A-pris</TableHead>
-                <TableHead>Moms %</TableHead>
-                <TableHead>Total</TableHead>
-                <TableHead className="text-right">Åtgärder</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {lines.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={6} className="text-foreground/70">
-                    Inga orderrader ännu.
-                  </TableCell>
-                </TableRow>
+      {activeTab === 'economy' && (
+        <div className="space-y-4">
+          <ProjectFinancePanel companyId={companyId} projectId={projectId} role={role} isLocked={isEconomyLocked} />
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Order</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge>Total: {Number(orderQuery.data?.total ?? 0).toFixed(2)} kr</Badge>{isEconomyLocked && <Badge>Låst efter fakturering</Badge>}
+
+                <RoleGate
+                  role={role}
+                  allow={['finance', 'admin']}
+                  fallback={<p className="text-sm text-foreground/70">Ekonomi/Admin kan ändra orderstatus och skapa faktura.</p>}
+                >
+                  <div className="w-52">
+                    <Select
+                      value={statusValue}
+                      onValueChange={(value) => {
+                        const next = value as OrderStatus;
+                        if (next === 'cancelled' && statusValue !== 'cancelled') {
+                          setPendingOrderStatus(next);
+                          setCancelConfirmOpen(true);
+                          return;
+                        }
+                        updateOrderStatusMutation.mutate(next);
+                      }}
+                    >
+                      <SelectTrigger disabled={isEconomyLocked}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {orderStatuses.map((status) => (
+                          <SelectItem key={status} value={status}>
+                            {orderStatusEtikett(status)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <Button
+                    variant="secondary"
+                    onClick={() => invoiceMutation.mutate()}
+                    disabled={invoiceMutation.isPending || !orderId || !canManageOrder(role) || isEconomyLocked}
+                  >
+                    {invoiceMutation.isPending ? 'Skapar...' : 'Skapa faktura'}
+                  </Button>
+                </RoleGate>
+              </div>
+
+              {latestInvoiceResult && (
+                <Card className="border-dashed">
+                  <CardContent className="p-3 text-sm">
+                    <p className="font-medium">Senaste fakturasvar</p>
+                    <p className="text-foreground/70">{extractInvoiceSummary(latestInvoiceResult)}</p>
+                    <pre className="mt-2 overflow-x-auto rounded bg-muted p-2 text-xs">
+                      {JSON.stringify(latestInvoiceResult, null, 2)}
+                    </pre>
+                  </CardContent>
+                </Card>
               )}
 
-              {lines.map((line) => (
-                <EditableLineRow
-                  key={line.id}
-                  line={line}
-                  saving={updateLineMutation.isPending || deleteLineMutation.isPending}
-                  canEdit={!isEconomyLocked}
-                  onSave={(nextLine) => updateLineMutation.mutate(nextLine)}
-                  onDelete={() => setDeleteTarget(line)}
-                />
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Fakturor</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-2">
-            {invoicesQuery.isLoading && <p className="text-sm text-foreground/70">Laddar fakturor...</p>}
-            {!invoicesQuery.isLoading && (invoicesQuery.data?.length ?? 0) === 0 && (
-              <p className="text-sm text-foreground/70">Inga fakturor ännu.</p>
-            )}
-
-            {(invoicesQuery.data ?? []).map((item) => (
-              <div key={item.id} className="rounded-lg border p-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-sm font-medium">{item.invoice_no}</p>
-                  <Badge>{fakturaStatusEtikett(item.status)}</Badge>
+              <div className="rounded-lg border p-3">
+                <p className="mb-2 text-sm font-medium">Lägg till orderrad</p>
+                <div className="grid gap-2 md:grid-cols-5">
+                  <Input value={lineTitle} onChange={(e) => setLineTitle(e.target.value)} placeholder="Titel" className="md:col-span-2" disabled={isEconomyLocked} />
+                  <Input value={lineQty} onChange={(e) => setLineQty(e.target.value)} type="number" min="0" step="0.01" placeholder="Antal" disabled={isEconomyLocked} />
+                  <Input
+                    value={lineUnitPrice}
+                    onChange={(e) => setLineUnitPrice(e.target.value)}
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="A-pris" disabled={isEconomyLocked}
+                  />
+                  <Input value={lineVatRate} onChange={(e) => setLineVatRate(e.target.value)} type="number" min="0" step="0.01" placeholder="Moms %" disabled={isEconomyLocked} />
                 </div>
-                <p className="mt-1 text-xs text-foreground/70">
-                  {new Date(item.created_at).toLocaleString('sv-SE')} • Förfallo: {new Date(item.due_date).toLocaleDateString('sv-SE')} •{' '}
-                  Total: {Number(item.total).toFixed(2)} {item.currency}
-                </p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <Button asChild size="sm" variant="secondary">
-                    <Link href={`/invoices/${item.id}`}>Öppna</Link>
-                  </Button>
-                  <Button asChild size="sm" variant="outline">
-                    <Link href={`/api/invoices/${item.id}/export?compact=1`}>Exportera JSON</Link>
-                  </Button>
-                  <Button asChild size="sm" variant="outline">
-                    <Link href={`/invoices/${item.id}/print`} target="_blank">
-                      Skriv ut / PDF
-                    </Link>
-                  </Button>
-                </div>
+                <Button className="mt-2" onClick={() => addLineMutation.mutate()} disabled={addLineMutation.isPending || isEconomyLocked}>
+                  {addLineMutation.isPending ? 'Lägger till...' : 'Lägg till rad'}
+                </Button>
               </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Aktivitetslogg</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-2">
-            {activity.length === 0 && <p className="text-sm text-foreground/70">Inga aktiviteter ännu.</p>}
-            {activity.map((item) => (
-              <div key={item.id} className="rounded-lg border p-3">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-sm font-medium">{item.text}</p>
-                  <Badge>{item.source}</Badge>
-                </div>
-                <p className="mt-1 text-xs text-foreground/70">{new Date(item.at).toLocaleString('sv-SE')}</p>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Titel</TableHead>
+                    <TableHead>Antal</TableHead>
+                    <TableHead>A-pris</TableHead>
+                    <TableHead>Moms %</TableHead>
+                    <TableHead>Total</TableHead>
+                    <TableHead className="text-right">Åtgärder</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {lines.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={6} className="text-foreground/70">
+                        Inga orderrader ännu.
+                      </TableCell>
+                    </TableRow>
+                  )}
+
+                  {lines.map((line) => (
+                    <EditableLineRow
+                      key={line.id}
+                      line={line}
+                      saving={updateLineMutation.isPending || deleteLineMutation.isPending}
+                      canEdit={!isEconomyLocked}
+                      onSave={(nextLine) => updateLineMutation.mutate(nextLine)}
+                      onDelete={() => setDeleteTarget(line)}
+                    />
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Fakturor</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {invoicesQuery.isLoading && <p className="text-sm text-foreground/70">Laddar fakturor...</p>}
+                {!invoicesQuery.isLoading && (invoicesQuery.data?.length ?? 0) === 0 && (
+                  <p className="text-sm text-foreground/70">Inga fakturor ännu.</p>
+                )}
+
+                {(invoicesQuery.data ?? []).map((item) => (
+                  <div key={item.id} className="rounded-lg border p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-sm font-medium">{item.invoice_no}</p>
+                      <Badge>{fakturaStatusEtikett(item.status)}</Badge>
+                    </div>
+                    <p className="mt-1 text-xs text-foreground/70">
+                      {new Date(item.created_at).toLocaleString('sv-SE')} • Förfallo: {new Date(item.due_date).toLocaleDateString('sv-SE')} • Total:{' '}
+                      {Number(item.total).toFixed(2)} {item.currency}
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <Button asChild size="sm" variant="secondary">
+                        <Link href={`/invoices/${item.id}`}>Öppna</Link>
+                      </Button>
+                      <Button asChild size="sm" variant="outline">
+                        <Link href={`/api/invoices/${item.id}/export?compact=1`}>Exportera JSON</Link>
+                      </Button>
+                      <Button asChild size="sm" variant="outline">
+                        <Link href={`/invoices/${item.id}/print`} target="_blank">
+                          Skriv ut / PDF
+                        </Link>
+                      </Button>
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {activeTab === 'attachments' && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Bilagor</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-foreground/70">Bilagor hanteras inte direkt på projekt ännu. Använd fakturor eller relaterade flöden tills vidare.</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {activeTab === 'members' && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Medlemmar</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-foreground/70">Projektet använder bolagets teammedlemmar. Egen projekttilldelning finns inte på denna sida ännu.</p>
+            <Button asChild variant="outline">
+              <Link href="/team">Öppna medlemmar</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {activeTab === 'logs' && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Loggar</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="rounded-lg border p-3 text-sm">
+              <p className="font-medium">Projekt-ID</p>
+              <p className="mt-1 break-all font-mono text-foreground/70">{project.id}</p>
+            </div>
+            <div className="rounded-lg border p-3 text-sm">
+              <p className="font-medium">Bolags-ID</p>
+              <p className="mt-1 break-all font-mono text-foreground/70">{project.company_id}</p>
+            </div>
+            <div className="rounded-lg border p-3 text-sm">
+              <p className="font-medium">Statusnyckel</p>
+              <p className="mt-1 text-foreground/70">{project.status}</p>
+            </div>
+            <div className="rounded-lg border p-3 text-sm">
+              <p className="font-medium">Position</p>
+              <p className="mt-1 text-foreground/70">{project.position}</p>
+            </div>
+            {orderId ? (
+              <div className="rounded-lg border p-3 text-sm">
+                <p className="font-medium">Order-ID</p>
+                <p className="mt-1 break-all font-mono text-foreground/70">{orderId}</p>
+              </div>
+            ) : null}
+          </CardContent>
+        </Card>
+      )}
 
       <Dialog open={cancelConfirmOpen} onOpenChange={setCancelConfirmOpen}>
         <DialogContent>
