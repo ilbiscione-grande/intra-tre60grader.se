@@ -219,27 +219,27 @@ export default function OrderDetailsPage() {
             </Button>
           </div>
         </CardHeader>
-        <CardContent className="space-y-3">
+        <CardContent className="space-y-2.5">
           <div className="flex flex-wrap items-center gap-2">
-            <Badge className="gap-1.5">
-              <Hash className="h-3.5 w-3.5" />
+            <Badge className="gap-1.5 px-2 py-1 text-[11px]">
+              <Hash className="h-3 w-3" />
               {order.order_no ?? order.id}
             </Badge>
-            <Badge className="gap-1.5">
-              <ShieldCheck className="h-3.5 w-3.5" />
+            <Badge className="gap-1.5 px-2 py-1 text-[11px]">
+              <ShieldCheck className="h-3 w-3" />
               {orderStatusEtikett(order.status)}
             </Badge>
-            <Badge className="gap-1.5">
-              <CircleDollarSign className="h-3.5 w-3.5" />
+            <Badge className="gap-1.5 px-2 py-1 text-[11px]">
+              <CircleDollarSign className="h-3 w-3" />
               {Number(order.total).toFixed(2)} kr
             </Badge>
-            <Badge className="gap-1.5">
-              <CalendarDays className="h-3.5 w-3.5" />
+            <Badge className="gap-1.5 px-2 py-1 text-[11px]">
+              <CalendarDays className="h-3 w-3" />
               {new Date(order.created_at).toLocaleDateString('sv-SE')}
             </Badge>
           </div>
 
-          <p className="text-sm text-foreground/80">Projekt: {projectQuery.data?.title ?? order.project_id}</p>
+          <p className="text-xs text-foreground/70">Projekt: {projectQuery.data?.title ?? order.project_id}</p>
         </CardContent>
       </Card>
 
