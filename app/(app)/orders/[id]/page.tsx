@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
+import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import RoleGate from '@/components/common/RoleGate';
@@ -20,9 +21,18 @@ type OrderRow = Pick<DbRow<'orders'>, 'id' | 'project_id' | 'status' | 'total' |
 type ProjectRow = Pick<DbRow<'projects'>, 'id' | 'title'>;
 type OrderLineRow = Pick<DbRow<'order_lines'>, 'id' | 'title' | 'qty' | 'unit_price' | 'vat_rate' | 'total' | 'created_at'>;
 type InvoiceRow = Pick<DbRow<'invoices'>, 'id' | 'invoice_no' | 'status' | 'currency' | 'total' | 'created_at'>;
+type OrderTab = 'overview' | 'updates' | 'economy' | 'attachments' | 'members' | 'logs';
 
 const orderStatuses = ['draft', 'sent', 'paid', 'cancelled', 'invoiced'] as const;
 type OrderStatus = (typeof orderStatuses)[number];
+const orderTabs: Array<{ id: OrderTab; label: string }> = [
+  { id: 'overview', label: 'Översikt' },
+  { id: 'updates', label: 'Uppdateringar' },
+  { id: 'economy', label: 'Ekonomi' },
+  { id: 'attachments', label: 'Bilagor' },
+  { id: 'members', label: 'Medlemmar' },
+  { id: 'logs', label: 'Loggar' }
+];
 
 function orderStatusEtikett(status: string) {
   const map: Record<string, string> = {
@@ -63,6 +73,7 @@ export default function OrderDetailsPage() {
   const orderId = params.id;
   const supabase = createClient();
   const queryClient = useQueryClient();
+  const [activeTab, setActiveTab] = useState<OrderTab>('overview');
 
   const orderQuery = useQuery<OrderRow | null>({
     queryKey: ['order', companyId, orderId],
@@ -159,6 +170,30 @@ export default function OrderDetailsPage() {
 
   const order = orderQuery.data;
   const statusValue = orderStatuses.includes(order.status as OrderStatus) ? (order.status as OrderStatus) : 'draft';
+  const updates = useMemo(() => {
+    const items = [
+      {
+        id: `order-${order.id}`,
+        title: 'Order skapad',
+        meta: `Status: ${orderStatusEtikett(order.status)}`,
+        at: order.created_at
+      },
+      ...(linesQuery.data ?? []).map((line) => ({
+        id: `line-${line.id}`,
+        title: `Orderrad: ${line.title}`,
+        meta: `${Number(line.qty).toFixed(2)} st • ${Number(line.total).toFixed(2)} kr`,
+        at: line.created_at
+      })),
+      ...(invoicesQuery.data ?? []).map((inv) => ({
+        id: `invoice-${inv.id}`,
+        title: `Faktura ${inv.invoice_no}`,
+        meta: `${fakturaStatusEtikett(inv.status)} • ${Number(inv.total).toFixed(2)} ${inv.currency}`,
+        at: inv.created_at
+      }))
+    ];
+
+    return items.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
+  }, [invoicesQuery.data, linesQuery.data, order.created_at, order.id, order.status]);
 
   return (
     <section className="space-y-4">
@@ -184,99 +219,235 @@ export default function OrderDetailsPage() {
           </div>
 
           <p className="text-sm text-foreground/80">Projekt: {projectQuery.data?.title ?? order.project_id}</p>
-
-          <RoleGate role={role} allow={['finance', 'admin']}>
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="w-56">
-                <Select value={statusValue} onValueChange={(value) => updateStatusMutation.mutate(value as OrderStatus)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {orderStatuses.map((status) => (
-                      <SelectItem key={status} value={status}>
-                        {status}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <Button
-                onClick={() => invoiceMutation.mutate()}
-                disabled={invoiceMutation.isPending || !canManageOrder(role)}
-              >
-                {invoiceMutation.isPending ? 'Skapar...' : 'Skapa faktura'}
-              </Button>
-            </div>
-          </RoleGate>
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Orderrader</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Titel</TableHead>
-                <TableHead>Antal</TableHead>
-                <TableHead>A-pris</TableHead>
-                <TableHead>Moms %</TableHead>
-                <TableHead>Total</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {(linesQuery.data ?? []).length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-foreground/70">
-                    Inga rader ännu.
-                  </TableCell>
-                </TableRow>
-              )}
-              {(linesQuery.data ?? []).map((line) => (
-                <TableRow key={line.id}>
-                  <TableCell>{line.title}</TableCell>
-                  <TableCell>{Number(line.qty).toFixed(2)}</TableCell>
-                  <TableCell>{Number(line.unit_price).toFixed(2)}</TableCell>
-                  <TableCell>{Number(line.vat_rate).toFixed(2)}</TableCell>
-                  <TableCell>{Number(line.total).toFixed(2)}</TableCell>
-                </TableRow>
+      <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+        {orderTabs.map((tab) => (
+          <Button
+            key={tab.id}
+            type="button"
+            variant={activeTab === tab.id ? 'default' : 'outline'}
+            className="shrink-0"
+            onClick={() => setActiveTab(tab.id)}
+          >
+            {tab.label}
+          </Button>
+        ))}
+      </div>
+
+      {activeTab === 'overview' && (
+        <div className="space-y-4">
+          <div className="grid gap-3 md:grid-cols-3">
+            <Card>
+              <CardContent className="p-4">
+                <p className="text-sm text-foreground/70">Projekt</p>
+                <p className="mt-1 font-medium">{projectQuery.data?.title ?? order.project_id}</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <p className="text-sm text-foreground/70">Orderrader</p>
+                <p className="mt-1 font-medium">{linesQuery.data?.length ?? 0}</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <p className="text-sm text-foreground/70">Fakturor</p>
+                <p className="mt-1 font-medium">{invoicesQuery.data?.length ?? 0}</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Orderrader</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Titel</TableHead>
+                    <TableHead>Antal</TableHead>
+                    <TableHead>A-pris</TableHead>
+                    <TableHead>Moms %</TableHead>
+                    <TableHead>Total</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(linesQuery.data ?? []).length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-foreground/70">
+                        Inga rader ännu.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  {(linesQuery.data ?? []).map((line) => (
+                    <TableRow key={line.id}>
+                      <TableCell>{line.title}</TableCell>
+                      <TableCell>{Number(line.qty).toFixed(2)}</TableCell>
+                      <TableCell>{Number(line.unit_price).toFixed(2)}</TableCell>
+                      <TableCell>{Number(line.vat_rate).toFixed(2)}</TableCell>
+                      <TableCell>{Number(line.total).toFixed(2)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {activeTab === 'updates' && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Uppdateringar</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {updates.length === 0 && <p className="text-sm text-foreground/70">Inga uppdateringar ännu.</p>}
+            {updates.map((item) => (
+              <div key={item.id} className="rounded-lg border p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="font-medium">{item.title}</p>
+                  <p className="text-xs text-foreground/60">{new Date(item.at).toLocaleString('sv-SE')}</p>
+                </div>
+                <p className="mt-1 text-sm text-foreground/70">{item.meta}</p>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {activeTab === 'economy' && (
+        <div className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Ekonomi</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <RoleGate role={role} allow={['finance', 'admin']}>
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="w-56">
+                    <Select value={statusValue} onValueChange={(value) => updateStatusMutation.mutate(value as OrderStatus)}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {orderStatuses.map((status) => (
+                          <SelectItem key={status} value={status}>
+                            {status}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <Button
+                    onClick={() => invoiceMutation.mutate()}
+                    disabled={invoiceMutation.isPending || !canManageOrder(role)}
+                  >
+                    {invoiceMutation.isPending ? 'Skapar...' : 'Skapa faktura'}
+                  </Button>
+                </div>
+              </RoleGate>
+
+              <div className="grid gap-3 md:grid-cols-3">
+                <div className="rounded-lg border p-3">
+                  <p className="text-sm text-foreground/70">Ordertotal</p>
+                  <p className="mt-1 font-medium">{Number(order.total).toFixed(2)} kr</p>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <p className="text-sm text-foreground/70">Fakturor</p>
+                  <p className="mt-1 font-medium">{invoicesQuery.data?.length ?? 0}</p>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <p className="text-sm text-foreground/70">Status</p>
+                  <p className="mt-1 font-medium">{orderStatusEtikett(order.status)}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Fakturor för ordern</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {(invoicesQuery.data ?? []).length === 0 && <p className="text-sm text-foreground/70">Inga fakturor ännu.</p>}
+              {(invoicesQuery.data ?? []).map((inv) => (
+                <div key={inv.id} className="rounded-lg border p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="font-medium">{inv.invoice_no}</p>
+                    <Badge>{fakturaStatusEtikett(inv.status)}</Badge>
+                  </div>
+                  <p className="mt-1 text-sm text-foreground/70">
+                    {new Date(inv.created_at).toLocaleString('sv-SE')} • {Number(inv.total).toFixed(2)} {inv.currency}
+                  </p>
+                  <div className="mt-2 flex gap-2">
+                    <Button asChild size="sm" variant="secondary">
+                      <Link href={`/invoices/${inv.id}`}>Öppna faktura</Link>
+                    </Button>
+                    <Button asChild size="sm" variant="outline">
+                      <Link href={`/api/invoices/${inv.id}/export?compact=1`}>Exportera JSON</Link>
+                    </Button>
+                  </div>
+                </div>
               ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Fakturor för ordern</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          {(invoicesQuery.data ?? []).length === 0 && <p className="text-sm text-foreground/70">Inga fakturor ännu.</p>}
-          {(invoicesQuery.data ?? []).map((inv) => (
-            <div key={inv.id} className="rounded-lg border p-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="font-medium">{inv.invoice_no}</p>
-                <Badge>{fakturaStatusEtikett(inv.status)}</Badge>
-              </div>
-              <p className="mt-1 text-sm text-foreground/70">
-                {new Date(inv.created_at).toLocaleString('sv-SE')} • {Number(inv.total).toFixed(2)} {inv.currency}
-              </p>
-              <div className="mt-2 flex gap-2">
-                <Button asChild size="sm" variant="secondary">
-                  <Link href={`/invoices/${inv.id}`}>Öppna faktura</Link>
-                </Button>
-                <Button asChild size="sm" variant="outline">
-                  <Link href={`/api/invoices/${inv.id}/export?compact=1`}>Exportera JSON</Link>
-                </Button>
-              </div>
+      {activeTab === 'attachments' && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Bilagor</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-foreground/70">Bilagor hanteras inte direkt på order ännu. Lägg bilagor på projekt eller faktura tills vidare.</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {activeTab === 'members' && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Medlemmar</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-foreground/70">Ordern är kopplad till projektets team och egna ordermedlemmar används inte ännu.</p>
+            <Button asChild variant="outline">
+              <Link href={`/projects/${order.project_id}`}>Visa projektmedlemmar</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {activeTab === 'logs' && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Loggar</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="rounded-lg border p-3 text-sm">
+              <p className="font-medium">Order-ID</p>
+              <p className="mt-1 break-all font-mono text-foreground/70">{order.id}</p>
             </div>
-          ))}
-        </CardContent>
-      </Card>
+            <div className="rounded-lg border p-3 text-sm">
+              <p className="font-medium">Projekt-ID</p>
+              <p className="mt-1 break-all font-mono text-foreground/70">{order.project_id}</p>
+            </div>
+            <div className="rounded-lg border p-3 text-sm">
+              <p className="font-medium">Systemstatus</p>
+              <p className="mt-1 text-foreground/70">{order.status}</p>
+            </div>
+            <div className="rounded-lg border p-3 text-sm">
+              <p className="font-medium">Skapad</p>
+              <p className="mt-1 text-foreground/70">{new Date(order.created_at).toLocaleString('sv-SE')}</p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </section>
   );
 }
