@@ -164,13 +164,10 @@ export default function OrderDetailsPage() {
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : 'Kunde inte skapa faktura')
   });
-
-  if (orderQuery.isLoading) return <p>Laddar order...</p>;
-  if (!orderQuery.data) return <p>Order hittades inte.</p>;
-
-  const order = orderQuery.data;
-  const statusValue = orderStatuses.includes(order.status as OrderStatus) ? (order.status as OrderStatus) : 'draft';
   const updates = useMemo(() => {
+    if (!orderQuery.data) return [];
+
+    const order = orderQuery.data;
     const items = [
       {
         id: `order-${order.id}`,
@@ -193,7 +190,13 @@ export default function OrderDetailsPage() {
     ];
 
     return items.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
-  }, [invoicesQuery.data, linesQuery.data, order.created_at, order.id, order.status]);
+  }, [invoicesQuery.data, linesQuery.data, orderQuery.data]);
+
+  if (orderQuery.isLoading) return <p>Laddar order...</p>;
+  if (!orderQuery.data) return <p>Order hittades inte.</p>;
+
+  const order = orderQuery.data;
+  const statusValue = orderStatuses.includes(order.status as OrderStatus) ? (order.status as OrderStatus) : 'draft';
 
   return (
     <section className="space-y-4">
