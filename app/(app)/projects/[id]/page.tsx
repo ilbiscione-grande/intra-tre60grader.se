@@ -2,8 +2,10 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import type { Route } from 'next';
 import { useParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { ArrowUpRight, CircleDollarSign, FolderKanban, ReceiptText, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import RoleGate from '@/components/common/RoleGate';
 import { useAppContext } from '@/components/providers/AppContext';
@@ -105,6 +107,37 @@ function fakturaStatusEtikett(status: string) {
 
 function canManageOrder(role: Role) {
   return role === 'finance' || role === 'admin';
+}
+
+function projectColumnTitle(status: string, columns: Array<{ key: string; title: string }>) {
+  return columns.find((column) => column.key === status)?.title ?? status;
+}
+
+function ProjectSummaryCard({
+  icon: Icon,
+  label,
+  value,
+  helper
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  value: string;
+  helper: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-border/70 bg-muted/15 p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 space-y-1">
+          <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">{label}</p>
+          <p className="text-base font-semibold leading-snug text-foreground">{value}</p>
+          <p className="text-sm text-foreground/65">{helper}</p>
+        </div>
+        <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+          <Icon className="h-5 w-5" />
+        </span>
+      </div>
+    </div>
+  );
 }
 
 export default function ProjectDetailsPage() {
@@ -500,23 +533,76 @@ export default function ProjectDetailsPage() {
 
   const project = projectQuery.data;
   const lines = linesQuery.data ?? [];
+  const currentCustomer = (customersQuery.data ?? []).find((customer) => customer.id === draftCustomerId) ?? null;
   const statusValue = orderStatuses.includes((orderQuery.data?.status ?? 'draft') as OrderStatus)
     ? (orderQuery.data?.status as OrderStatus)
     : 'draft';
   const isEconomyLocked = (invoicesQuery.data ?? []).some((invoice) => invoice.status !== 'void');
+  const latestInvoice = invoicesQuery.data?.[0] ?? null;
+  const latestActivityItem = activity[0] ?? null;
+  const projectStatusLabel = projectColumnTitle(draftStatus || project.status, statusColumns);
 
   return (
     <section className="space-y-4">
       <Card>
-        <CardHeader>
-          <CardTitle>Projektdetaljer</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
+        <CardHeader className="space-y-4">
+          <div className="space-y-2">
+            <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-foreground/45">Projekt</p>
+            <CardTitle className="text-xl lg:text-2xl">{project.title}</CardTitle>
+          </div>
           <div className="flex flex-wrap items-center gap-2">
+            <Badge>{projectStatusLabel}</Badge>
             <Badge>Skapad: {new Date(project.created_at).toLocaleDateString('sv-SE')}</Badge>
             <Badge>Uppdaterad: {new Date(project.updated_at).toLocaleString('sv-SE')}</Badge>
             {project.customer_id ? <Badge>Kund kopplad</Badge> : <Badge>Ingen kund</Badge>}
             {isEconomyLocked ? <Badge>Låst efter fakturering</Badge> : null}
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <ProjectSummaryCard
+              icon={Users}
+              label="Kund"
+              value={currentCustomer?.name ?? 'Ingen kund'}
+              helper={currentCustomer ? 'kopplad till projektet' : 'kan läggas till i översikten'}
+            />
+            <ProjectSummaryCard
+              icon={ReceiptText}
+              label="Orderrader"
+              value={String(lines.length)}
+              helper={orderId ? 'kopplade till projektets order' : 'ingen order skapad ännu'}
+            />
+            <ProjectSummaryCard
+              icon={CircleDollarSign}
+              label="Ordertotal"
+              value={`${Number(orderQuery.data?.total ?? 0).toFixed(2)} kr`}
+              helper={latestInvoice ? `senaste faktura ${latestInvoice.invoice_no}` : 'ingen faktura skapad ännu'}
+            />
+            <ProjectSummaryCard
+              icon={FolderKanban}
+              label="Senaste aktivitet"
+              value={latestActivityItem ? latestActivityItem.text : 'Ingen aktivitet ännu'}
+              helper={latestActivityItem ? new Date(latestActivityItem.at).toLocaleString('sv-SE') : 'projektet väntar på första aktivitet'}
+            />
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {orderId ? (
+              <Button asChild variant="outline">
+                <Link href={`/orders/${orderId}`}>
+                  <span>Öppna order</span>
+                  <ArrowUpRight className="ml-2 h-4 w-4" />
+                </Link>
+              </Button>
+            ) : null}
+            {currentCustomer ? (
+              <Button asChild variant="outline">
+                <Link href={`/customers/${currentCustomer.id}` as Route}>
+                  <span>Öppna kund</span>
+                  <ArrowUpRight className="ml-2 h-4 w-4" />
+                </Link>
+              </Button>
+            ) : null}
           </div>
         </CardContent>
       </Card>
@@ -586,7 +672,7 @@ export default function ProjectDetailsPage() {
               <div className="grid gap-3 md:grid-cols-4">
                 <div className="rounded-lg border p-3">
                   <p className="text-sm text-foreground/70">Kund</p>
-                  <p className="mt-1 font-medium">{(customersQuery.data ?? []).find((c) => c.id === draftCustomerId)?.name ?? 'Ingen kund'}</p>
+                  <p className="mt-1 font-medium">{currentCustomer?.name ?? 'Ingen kund'}</p>
                 </div>
                 <div className="rounded-lg border p-3">
                   <p className="text-sm text-foreground/70">Orderrader</p>
