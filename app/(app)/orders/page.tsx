@@ -29,6 +29,18 @@ function orderStatusEtikett(status: string) {
   return map[status] ?? status;
 }
 
+function orderStatusBadgeClass(status: string) {
+  const map: Record<string, string> = {
+    draft: 'border-amber-200 bg-amber-50 text-amber-800',
+    sent: 'border-sky-200 bg-sky-50 text-sky-800',
+    paid: 'border-emerald-200 bg-emerald-50 text-emerald-800',
+    invoiced: 'border-emerald-200 bg-emerald-50 text-emerald-800',
+    cancelled: 'border-rose-200 bg-rose-50 text-rose-800'
+  };
+
+  return map[status] ?? 'border-slate-200 bg-slate-50 text-slate-700';
+}
+
 type OrderListItem = {
   id: string;
   orderNo: string | null;
@@ -192,7 +204,7 @@ export default function OrdersPage() {
                     <p className="mt-1 font-mono text-sm">{row.orderNo ?? row.id}</p>
                   </div>
                   <div className="flex shrink-0 flex-col items-end gap-2">
-                    <Badge>{orderStatusEtikett(row.status)}</Badge>
+                    <Badge className={orderStatusBadgeClass(row.status)}>{orderStatusEtikett(row.status)}</Badge>
                     <button
                       type="button"
                       aria-label="Kopiera ordernummer"
@@ -264,7 +276,7 @@ export default function OrdersPage() {
                 <TableCell>{row.projectTitle}</TableCell>
                 <TableCell>{row.customerName}</TableCell>
                 <TableCell>
-                  <Badge>{orderStatusEtikett(row.status)}</Badge>
+                  <Badge className={orderStatusBadgeClass(row.status)}>{orderStatusEtikett(row.status)}</Badge>
                 </TableCell>
                 <TableCell>{row.total.toFixed(2)} kr</TableCell>
                 <TableCell>{new Date(row.createdAt).toLocaleDateString('sv-SE')}</TableCell>
