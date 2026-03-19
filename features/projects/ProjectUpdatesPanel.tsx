@@ -4,6 +4,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { Edit3, FileText, ImagePlus, Paperclip, Reply, Send, Trash2, Type } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import ActionSheet from '@/components/common/ActionSheet';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -185,6 +186,7 @@ export default function ProjectUpdatesPanel({
   const [editingUpdateId, setEditingUpdateId] = useState<string | null>(null);
   const [editingContent, setEditingContent] = useState('');
   const [expandedComposer, setExpandedComposer] = useState(false);
+  const [rootAttachmentSheetOpen, setRootAttachmentSheetOpen] = useState(false);
 
   const currentUserQuery = useQuery({
     queryKey: ['current-user-id'],
@@ -757,56 +759,21 @@ export default function ProjectUpdatesPanel({
               }}
             />
 
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button type="button" variant="outline" size="icon" aria-label="Lägg till innehåll" className="relative">
-                  <Paperclip className="h-4 w-4" />
-                  {rootComposer.files.length > 0 ? (
-                    <span className="absolute -right-1 -top-1 inline-flex min-h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground">
-                      {rootComposer.files.length > 9 ? '9+' : rootComposer.files.length}
-                    </span>
-                  ) : null}
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" side="top" className="w-44">
-                <DropdownMenuItem
-                  onSelect={(event) => {
-                    event.preventDefault();
-                    document.getElementById('project-update-input')?.focus();
-                  }}
-                >
-                  <Type className="mr-2 h-4 w-4" />
-                  Text
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onSelect={(event) => {
-                    event.preventDefault();
-                    requestAnimationFrame(() => rootImageFileRef.current?.click());
-                  }}
-                >
-                  <ImagePlus className="mr-2 h-4 w-4" />
-                  Bild
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onSelect={(event) => {
-                    event.preventDefault();
-                    requestAnimationFrame(() => rootDocumentFileRef.current?.click());
-                  }}
-                >
-                  <FileText className="mr-2 h-4 w-4" />
-                  Fil
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onSelect={(event) => {
-                    event.preventDefault();
-                    setExpandedComposer((prev) => !prev);
-                  }}
-                >
-                  <Type className="mr-2 h-4 w-4" />
-                  {expandedComposer ? 'Kompakt läge' : 'Större skrivläge'}
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              aria-label="Lägg till innehåll"
+              className="relative"
+              onClick={() => setRootAttachmentSheetOpen(true)}
+            >
+              <Paperclip className="h-4 w-4" />
+              {rootComposer.files.length > 0 ? (
+                <span className="absolute -right-1 -top-1 inline-flex min-h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground">
+                  {rootComposer.files.length > 9 ? '9+' : rootComposer.files.length}
+                </span>
+              ) : null}
+            </Button>
 
             {expandedComposer ? (
               <Textarea
@@ -891,6 +858,64 @@ export default function ProjectUpdatesPanel({
 
         </CardContent>
       </Card>
+
+      <ActionSheet
+        open={rootAttachmentSheetOpen}
+        onClose={() => setRootAttachmentSheetOpen(false)}
+        title="Lägg till i uppdatering"
+        description="Välj vad du vill lägga till i inlägget."
+      >
+        <div className="grid gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            className="h-12 justify-start rounded-2xl"
+            onClick={() => {
+              setRootAttachmentSheetOpen(false);
+              document.getElementById('project-update-input')?.focus();
+            }}
+          >
+            <Type className="mr-2 h-4 w-4" />
+            Text
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="h-12 justify-start rounded-2xl"
+            onClick={() => {
+              setRootAttachmentSheetOpen(false);
+              requestAnimationFrame(() => rootImageFileRef.current?.click());
+            }}
+          >
+            <ImagePlus className="mr-2 h-4 w-4" />
+            Bild
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="h-12 justify-start rounded-2xl"
+            onClick={() => {
+              setRootAttachmentSheetOpen(false);
+              requestAnimationFrame(() => rootDocumentFileRef.current?.click());
+            }}
+          >
+            <FileText className="mr-2 h-4 w-4" />
+            Fil
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="h-12 justify-start rounded-2xl"
+            onClick={() => {
+              setRootAttachmentSheetOpen(false);
+              setExpandedComposer((prev) => !prev);
+            }}
+          >
+            <Type className="mr-2 h-4 w-4" />
+            {expandedComposer ? 'Kompakt läge' : 'Större skrivläge'}
+          </Button>
+        </div>
+      </ActionSheet>
     </Fragment>
   );
 }
