@@ -45,69 +45,76 @@ export default function OrdersPage() {
   const supabase = createClient();
   const [search, setSearch] = useState('');
 
-  const query = useQuery<OrderListItem[]>({
+  const ordersQuery = useQuery<OrderRow[]>({
     queryKey: ['orders', companyId],
     queryFn: async () => {
-      const { data: ordersData, error: ordersError } = await supabase
+      const { data, error } = await supabase
         .from('orders')
         .select('id,order_no,project_id,status,total,created_at')
         .eq('company_id', companyId)
         .order('created_at', { ascending: false })
         .returns<OrderRow[]>();
 
-      if (ordersError) throw ordersError;
-
-      const orders = ordersData ?? [];
-      if (orders.length === 0) return [];
-
-      const projectIds = [...new Set(orders.map((o) => o.project_id))];
-      const { data: projectsData, error: projectsError } = await supabase
-        .from('projects')
-        .select('id,title,customer_id')
-        .eq('company_id', companyId)
-        .in('id', projectIds)
-        .returns<ProjectRow[]>();
-
-      if (projectsError) throw projectsError;
-
-      const customerIds = [...new Set((projectsData ?? []).map((p) => p.customer_id).filter(Boolean) as string[])];
-      const { data: customersData, error: customersError } = customerIds.length
-        ? await supabase
-            .from('customers')
-            .select('id,name')
-            .eq('company_id', companyId)
-            .in('id', customerIds)
-            .returns<CustomerRow[]>()
-        : { data: [] as CustomerRow[], error: null as null | Error };
-
-      if (customersError) throw customersError;
-
-      const projectById = new Map((projectsData ?? []).map((p) => [p.id, p]));
-      const customerById = new Map((customersData ?? []).map((c) => [c.id, c.name]));
-
-      return orders.map((order) => {
-        const project = projectById.get(order.project_id);
-        const customerName = project?.customer_id ? customerById.get(project.customer_id) ?? '-' : '-';
-
-        return {
-          id: order.id,
-          orderNo: order.order_no,
-          projectId: order.project_id,
-          projectTitle: project?.title ?? order.project_id,
-          customerName,
-          status: order.status,
-          total: Number(order.total ?? 0),
-          createdAt: order.created_at
-        };
-      });
+      if (error) throw error;
+      return data ?? [];
     }
   });
 
+  const projectsQuery = useQuery<ProjectRow[]>({
+    queryKey: ['orders-project-lookup', companyId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('projects')
+        .select('id,title,customer_id')
+        .eq('company_id', companyId)
+        .returns<ProjectRow[]>();
+
+      if (error) throw error;
+      return data ?? [];
+    }
+  });
+
+  const customersQuery = useQuery<CustomerRow[]>({
+    queryKey: ['orders-customer-lookup', companyId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('customers')
+        .select('id,name')
+        .eq('company_id', companyId)
+        .returns<CustomerRow[]>();
+
+      if (error) throw error;
+      return data ?? [];
+    }
+  });
+
+  const rows = useMemo<OrderListItem[]>(() => {
+    const orders = ordersQuery.data ?? [];
+    const projectById = new Map((projectsQuery.data ?? []).map((project) => [project.id, project]));
+    const customerById = new Map((customersQuery.data ?? []).map((customer) => [customer.id, customer.name]));
+
+    return orders.map((order) => {
+      const project = projectById.get(order.project_id);
+      const customerName = project?.customer_id ? customerById.get(project.customer_id) ?? '-' : '-';
+
+      return {
+        id: order.id,
+        orderNo: order.order_no,
+        projectId: order.project_id,
+        projectTitle: project?.title ?? order.project_id,
+        customerName,
+        status: order.status,
+        total: Number(order.total ?? 0),
+        createdAt: order.created_at
+      };
+    });
+  }, [customersQuery.data, ordersQuery.data, projectsQuery.data]);
+
   const filteredOrders = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
-    if (!normalizedSearch) return query.data ?? [];
+    if (!normalizedSearch) return rows;
 
-    return (query.data ?? []).filter((row) => {
+    return rows.filter((row) => {
       const searchableText = [
         row.orderNo,
         row.id,
@@ -124,7 +131,9 @@ export default function OrdersPage() {
 
       return searchableText.includes(normalizedSearch);
     });
-  }, [query.data, search]);
+  }, [rows, search]);
+
+  const isLoading = ordersQuery.isLoading || projectsQuery.isLoading || customersQuery.isLoading;
 
   async function copyOrderId(event: React.MouseEvent<HTMLButtonElement>, orderId: string) {
     event.preventDefault();
@@ -159,17 +168,17 @@ export default function OrdersPage() {
             />
           </div>
           <p className="text-sm text-foreground/65">
-            Visar {filteredOrders.length} av {query.data?.length ?? 0} ordrar
+            Visar {filteredOrders.length} av {rows.length} ordrar
           </p>
         </div>
       </Card>
 
       <div className="space-y-3 md:hidden">
-        {query.isLoading && (
+        {isLoading && (
           <Card className="p-4 text-sm text-foreground/70">Laddar ordrar...</Card>
         )}
 
-        {!query.isLoading && (filteredOrders.length ?? 0) === 0 && (
+        {!isLoading && (filteredOrders.length ?? 0) === 0 && (
           <Card className="p-4 text-sm text-foreground/70">Inga ordrar hittades.</Card>
         )}
 
@@ -235,13 +244,13 @@ export default function OrdersPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {query.isLoading && (
+            {isLoading && (
               <TableRow>
                 <TableCell colSpan={7}>Laddar ordrar...</TableCell>
               </TableRow>
             )}
 
-            {!query.isLoading && (filteredOrders.length ?? 0) === 0 && (
+            {!isLoading && (filteredOrders.length ?? 0) === 0 && (
               <TableRow>
                 <TableCell colSpan={7} className="text-foreground/70">
                   Inga ordrar hittades.

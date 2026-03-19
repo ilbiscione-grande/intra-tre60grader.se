@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import type { Route } from 'next';
+import { useRouter } from 'next/navigation';
 import { FilePlus2, FolderPlus, Plus, UserPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -37,6 +38,7 @@ const items: QuickCreateItem[] = [
 
 export default function QuickCreateMenu({ role, compact = false }: { role: Role; compact?: boolean }) {
   const visibleItems = items.filter((item) => item.roles.includes(role));
+  const router = useRouter();
 
   return (
     <DropdownMenu>
@@ -56,7 +58,13 @@ export default function QuickCreateMenu({ role, compact = false }: { role: Role;
           const Icon = item.icon;
           return (
             <DropdownMenuItem key={item.href} asChild>
-              <Link href={item.href} className="flex items-center gap-2">
+              <Link
+                href={item.href}
+                prefetch
+                onMouseEnter={() => router.prefetch(item.href)}
+                onTouchStart={() => router.prefetch(item.href)}
+                className="flex items-center gap-2"
+              >
                 <Icon className="h-4 w-4" />
                 <span>{item.label}</span>
               </Link>

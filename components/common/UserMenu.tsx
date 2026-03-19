@@ -1,5 +1,8 @@
 'use client';
 
+import Link from 'next/link';
+import type { Route } from 'next';
+import { useRouter } from 'next/navigation';
 import { CircleUserRound } from 'lucide-react';
 import { useAppContext } from '@/components/providers/AppContext';
 import { createClient } from '@/lib/supabase/client';
@@ -36,6 +39,7 @@ function getFirstName(userEmail?: string) {
 
 export default function UserMenu({ userEmail, compact = false }: { userEmail?: string; compact?: boolean }) {
   const { companyId, companies } = useAppContext();
+  const router = useRouter();
 
   async function signOut() {
     const supabase = createClient();
@@ -46,7 +50,8 @@ export default function UserMenu({ userEmail, compact = false }: { userEmail?: s
     }
 
     toast.success('Utloggad');
-    window.location.href = '/login';
+    router.replace('/login' as Route);
+    router.refresh();
   }
 
   function switchCompany(nextCompanyId: string) {
@@ -80,8 +85,12 @@ export default function UserMenu({ userEmail, compact = false }: { userEmail?: s
             ))}
           </div>
         ) : null}
-        <DropdownMenuItem onClick={() => (window.location.href = '/help')}>Hjälp</DropdownMenuItem>
-        <DropdownMenuItem onClick={() => (window.location.href = '/settings')}>Inställningar</DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link href={'/help' as Route}>Hjälp</Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link href={'/settings' as Route}>Inställningar</Link>
+        </DropdownMenuItem>
         <DropdownMenuItem onClick={signOut}>Logga ut</DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

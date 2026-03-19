@@ -2,8 +2,9 @@
 
 import Link from 'next/link';
 import type { Route } from 'next';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { BriefcaseBusiness, Building2, ScrollText, Activity, Landmark } from 'lucide-react';
+import { useEffect } from 'react';
 import { buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/ui/cn';
 import type { Role } from '@/lib/types';
@@ -25,8 +26,17 @@ const navItems: NavItem[] = [
 
 export default function MobileBottomNav({ role }: { role: Role }) {
   const pathname = usePathname();
+  const router = useRouter();
   const visibleItems = navItems.filter((item) => item.roles.includes(role));
   const columns = Math.min(Math.max(visibleItems.length, 1), 7);
+
+  useEffect(() => {
+    visibleItems.forEach((item) => {
+      if (!pathname?.startsWith(item.href)) {
+        router.prefetch(item.href);
+      }
+    });
+  }, [pathname, router, visibleItems]);
 
   return (
     <nav className="safe-bottom fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-card/95 px-3 pt-2 backdrop-blur">
@@ -42,6 +52,8 @@ export default function MobileBottomNav({ role }: { role: Role }) {
             <Link
               key={item.href}
               href={item.href}
+              prefetch
+              onTouchStart={() => router.prefetch(item.href)}
               className={cn(
                 buttonVariants({ variant: isActive ? 'default' : 'secondary', size: 'sm' }),
                 'h-12 min-w-0 flex-col gap-1 px-1 text-[10px]'

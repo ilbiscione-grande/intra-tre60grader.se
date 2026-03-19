@@ -2,8 +2,9 @@
 
 import Link from 'next/link';
 import type { Route } from 'next';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { Activity, BarChart3, BriefcaseBusiness, Building2, ChevronLeft, ChevronRight, CircleHelp, Receipt, ScrollText, Settings, Shield, WalletCards, Landmark } from 'lucide-react';
+import { useEffect } from 'react';
 import { buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/ui/cn';
 import type { Role } from '@/lib/types';
@@ -40,6 +41,16 @@ export default function DesktopSidebar({
   onToggle: () => void;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const visibleItems = items.filter((item) => item.roles.includes(role));
+
+  useEffect(() => {
+    visibleItems.forEach((item) => {
+      if (!pathname?.startsWith(item.href)) {
+        router.prefetch(item.href);
+      }
+    });
+  }, [pathname, router, visibleItems]);
 
   return (
     <aside
@@ -61,15 +72,16 @@ export default function DesktopSidebar({
       </div>
 
       <nav className={cn('space-y-1 pb-4', collapsed ? 'px-2' : 'px-3')}>
-        {items
-          .filter((item) => item.roles.includes(role))
-          .map((item) => {
+        {visibleItems.map((item) => {
             const Icon = item.icon;
             return (
               <Link
                 key={item.href}
                 href={item.href}
+                prefetch
                 title={collapsed ? item.label : undefined}
+                onMouseEnter={() => router.prefetch(item.href)}
+                onTouchStart={() => router.prefetch(item.href)}
                 className={cn(
                   buttonVariants({ variant: pathname?.startsWith(item.href) ? 'default' : 'ghost' }),
                   collapsed ? 'w-full justify-center px-0' : 'w-full justify-start'
