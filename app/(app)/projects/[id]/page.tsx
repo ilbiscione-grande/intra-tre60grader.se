@@ -899,7 +899,7 @@ export default function ProjectDetailsPage() {
                     onClick={() => invoiceMutation.mutate()}
                     disabled={invoiceMutation.isPending || !orderId || !canManageOrder(role) || isEconomyLocked || isEconomyBusy}
                   >
-                    {invoiceMutation.isPending ? 'Skapar...' : 'Skapa faktura'}
+                    {invoiceMutation.isPending ? 'Skapar...' : isEconomyLocked ? 'Faktura finns redan' : 'Skapa faktura'}
                   </Button>
                 </RoleGate>
               </div>

@@ -349,6 +349,7 @@ export default function OrderDetailsPage() {
     .filter((invoice) => invoice.status !== 'paid' && invoice.status !== 'void')
     .reduce((sum, invoice) => sum + Number(invoice.total ?? 0), 0);
   const latestInvoice = invoicesQuery.data?.[0] ?? null;
+  const hasActiveInvoice = (invoicesQuery.data ?? []).some((invoice) => invoice.status !== 'void');
 
   return (
     <section className="space-y-4">
@@ -581,9 +582,9 @@ export default function OrderDetailsPage() {
 
                   <Button
                     onClick={() => invoiceMutation.mutate()}
-                    disabled={invoiceMutation.isPending || !canManageOrder(role)}
+                    disabled={invoiceMutation.isPending || !canManageOrder(role) || hasActiveInvoice}
                   >
-                    {invoiceMutation.isPending ? 'Skapar...' : 'Skapa faktura'}
+                    {invoiceMutation.isPending ? 'Skapar...' : hasActiveInvoice ? 'Faktura finns redan' : 'Skapa faktura'}
                   </Button>
                 </div>
               </RoleGate>
