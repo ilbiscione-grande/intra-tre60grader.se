@@ -723,9 +723,6 @@ export default function ProjectUpdatesPanel({
     <Fragment>
       {isActive ? (
         <Card>
-          <CardHeader>
-            <CardTitle>Uppdateringar</CardTitle>
-          </CardHeader>
           <CardContent className="space-y-4">
             {updatesQuery.isLoading ? <p className="text-sm text-foreground/70">Laddar uppdateringar...</p> : null}
             {!updatesQuery.isLoading && rootUpdates.length === 0 ? (

@@ -644,9 +644,6 @@ export default function ProjectDetailsPage() {
       {activeTab === 'overview' && (
         <div className="space-y-4" {...swipeHandlers}>
           <Card>
-            <CardHeader>
-              <CardTitle>Översikt</CardTitle>
-            </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                 <ProjectSummaryCard
@@ -945,9 +942,6 @@ export default function ProjectDetailsPage() {
 
       {activeTab === 'attachments' && (
         <Card {...swipeHandlers}>
-          <CardHeader>
-            <CardTitle>Bilagor</CardTitle>
-          </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid gap-3 md:grid-cols-3">
               <div className="rounded-lg border p-3">
@@ -1019,9 +1013,6 @@ export default function ProjectDetailsPage() {
 
       {activeTab === 'members' && (
         <Card {...swipeHandlers}>
-          <CardHeader>
-            <CardTitle>Medlemmar</CardTitle>
-          </CardHeader>
           <CardContent className="space-y-3">
             <div className="grid gap-3 md:grid-cols-3">
               <div className="rounded-lg border p-3">
@@ -1082,9 +1073,6 @@ export default function ProjectDetailsPage() {
 
       {activeTab === 'logs' && (
         <Card {...swipeHandlers}>
-          <CardHeader>
-            <CardTitle>Loggar</CardTitle>
-          </CardHeader>
           <CardContent className="space-y-3">
             <div className="rounded-lg border p-3 text-sm">
               <p className="font-medium">Projekt-ID</p>
