@@ -200,6 +200,11 @@ export default function CustomerDetailsPage() {
     }
   });
 
+  const projectTitleById = useMemo(
+    () => Object.fromEntries((projectsQuery.data ?? []).map((project) => [project.id, project.title])),
+    [projectsQuery.data]
+  );
+
   if (query.isLoading) return <p>Laddar kund...</p>;
   if (!query.data) return <p>Kunden hittades inte.</p>;
 
@@ -207,10 +212,6 @@ export default function CustomerDetailsPage() {
   const projects = projectsQuery.data ?? [];
   const orders = ordersQuery.data ?? [];
   const invoices = invoicesQuery.data ?? [];
-  const projectTitleById = useMemo(
-    () => Object.fromEntries(projects.map((project) => [project.id, project.title])),
-    [projects]
-  );
   const selectableOrders = orders.filter((order) => !['paid', 'cancelled', 'invoiced'].includes(order.status) && Number(order.total ?? 0) > 0);
   const selectedOrders = selectableOrders.filter((order) => selectedOrderIds.includes(order.id));
   const selectedProjectCount = new Set(selectedOrders.map((order) => order.project_id)).size;
