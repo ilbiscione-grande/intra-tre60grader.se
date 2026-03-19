@@ -1,19 +1,13 @@
 'use client';
 
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
-import { Edit3, FileText, ImagePlus, Paperclip, Reply, Send, Trash2, Type } from 'lucide-react';
+import { Camera, Edit3, FileText, ImagePlus, Paperclip, Reply, Send, Trash2, Type } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import ActionSheet from '@/components/common/ActionSheet';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger
-} from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { createClient } from '@/lib/supabase/client';
@@ -176,6 +170,7 @@ export default function ProjectUpdatesPanel({
 }) {
   const supabase = useMemo(() => createClient(), []);
   const queryClient = useQueryClient();
+  const rootCameraFileRef = useRef<HTMLInputElement | null>(null);
   const rootImageFileRef = useRef<HTMLInputElement | null>(null);
   const rootDocumentFileRef = useRef<HTMLInputElement | null>(null);
   const replyFileRefs = useRef<Record<string, HTMLInputElement | null>>({});
@@ -737,6 +732,17 @@ export default function ProjectUpdatesPanel({
         <CardContent className="space-y-3 p-3">
           <div className="flex items-center gap-2">
             <input
+              ref={rootCameraFileRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={(event) => {
+                const files = Array.from(event.target.files ?? []);
+                setRootComposer((prev) => ({ ...prev, files: appendUniqueFiles(prev.files, files) }));
+              }}
+            />
+            <input
               ref={rootImageFileRef}
               type="file"
               multiple
@@ -877,6 +883,18 @@ export default function ProjectUpdatesPanel({
           >
             <Type className="mr-2 h-4 w-4" />
             Text
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="h-12 justify-start rounded-2xl"
+            onClick={() => {
+              setRootAttachmentSheetOpen(false);
+              requestAnimationFrame(() => rootCameraFileRef.current?.click());
+            }}
+          >
+            <Camera className="mr-2 h-4 w-4" />
+            Ta foto
           </Button>
           <Button
             type="button"

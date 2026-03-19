@@ -616,20 +616,24 @@ export default function ProjectDetailsPage() {
   ].sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
 
   return (
-    <section className="space-y-4">
-      <div className="space-y-1">
-        <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-foreground/45">Projekt</p>
-        <h1 className="text-xl font-semibold tracking-tight lg:text-2xl">{project.title}</h1>
+    <section className="space-y-3 md:space-y-4">
+      <div className="space-y-0.5">
+        <p className="text-[10px] font-medium uppercase tracking-[0.16em] text-foreground/40">Projekt</p>
+        <h1 className="text-lg font-semibold tracking-tight sm:text-xl lg:text-2xl">{project.title}</h1>
       </div>
 
-      <div ref={containerRef} className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+      <div ref={containerRef} className="-mx-4 flex overflow-x-auto border-b border-border/70 px-4">
         {projectTabs.map((tab) => (
           <Button
             key={tab.id}
             ref={registerItem(tab.id)}
             type="button"
-            variant={activeTab === tab.id ? 'default' : 'outline'}
-            className="shrink-0"
+            variant="ghost"
+            className={`shrink-0 rounded-none border-b-2 px-3 py-3 text-sm ${
+              activeTab === tab.id
+                ? 'border-primary text-foreground'
+                : 'border-transparent text-foreground/60 hover:border-border hover:text-foreground'
+            }`}
             onClick={() => setActiveTab(tab.id)}
           >
             {tab.label}
