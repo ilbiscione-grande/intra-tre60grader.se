@@ -1,7 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { ArrowLeft, Building2, FolderKanban, Mail, MapPin, Phone, ReceiptText, ScrollText } from 'lucide-react';
+import type { Route } from 'next';
+import { ArrowLeft, Building2, CircleDollarSign, FolderKanban, Mail, MapPin, Phone, ReceiptText, ScrollText } from 'lucide-react';
 import { useParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { useAppContext } from '@/components/providers/AppContext';
@@ -50,6 +51,14 @@ type InvoiceSummary = {
   currency: string;
   due_date: string;
   created_at: string;
+};
+
+type CustomerActivityItem = {
+  id: string;
+  title: string;
+  detail: string;
+  at: string;
+  href: Route;
 };
 
 function projectStatusLabel(status: string) {
@@ -168,6 +177,38 @@ export default function CustomerDetailsPage() {
     .join(', ');
   const totalOrderValue = orders.reduce((sum, order) => sum + Number(order.total ?? 0), 0);
   const openInvoices = invoices.filter((invoice) => invoice.status !== 'paid').length;
+  const openInvoiceValue = invoices
+    .filter((invoice) => !['paid', 'cancelled'].includes(invoice.status))
+    .reduce((sum, invoice) => sum + Number(invoice.total ?? 0), 0);
+  const openOrders = orders.filter((order) => !['paid', 'cancelled', 'invoiced'].includes(order.status)).length;
+  const overdueInvoices = invoices.filter(
+    (invoice) => invoice.status === 'overdue' || (invoice.due_date ? new Date(invoice.due_date).getTime() < Date.now() && invoice.status !== 'paid' : false)
+  ).length;
+  const activity: CustomerActivityItem[] = [
+    ...projects.map((project) => ({
+      id: `project-${project.id}`,
+      title: 'Projekt uppdaterat',
+      detail: `${project.title} • ${projectStatusLabel(project.status)}`,
+      at: project.created_at,
+      href: `/projects/${project.id}` as Route
+    })),
+    ...orders.map((order) => ({
+      id: `order-${order.id}`,
+      title: 'Order registrerad',
+      detail: `${order.order_no ?? order.id} • ${orderStatusLabel(order.status)}`,
+      at: order.created_at,
+      href: `/orders/${order.id}` as Route
+    })),
+    ...invoices.map((invoice) => ({
+      id: `invoice-${invoice.id}`,
+      title: 'Faktura registrerad',
+      detail: `${invoice.invoice_no} • ${invoiceStatusLabel(invoice.status)}`,
+      at: invoice.created_at,
+      href: `/invoices/${invoice.id}` as Route
+    }))
+  ]
+    .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
+    .slice(0, 6);
 
   return (
     <section className="space-y-4">
@@ -189,11 +230,112 @@ export default function CustomerDetailsPage() {
         {customer.city ? <Badge>{customer.city}</Badge> : null}
       </div>
 
+      <Card>
+        <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
+          <div className="space-y-1">
+            <p className="text-sm font-medium">Snabba åtgärder</p>
+            <p className="text-sm text-foreground/65">Öppna det som oftast används för kunden direkt härifrån.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {projects[0] ? (
+              <Button asChild variant="outline">
+                <Link href={`/projects/${projects[0].id}` as Route}>Senaste projekt</Link>
+              </Button>
+            ) : null}
+            {orders[0] ? (
+              <Button asChild variant="outline">
+                <Link href={`/orders/${orders[0].id}` as Route}>Senaste order</Link>
+              </Button>
+            ) : null}
+            {invoices[0] ? (
+              <Button asChild variant="outline">
+                <Link href={`/invoices/${invoices[0].id}` as Route}>Senaste faktura</Link>
+              </Button>
+            ) : null}
+          </div>
+        </CardContent>
+      </Card>
+
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         <SummaryCard label="Projekt" value={String(projects.length)} helper="kopplade till kunden" icon={FolderKanban} />
         <SummaryCard label="Ordrar" value={String(orders.length)} helper="totalt registrerade" icon={ScrollText} />
         <SummaryCard label="Ordervärde" value={`${totalOrderValue.toFixed(2)} kr`} helper="summa av alla ordrar" icon={ReceiptText} />
         <SummaryCard label="Öppna fakturor" value={String(openInvoices)} helper="inte fullt betalda" icon={Mail} />
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+        <Card>
+          <CardHeader>
+            <CardTitle>Ekonomisk status</CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-3 md:grid-cols-3">
+            <StatusCard
+              label="Öppet fakturavärde"
+              value={`${openInvoiceValue.toFixed(2)} kr`}
+              helper="ej fullt betalda fakturor"
+              tone="primary"
+            />
+            <StatusCard
+              label="Förfallna fakturor"
+              value={String(overdueInvoices)}
+              helper="behöver följas upp"
+              tone={overdueInvoices > 0 ? 'danger' : 'neutral'}
+            />
+            <StatusCard
+              label="Senaste faktura"
+              value={invoices[0]?.invoice_no ?? '-'}
+              helper={invoices[0]?.created_at ? new Date(invoices[0].created_at).toLocaleDateString('sv-SE') : 'ingen ännu'}
+              tone="neutral"
+            />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Senaste aktivitet</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {activity.length === 0 ? (
+              <p className="text-sm text-foreground/70">Ingen aktivitet registrerad ännu.</p>
+            ) : (
+              activity.map((item) => (
+                <Link
+                  key={item.id}
+                  href={item.href}
+                  className="block rounded-xl border border-border/70 bg-muted/15 px-3 py-3 transition hover:border-primary/40 hover:bg-muted/25"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium">{item.title}</p>
+                      <p className="mt-1 text-sm text-foreground/70">{item.detail}</p>
+                    </div>
+                    <p className="shrink-0 text-xs text-foreground/55">
+                      {new Date(item.at).toLocaleDateString('sv-SE')}
+                    </p>
+                  </div>
+                </Link>
+              ))
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-3">
+        <StatusStripCard
+          label="Öppna ordrar"
+          value={String(openOrders)}
+          helper={openOrders > 0 ? 'pågående arbete att följa upp' : 'inga öppna ordrar just nu'}
+        />
+        <StatusStripCard
+          label="Fakturor att bevaka"
+          value={String(openInvoices)}
+          helper={openInvoices > 0 ? 'ej slutbetalda fakturor' : 'allt ser betalt ut'}
+        />
+        <StatusStripCard
+          label="Senaste aktivitet"
+          value={activity[0] ? new Date(activity[0].at).toLocaleDateString('sv-SE') : '-'}
+          helper={activity[0]?.title ?? 'ingen aktivitet registrerad ännu'}
+        />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
@@ -356,6 +498,58 @@ function InfoRow({
           <p className="mt-1 break-words text-sm font-medium text-foreground/85">{value}</p>
         </div>
       </div>
+    </div>
+  );
+}
+
+function StatusCard({
+  label,
+  value,
+  helper,
+  tone
+}: {
+  label: string;
+  value: string;
+  helper: string;
+  tone: 'primary' | 'neutral' | 'danger';
+}) {
+  const toneClass =
+    tone === 'danger'
+      ? 'border-rose-500/30 bg-rose-500/10'
+      : tone === 'primary'
+        ? 'border-primary/20 bg-primary/10'
+        : 'border-border/70 bg-muted/15';
+
+  return (
+    <div className={`rounded-xl border px-4 py-3 ${toneClass}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">{label}</p>
+          <p className="mt-1 text-lg font-semibold">{value}</p>
+          <p className="mt-1 text-sm text-foreground/65">{helper}</p>
+        </div>
+        <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-background/70 text-primary">
+          <CircleDollarSign className="h-4 w-4" />
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function StatusStripCard({
+  label,
+  value,
+  helper
+}: {
+  label: string;
+  value: string;
+  helper: string;
+}) {
+  return (
+    <div className="rounded-xl border border-border/70 bg-muted/15 px-4 py-3">
+      <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">{label}</p>
+      <p className="mt-1 text-lg font-semibold">{value}</p>
+      <p className="mt-1 text-sm text-foreground/65">{helper}</p>
     </div>
   );
 }

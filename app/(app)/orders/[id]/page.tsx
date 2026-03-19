@@ -1,7 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { ArrowLeft, CalendarDays, CircleDollarSign, FolderOpen, ShieldCheck } from 'lucide-react';
+import type { Route } from 'next';
+import { ArrowLeft, CalendarDays, CircleDollarSign, FolderOpen, Paperclip, ShieldCheck, Users } from 'lucide-react';
 import { useParams } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -21,9 +22,18 @@ import { useAutoScrollActiveTab } from '@/lib/ui/useAutoScrollActiveTab';
 import { useSwipeTabs } from '@/lib/ui/useSwipeTabs';
 
 type OrderRow = Pick<DbRow<'orders'>, 'id' | 'order_no' | 'project_id' | 'status' | 'total' | 'created_at'>;
-type ProjectRow = Pick<DbRow<'projects'>, 'id' | 'title'>;
+type ProjectRow = Pick<DbRow<'projects'>, 'id' | 'title' | 'customer_id'>;
+type CustomerRow = Pick<DbRow<'customers'>, 'id' | 'name'>;
 type OrderLineRow = Pick<DbRow<'order_lines'>, 'id' | 'title' | 'qty' | 'unit_price' | 'vat_rate' | 'total' | 'created_at'>;
-type InvoiceRow = Pick<DbRow<'invoices'>, 'id' | 'invoice_no' | 'status' | 'currency' | 'total' | 'created_at'>;
+type InvoiceRow = Pick<DbRow<'invoices'>, 'id' | 'invoice_no' | 'status' | 'currency' | 'total' | 'created_at' | 'attachment_path' | 'due_date'>;
+type MemberView = {
+  id: string;
+  company_id: string;
+  user_id: string;
+  role: Role;
+  created_at: string;
+  email: string | null;
+};
 type OrderTab = 'overview' | 'updates' | 'economy' | 'attachments' | 'members' | 'logs';
 
 const orderStatuses = ['draft', 'sent', 'paid', 'cancelled', 'invoiced'] as const;
@@ -67,6 +77,16 @@ function fakturaStatusEtikett(status: string) {
 
 function canManageOrder(role: Role) {
   return role === 'finance' || role === 'admin';
+}
+
+function roleLabel(role: Role) {
+  const map: Record<Role, string> = {
+    member: 'Medlem',
+    finance: 'Ekonomi',
+    admin: 'Admin',
+    auditor: 'Revisor'
+  };
+  return map[role];
 }
 
 function extractInvoiceSummary(result: unknown) {
@@ -113,10 +133,27 @@ export default function OrderDetailsPage() {
       if (!projectId) return null;
       const { data, error } = await supabase
         .from('projects')
-        .select('id,title')
+        .select('id,title,customer_id')
         .eq('company_id', companyId)
         .eq('id', projectId)
         .maybeSingle<ProjectRow>();
+      if (error) throw error;
+      return data;
+    }
+  });
+
+  const customerQuery = useQuery<CustomerRow | null>({
+    queryKey: ['order-customer', companyId, projectQuery.data?.customer_id ?? 'none'],
+    enabled: Boolean(projectQuery.data?.customer_id),
+    queryFn: async () => {
+      const customerId = projectQuery.data?.customer_id;
+      if (!customerId) return null;
+      const { data, error } = await supabase
+        .from('customers')
+        .select('id,name')
+        .eq('company_id', companyId)
+        .eq('id', customerId)
+        .maybeSingle<CustomerRow>();
       if (error) throw error;
       return data;
     }
@@ -142,13 +179,27 @@ export default function OrderDetailsPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('invoices')
-        .select('id,invoice_no,status,currency,total,created_at')
+        .select('id,invoice_no,status,currency,total,created_at,attachment_path,due_date')
         .eq('company_id', companyId)
         .eq('order_id', orderId)
         .order('created_at', { ascending: false })
         .returns<InvoiceRow[]>();
       if (error) throw error;
       return data ?? [];
+    }
+  });
+
+  const membersQuery = useQuery<MemberView[]>({
+    queryKey: ['order-company-members', companyId],
+    enabled: role === 'admin',
+    queryFn: async () => {
+      const res = await fetch(`/api/admin/members?companyId=${companyId}`);
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(body?.error ?? 'Kunde inte läsa medlemmar');
+      }
+      const body = (await res.json()) as { members: MemberView[] };
+      return body.members ?? [];
     }
   });
 
@@ -208,11 +259,46 @@ export default function OrderDetailsPage() {
     return items.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
   }, [invoicesQuery.data, linesQuery.data, orderQuery.data]);
 
+  const logs = useMemo(() => {
+    if (!orderQuery.data) return [];
+
+    const order = orderQuery.data;
+    const entries = [
+      {
+        id: `log-order-${order.id}`,
+        title: 'Order registrerad',
+        detail: `Order-ID ${order.id}`,
+        at: order.created_at
+      },
+      ...(linesQuery.data ?? []).map((line) => ({
+        id: `log-line-${line.id}`,
+        title: 'Orderrad registrerad',
+        detail: `${line.title} • ${Number(line.total).toFixed(2)} kr`,
+        at: line.created_at
+      })),
+      ...(invoicesQuery.data ?? []).map((invoice) => ({
+        id: `log-invoice-${invoice.id}`,
+        title: 'Fakturakoppling registrerad',
+        detail: `${invoice.invoice_no} • ${fakturaStatusEtikett(invoice.status)}`,
+        at: invoice.created_at
+      }))
+    ];
+
+    return entries.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
+  }, [invoicesQuery.data, linesQuery.data, orderQuery.data]);
+
   if (orderQuery.isLoading) return <p>Laddar order...</p>;
   if (!orderQuery.data) return <p>Order hittades inte.</p>;
 
   const order = orderQuery.data;
   const statusValue = orderStatuses.includes(order.status as OrderStatus) ? (order.status as OrderStatus) : 'draft';
+  const invoiceAttachments = (invoicesQuery.data ?? []).filter((invoice) => Boolean(invoice.attachment_path));
+  const members = membersQuery.data ?? [];
+  const invoiceTotal = (invoicesQuery.data ?? []).reduce((sum, invoice) => sum + Number(invoice.total ?? 0), 0);
+  const outstandingInvoiceValue = (invoicesQuery.data ?? [])
+    .filter((invoice) => invoice.status !== 'paid' && invoice.status !== 'void')
+    .reduce((sum, invoice) => sum + Number(invoice.total ?? 0), 0);
+  const latestInvoice = invoicesQuery.data?.[0] ?? null;
 
   return (
     <section className="space-y-4">
@@ -279,7 +365,7 @@ export default function OrderDetailsPage() {
 
       {activeTab === 'overview' && (
         <div className="space-y-4" {...swipeHandlers}>
-          <div className="grid gap-3 md:grid-cols-3">
+          <div className="grid gap-3 md:grid-cols-4">
             <Card>
               <CardContent className="p-4">
                 <p className="text-sm text-foreground/70">Projekt</p>
@@ -296,6 +382,12 @@ export default function OrderDetailsPage() {
               <CardContent className="p-4">
                 <p className="text-sm text-foreground/70">Fakturor</p>
                 <p className="mt-1 font-medium">{invoicesQuery.data?.length ?? 0}</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-4">
+                <p className="text-sm text-foreground/70">Kund</p>
+                <p className="mt-1 font-medium">{customerQuery.data?.name ?? 'Ingen kund kopplad'}</p>
               </CardContent>
             </Card>
           </div>
@@ -381,6 +473,20 @@ export default function OrderDetailsPage() {
             <CardTitle>Uppdateringar</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
+            <div className="grid gap-3 md:grid-cols-3">
+              <div className="rounded-lg border p-3">
+                <p className="text-sm text-foreground/70">Senaste uppdatering</p>
+                <p className="mt-1 font-medium">{updates[0] ? new Date(updates[0].at).toLocaleString('sv-SE') : '-'}</p>
+              </div>
+              <div className="rounded-lg border p-3">
+                <p className="text-sm text-foreground/70">Orderrader</p>
+                <p className="mt-1 font-medium">{linesQuery.data?.length ?? 0}</p>
+              </div>
+              <div className="rounded-lg border p-3">
+                <p className="text-sm text-foreground/70">Fakturahändelser</p>
+                <p className="mt-1 font-medium">{invoicesQuery.data?.length ?? 0}</p>
+              </div>
+            </div>
             {updates.length === 0 && <p className="text-sm text-foreground/70">Inga uppdateringar ännu.</p>}
             {updates.map((item) => (
               <div key={item.id} className="rounded-lg border p-3">
@@ -428,7 +534,7 @@ export default function OrderDetailsPage() {
                 </div>
               </RoleGate>
 
-              <div className="grid gap-3 md:grid-cols-3">
+              <div className="grid gap-3 md:grid-cols-4">
                 <div className="rounded-lg border p-3">
                   <p className="text-sm text-foreground/70">Ordertotal</p>
                   <p className="mt-1 font-medium">{Number(order.total).toFixed(2)} kr</p>
@@ -440,6 +546,34 @@ export default function OrderDetailsPage() {
                 <div className="rounded-lg border p-3">
                   <p className="text-sm text-foreground/70">Status</p>
                   <p className="mt-1 font-medium">{orderStatusEtikett(order.status)}</p>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <p className="text-sm text-foreground/70">Öppet fakturavärde</p>
+                  <p className="mt-1 font-medium">{outstandingInvoiceValue.toFixed(2)} kr</p>
+                </div>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-3">
+                <div className="rounded-lg border p-3">
+                  <p className="text-sm text-foreground/70">Fakturerat totalt</p>
+                  <p className="mt-1 font-medium">{invoiceTotal.toFixed(2)} kr</p>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <p className="text-sm text-foreground/70">Senaste faktura</p>
+                  <p className="mt-1 font-medium">{latestInvoice?.invoice_no ?? 'Ingen ännu'}</p>
+                  <p className="mt-1 text-xs text-foreground/55">
+                    {latestInvoice?.created_at ? new Date(latestInvoice.created_at).toLocaleDateString('sv-SE') : 'Skapa faktura när ordern är klar'}
+                  </p>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <p className="text-sm text-foreground/70">Nästa steg</p>
+                  <p className="mt-1 font-medium">
+                    {invoicesQuery.data?.length
+                      ? outstandingInvoiceValue > 0
+                        ? 'Följ upp betalning'
+                        : 'Klart'
+                      : 'Skapa första faktura'}
+                  </p>
                 </div>
               </div>
             </CardContent>
@@ -480,8 +614,53 @@ export default function OrderDetailsPage() {
           <CardHeader>
             <CardTitle>Bilagor</CardTitle>
           </CardHeader>
-          <CardContent>
-            <p className="text-sm text-foreground/70">Bilagor hanteras inte direkt på order ännu. Lägg bilagor på projekt eller faktura tills vidare.</p>
+          <CardContent className="space-y-4">
+            <div className="grid gap-3 md:grid-cols-3">
+              <div className="rounded-lg border p-3">
+                <p className="text-sm text-foreground/70">Bilagor på fakturor</p>
+                <p className="mt-1 font-medium">{invoiceAttachments.length}</p>
+              </div>
+              <div className="rounded-lg border p-3">
+                <p className="text-sm text-foreground/70">Fakturor med underlag</p>
+                <p className="mt-1 font-medium">
+                  {new Set(invoiceAttachments.map((invoice) => invoice.id)).size}
+                </p>
+              </div>
+              <div className="rounded-lg border p-3">
+                <p className="text-sm text-foreground/70">Projekt</p>
+                <p className="mt-1 font-medium">{projectQuery.data?.title ?? '-'}</p>
+              </div>
+            </div>
+
+            {invoiceAttachments.length === 0 ? (
+              <p className="text-sm text-foreground/70">
+                Inga bilagor hittades på orderns fakturor ännu. Lägg bilagor på fakturan eller projektet tills vidare.
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {invoiceAttachments.map((invoice) => (
+                  <div key={invoice.id} className="rounded-lg border p-3">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <Paperclip className="h-4 w-4 text-foreground/55" />
+                          <p className="font-medium">{invoice.invoice_no}</p>
+                        </div>
+                        <p className="mt-1 text-sm text-foreground/70">
+                          {fakturaStatusEtikett(invoice.status)} • {Number(invoice.total).toFixed(2)} {invoice.currency}
+                        </p>
+                        <p className="mt-1 text-xs text-foreground/55">
+                          {invoice.due_date ? `Förfallo ${new Date(invoice.due_date).toLocaleDateString('sv-SE')}` : 'Förfallodatum saknas'}
+                        </p>
+                      </div>
+                      <Button asChild size="sm" variant="outline">
+                        <Link href={`/invoices/${invoice.id}`}>Öppna faktura</Link>
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
@@ -492,10 +671,59 @@ export default function OrderDetailsPage() {
             <CardTitle>Medlemmar</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <p className="text-sm text-foreground/70">Ordern är kopplad till projektets team och egna ordermedlemmar används inte ännu.</p>
-            <Button asChild variant="outline">
-              <Link href={`/projects/${order.project_id}`}>Visa projektmedlemmar</Link>
-            </Button>
+            <div className="grid gap-3 md:grid-cols-3">
+              <div className="rounded-lg border p-3">
+                <p className="text-sm text-foreground/70">Ordermodell</p>
+                <p className="mt-1 font-medium">Ärver projektets team</p>
+              </div>
+              <div className="rounded-lg border p-3">
+                <p className="text-sm text-foreground/70">Tillgängliga medlemmar</p>
+                <p className="mt-1 font-medium">{role === 'admin' ? members.length : '-'}</p>
+              </div>
+              <div className="rounded-lg border p-3">
+                <p className="text-sm text-foreground/70">Projekt</p>
+                <p className="mt-1 font-medium">{projectQuery.data?.title ?? '-'}</p>
+              </div>
+            </div>
+
+            {role === 'admin' && members.length > 0 ? (
+              <div className="space-y-3">
+                {members.slice(0, 6).map((member) => (
+                  <div key={member.id} className="flex items-center justify-between gap-3 rounded-lg border p-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <Users className="h-4 w-4 text-foreground/55" />
+                        <p className="truncate text-sm font-medium">{member.email ?? member.user_id}</p>
+                      </div>
+                      <p className="mt-1 text-xs text-foreground/55">
+                        Tillagd {new Date(member.created_at).toLocaleDateString('sv-SE')}
+                      </p>
+                    </div>
+                    <Badge>{roleLabel(member.role)}</Badge>
+                  </div>
+                ))}
+                {members.length > 6 ? (
+                  <p className="text-xs text-foreground/55">
+                    Visar 6 av {members.length} tillgängliga bolagsmedlemmar.
+                  </p>
+                ) : null}
+              </div>
+            ) : (
+              <p className="text-sm text-foreground/70">
+                Ordern använder projektets team. Öppna projektet för att se eller hantera medlemmar.
+              </p>
+            )}
+
+            <div className="flex flex-wrap gap-2">
+              <Button asChild variant="outline">
+                <Link href={`/projects/${order.project_id}`}>Visa projektmedlemmar</Link>
+              </Button>
+              {customerQuery.data ? (
+                <Button asChild variant="ghost">
+                  <Link href={`/customers/${customerQuery.data.id}` as Route}>Öppna kund</Link>
+                </Button>
+              ) : null}
+            </div>
           </CardContent>
         </Card>
       )}
@@ -521,6 +749,18 @@ export default function OrderDetailsPage() {
             <div className="rounded-lg border p-3 text-sm">
               <p className="font-medium">Skapad</p>
               <p className="mt-1 text-foreground/70">{new Date(order.created_at).toLocaleString('sv-SE')}</p>
+            </div>
+            <div className="space-y-3 pt-1">
+              <p className="text-sm font-medium text-foreground/80">Händelselogg</p>
+              {logs.map((log) => (
+                <div key={log.id} className="rounded-lg border p-3 text-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="font-medium">{log.title}</p>
+                    <p className="text-xs text-foreground/55">{new Date(log.at).toLocaleString('sv-SE')}</p>
+                  </div>
+                  <p className="mt-1 text-foreground/70">{log.detail}</p>
+                </div>
+              ))}
             </div>
           </CardContent>
         </Card>

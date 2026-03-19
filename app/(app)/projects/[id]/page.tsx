@@ -5,7 +5,7 @@ import Link from 'next/link';
 import type { Route } from 'next';
 import { useParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowUpRight, CircleDollarSign, FolderKanban, ReceiptText, Users } from 'lucide-react';
+import { ArrowUpRight, CalendarDays, CircleDollarSign, FolderKanban, Paperclip, ReceiptText, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import RoleGate from '@/components/common/RoleGate';
 import { useAppContext } from '@/components/providers/AppContext';
@@ -25,6 +25,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { createInvoiceFromOrder } from '@/lib/rpc';
 import { useProjectColumns } from '@/features/projects/projectQueries';
 import ProjectFinancePanel from '@/features/projects/ProjectFinancePanel';
+import ProjectUpdatesPanel from '@/features/projects/ProjectUpdatesPanel';
 import { createClient } from '@/lib/supabase/client';
 import type { Json, TableRow as DbRow } from '@/lib/supabase/database.types';
 import type { ProjectStatus, Role } from '@/lib/types';
@@ -41,8 +42,16 @@ type OrderRow = Pick<DbRow<'orders'>, 'id' | 'project_id' | 'status' | 'total' |
 type OrderLineRow = Pick<DbRow<'order_lines'>, 'id' | 'title' | 'qty' | 'unit_price' | 'vat_rate' | 'total' | 'created_at'>;
 type InvoiceRow = Pick<
   DbRow<'invoices'>,
-  'id' | 'invoice_no' | 'status' | 'currency' | 'issue_date' | 'due_date' | 'subtotal' | 'vat_total' | 'total' | 'created_at'
+  'id' | 'invoice_no' | 'status' | 'currency' | 'issue_date' | 'due_date' | 'subtotal' | 'vat_total' | 'total' | 'created_at' | 'attachment_path'
 >;
+type MemberView = {
+  id: string;
+  company_id: string;
+  user_id: string;
+  role: Role;
+  created_at: string;
+  email: string | null;
+};
 
 type ActivityItem = {
   id: string;
@@ -107,6 +116,16 @@ function fakturaStatusEtikett(status: string) {
 
 function canManageOrder(role: Role) {
   return role === 'finance' || role === 'admin';
+}
+
+function roleLabel(role: Role) {
+  const map: Record<Role, string> = {
+    member: 'Medlem',
+    finance: 'Ekonomi',
+    admin: 'Admin',
+    auditor: 'Revisor'
+  };
+  return map[role];
 }
 
 function projectColumnTitle(status: string, columns: Array<{ key: string; title: string }>) {
@@ -252,7 +271,7 @@ export default function ProjectDetailsPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('invoices')
-        .select('id,invoice_no,status,currency,issue_date,due_date,subtotal,vat_total,total,created_at')
+        .select('id,invoice_no,status,currency,issue_date,due_date,subtotal,vat_total,total,created_at,attachment_path')
         .eq('company_id', companyId)
         .eq('project_id', projectId)
         .order('created_at', { ascending: false })
@@ -261,6 +280,20 @@ export default function ProjectDetailsPage() {
 
       if (error) throw error;
       return data ?? [];
+    }
+  });
+
+  const membersQuery = useQuery<MemberView[]>({
+    queryKey: ['project-company-members', companyId],
+    enabled: role === 'admin',
+    queryFn: async () => {
+      const res = await fetch(`/api/admin/members?companyId=${companyId}`);
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(body?.error ?? 'Kunde inte läsa medlemmar');
+      }
+      const body = (await res.json()) as { members: MemberView[] };
+      return body.members ?? [];
     }
   });
 
@@ -541,23 +574,45 @@ export default function ProjectDetailsPage() {
   const latestInvoice = invoicesQuery.data?.[0] ?? null;
   const latestActivityItem = activity[0] ?? null;
   const projectStatusLabel = projectColumnTitle(draftStatus || project.status, statusColumns);
+  const invoiceAttachments = (invoicesQuery.data ?? []).filter((invoice) => Boolean(invoice.attachment_path));
+  const members = membersQuery.data ?? [];
+  const projectLogs = [
+    {
+      id: `project-created-${project.id}`,
+      title: 'Projekt registrerat',
+      detail: project.title,
+      at: project.created_at
+    },
+    {
+      id: `project-updated-${project.id}`,
+      title: 'Projekt uppdaterat',
+      detail: `Kolumn: ${projectColumnTitle(project.status, statusColumns)}`,
+      at: project.updated_at
+    },
+    ...(orderQuery.data
+      ? [
+          {
+            id: `project-order-${orderQuery.data.id}`,
+            title: 'Order kopplad',
+            detail: `${orderStatusEtikett(orderQuery.data.status)} • ${Number(orderQuery.data.total ?? 0).toFixed(2)} kr`,
+            at: orderQuery.data.created_at
+          }
+        ]
+      : []),
+    ...(invoicesQuery.data ?? []).map((invoice) => ({
+      id: `project-invoice-${invoice.id}`,
+      title: 'Faktura registrerad',
+      detail: `${invoice.invoice_no} • ${fakturaStatusEtikett(invoice.status)}`,
+      at: invoice.created_at
+    }))
+  ].sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
 
   return (
     <section className="space-y-4">
-      <Card>
-        <CardHeader>
-          <CardTitle>Projektdetaljer</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge>{projectStatusLabel}</Badge>
-            <Badge>Skapad: {new Date(project.created_at).toLocaleDateString('sv-SE')}</Badge>
-            <Badge>Uppdaterad: {new Date(project.updated_at).toLocaleString('sv-SE')}</Badge>
-            {project.customer_id ? <Badge>Kund kopplad</Badge> : <Badge>Ingen kund</Badge>}
-            {isEconomyLocked ? <Badge>Låst efter fakturering</Badge> : null}
-          </div>
-        </CardContent>
-      </Card>
+      <div className="space-y-1">
+        <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-foreground/45">Projekt</p>
+        <h1 className="text-xl font-semibold tracking-tight lg:text-2xl">{project.title}</h1>
+      </div>
 
       <div ref={containerRef} className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
         {projectTabs.map((tab) => (
@@ -699,28 +754,6 @@ export default function ProjectDetailsPage() {
             </CardContent>
           </Card>
         </div>
-      )}
-
-      {activeTab === 'updates' && (
-        <Card {...swipeHandlers}>
-          <CardHeader>
-            <CardTitle>Uppdateringar</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              {activity.length === 0 && <p className="text-sm text-foreground/70">Inga aktiviteter ännu.</p>}
-              {activity.map((item) => (
-                <div key={item.id} className="rounded-lg border p-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-sm font-medium">{item.text}</p>
-                    <Badge>{item.source}</Badge>
-                  </div>
-                  <p className="mt-1 text-xs text-foreground/70">{new Date(item.at).toLocaleString('sv-SE')}</p>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
       )}
 
       {activeTab === 'economy' && (
@@ -903,8 +936,71 @@ export default function ProjectDetailsPage() {
           <CardHeader>
             <CardTitle>Bilagor</CardTitle>
           </CardHeader>
-          <CardContent>
-            <p className="text-sm text-foreground/70">Bilagor hanteras inte direkt på projekt ännu. Använd fakturor eller relaterade flöden tills vidare.</p>
+          <CardContent className="space-y-4">
+            <div className="grid gap-3 md:grid-cols-3">
+              <div className="rounded-lg border p-3">
+                <p className="text-sm text-foreground/70">Bilagor på fakturor</p>
+                <p className="mt-1 font-medium">{invoiceAttachments.length}</p>
+              </div>
+              <div className="rounded-lg border p-3">
+                <p className="text-sm text-foreground/70">Fakturor med underlag</p>
+                <p className="mt-1 font-medium">{new Set(invoiceAttachments.map((invoice) => invoice.id)).size}</p>
+              </div>
+              <div className="rounded-lg border p-3">
+                <p className="text-sm text-foreground/70">Senaste faktura</p>
+                <p className="mt-1 font-medium">{latestInvoice?.invoice_no ?? 'Ingen ännu'}</p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" onClick={() => setActiveTab('economy')}>
+                Gå till ekonomi
+              </Button>
+              {latestInvoice ? (
+                <Button asChild variant="outline">
+                  <Link href={`/invoices/${latestInvoice.id}` as Route}>Öppna senaste faktura</Link>
+                </Button>
+              ) : null}
+              {orderId ? (
+                <Button asChild variant="ghost">
+                  <Link href={`/orders/${orderId}` as Route}>Öppna order</Link>
+                </Button>
+              ) : null}
+            </div>
+
+            {invoiceAttachments.length === 0 ? (
+              <p className="text-sm text-foreground/70">
+                Inga bilagor hittades på projektets fakturor ännu. Lägg underlag på fakturan tills vidare.
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {invoiceAttachments.map((invoice) => (
+                  <div key={invoice.id} className="rounded-lg border p-3">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <Paperclip className="h-4 w-4 text-foreground/55" />
+                          <p className="font-medium">{invoice.invoice_no}</p>
+                        </div>
+                        <p className="mt-1 text-sm text-foreground/70">
+                          {fakturaStatusEtikett(invoice.status)} • {Number(invoice.total).toFixed(2)} {invoice.currency}
+                        </p>
+                        <p className="mt-1 text-xs text-foreground/55">
+                          {invoice.due_date ? `Förfallo ${new Date(invoice.due_date).toLocaleDateString('sv-SE')}` : 'Förfallodatum saknas'}
+                        </p>
+                      </div>
+                      <Button asChild size="sm" variant="outline">
+                        <Link href={`/invoices/${invoice.id}`}>Öppna faktura</Link>
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="rounded-lg border border-dashed p-3 text-sm text-foreground/70">
+              Bilagor lagras just nu via projektets fakturor. Om du behöver fler underlag för projektet, öppna rätt faktura från listan ovan och lägg bilagan där.
+            </div>
           </CardContent>
         </Card>
       )}
@@ -915,10 +1011,59 @@ export default function ProjectDetailsPage() {
             <CardTitle>Medlemmar</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <p className="text-sm text-foreground/70">Projektet använder bolagets teammedlemmar. Egen projekttilldelning finns inte på denna sida ännu.</p>
-            <Button asChild variant="outline">
-              <Link href="/team">Öppna medlemmar</Link>
-            </Button>
+            <div className="grid gap-3 md:grid-cols-3">
+              <div className="rounded-lg border p-3">
+                <p className="text-sm text-foreground/70">Projektmodell</p>
+                <p className="mt-1 font-medium">Ärver bolagets team</p>
+              </div>
+              <div className="rounded-lg border p-3">
+                <p className="text-sm text-foreground/70">Tillgängliga medlemmar</p>
+                <p className="mt-1 font-medium">{role === 'admin' ? members.length : '-'}</p>
+              </div>
+              <div className="rounded-lg border p-3">
+                <p className="text-sm text-foreground/70">Senaste aktivitet</p>
+                <p className="mt-1 font-medium">
+                  {latestActivityItem ? new Date(latestActivityItem.at).toLocaleDateString('sv-SE') : 'Ingen ännu'}
+                </p>
+              </div>
+            </div>
+
+            {role === 'admin' && members.length > 0 ? (
+              <div className="space-y-3">
+                {members.slice(0, 8).map((member) => (
+                  <div key={member.id} className="flex items-center justify-between gap-3 rounded-lg border p-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <Users className="h-4 w-4 text-foreground/55" />
+                        <p className="truncate text-sm font-medium">{member.email ?? member.user_id}</p>
+                      </div>
+                      <p className="mt-1 text-xs text-foreground/55">
+                        Tillagd {new Date(member.created_at).toLocaleDateString('sv-SE')}
+                      </p>
+                    </div>
+                    <Badge>{roleLabel(member.role)}</Badge>
+                  </div>
+                ))}
+                {members.length > 8 ? (
+                  <p className="text-xs text-foreground/55">Visar 8 av {members.length} tillgängliga bolagsmedlemmar.</p>
+                ) : null}
+              </div>
+            ) : (
+              <p className="text-sm text-foreground/70">
+                Projektet använder bolagets teammedlemmar. Öppna medlemmar för att se eller hantera teamet.
+              </p>
+            )}
+
+            <div className="flex flex-wrap gap-2">
+              <Button asChild variant="outline">
+                <Link href="/team">Öppna medlemmar</Link>
+              </Button>
+              {orderId ? (
+                <Button asChild variant="ghost">
+                  <Link href={`/orders/${orderId}` as Route}>Öppna order</Link>
+                </Button>
+              ) : null}
+            </div>
           </CardContent>
         </Card>
       )}
@@ -951,9 +1096,35 @@ export default function ProjectDetailsPage() {
                 <p className="mt-1 break-all font-mono text-foreground/70">{orderId}</p>
               </div>
             ) : null}
+            <div className="space-y-3 pt-1">
+              <p className="text-sm font-medium text-foreground/80">Händelselogg</p>
+              {projectLogs.map((log) => (
+                <div key={log.id} className="rounded-lg border p-3 text-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="font-medium">{log.title}</p>
+                    <p className="text-xs text-foreground/55">{new Date(log.at).toLocaleString('sv-SE')}</p>
+                  </div>
+                  <p className="mt-1 text-foreground/70">{log.detail}</p>
+                </div>
+              ))}
+            </div>
+            <div className="rounded-lg border border-dashed p-3 text-sm text-foreground/70">
+              <div className="flex items-center gap-2">
+                <CalendarDays className="h-4 w-4" />
+                <p>Senaste aktivitet: {latestActivityItem ? new Date(latestActivityItem.at).toLocaleString('sv-SE') : 'Ingen ännu'}</p>
+              </div>
+            </div>
           </CardContent>
         </Card>
       )}
+
+      <ProjectUpdatesPanel
+        companyId={companyId}
+        projectId={projectId}
+        isActive={activeTab === 'updates'}
+        onOpenUpdates={() => setActiveTab('updates')}
+        systemActivity={activity}
+      />
 
       <Dialog open={cancelConfirmOpen} onOpenChange={setCancelConfirmOpen}>
         <DialogContent>
