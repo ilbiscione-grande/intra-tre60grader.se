@@ -54,6 +54,9 @@ export default function QuickCreateMenu({ role, compact = false }: { role: Role;
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-[220px]">
+        {visibleItems.length === 0 ? (
+          <div className="px-2 py-3 text-sm text-foreground/65">Inga genvägar tillgängliga.</div>
+        ) : null}
         {visibleItems.map((item) => {
           const Icon = item.icon;
           return (
@@ -63,10 +66,11 @@ export default function QuickCreateMenu({ role, compact = false }: { role: Role;
                 prefetch
                 onMouseEnter={() => router.prefetch(item.href)}
                 onTouchStart={() => router.prefetch(item.href)}
-                className="flex items-center gap-2"
               >
-                <Icon className="h-4 w-4" />
-                <span>{item.label}</span>
+                <div className="flex items-center gap-2">
+                  <Icon className="h-4 w-4" />
+                  <span>{item.label}</span>
+                </div>
               </Link>
             </DropdownMenuItem>
           );
