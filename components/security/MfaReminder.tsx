@@ -2,20 +2,34 @@
 
 import Link from 'next/link';
 import type { Route } from 'next';
-import { ShieldAlert } from 'lucide-react';
+import { ShieldAlert, X } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { useAppContext } from '@/components/providers/AppContext';
 import { Button } from '@/components/ui/button';
 import { useMfaStatus } from '@/features/security/mfa';
+import { clearMfaReminderDismissed, dismissMfaReminder, isMfaReminderDismissed } from '@/features/security/mfaReminder';
 
 export default function MfaReminder() {
   const { authRole } = useAppContext();
   const mfaStatusQuery = useMfaStatus(true);
+  const [dismissed, setDismissed] = useState(false);
+
+  useEffect(() => {
+    setDismissed(isMfaReminderDismissed());
+  }, []);
 
   if (mfaStatusQuery.isLoading || mfaStatusQuery.isError) {
     return null;
   }
 
   if ((mfaStatusQuery.data?.verifiedFactors ?? []).length > 0) {
+    if (dismissed) {
+      clearMfaReminderDismissed();
+    }
+    return null;
+  }
+
+  if (dismissed) {
     return null;
   }
 
@@ -30,9 +44,24 @@ export default function MfaReminder() {
           </p>
         </div>
       </div>
-      <Button asChild size="sm" variant="outline" className="border-amber-400 bg-white hover:bg-amber-100">
-        <Link href={'/settings/security' as Route}>Aktivera MFA</Link>
-      </Button>
+      <div className="flex items-center gap-2">
+        <Button asChild size="sm" variant="outline" className="border-amber-400 bg-white hover:bg-amber-100">
+          <Link href={'/settings/security' as Route}>Aktivera MFA</Link>
+        </Button>
+        <Button
+          type="button"
+          size="icon"
+          variant="ghost"
+          className="h-9 w-9 rounded-full text-amber-900 hover:bg-amber-100"
+          aria-label="Stäng MFA-påminnelse"
+          onClick={() => {
+            dismissMfaReminder();
+            setDismissed(true);
+          }}
+        >
+          <X className="h-4 w-4" />
+        </Button>
+      </div>
     </div>
   );
 }

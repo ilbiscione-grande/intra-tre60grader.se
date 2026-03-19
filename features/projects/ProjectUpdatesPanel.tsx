@@ -869,13 +869,6 @@ export default function ProjectUpdatesPanel({
             />
           ) : null}
 
-          {!isActive ? (
-            <div className="flex justify-end">
-              <Button type="button" variant="ghost" size="sm" onClick={onOpenUpdates}>
-                Visa uppdateringar
-              </Button>
-            </div>
-          ) : null}
         </CardContent>
       </Card>
     </Fragment>
