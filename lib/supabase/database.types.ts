@@ -693,6 +693,7 @@ export type Database = {
           id: string
           parent_id: string | null
           project_id: string
+          updated_at: string
         }
         Insert: {
           attachment_name?: string | null
@@ -706,6 +707,7 @@ export type Database = {
           id?: string
           parent_id?: string | null
           project_id: string
+          updated_at?: string
         }
         Update: {
           attachment_name?: string | null
@@ -719,6 +721,7 @@ export type Database = {
           id?: string
           parent_id?: string | null
           project_id?: string
+          updated_at?: string
         }
         Relationships: [
           {
@@ -795,6 +798,64 @@ export type Database = {
           },
           {
             foreignKeyName: "project_update_attachments_project_update_id_fkey"
+            columns: ["project_update_id"]
+            isOneToOne: false
+            referencedRelation: "project_updates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      project_update_notifications: {
+        Row: {
+          actor_user_id: string | null
+          company_id: string
+          created_at: string
+          id: string
+          kind: string
+          project_id: string
+          project_update_id: string
+          read_at: string | null
+          recipient_user_id: string
+        }
+        Insert: {
+          actor_user_id?: string | null
+          company_id: string
+          created_at?: string
+          id?: string
+          kind: string
+          project_id: string
+          project_update_id: string
+          read_at?: string | null
+          recipient_user_id: string
+        }
+        Update: {
+          actor_user_id?: string | null
+          company_id?: string
+          created_at?: string
+          id?: string
+          kind?: string
+          project_id?: string
+          project_update_id?: string
+          read_at?: string | null
+          recipient_user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_update_notifications_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_update_notifications_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_update_notifications_project_update_id_fkey"
             columns: ["project_update_id"]
             isOneToOne: false
             referencedRelation: "project_updates"
@@ -1284,8 +1345,6 @@ export const Constants = {
 export type TableRow<T extends keyof Database['public']['Tables']> = Database['public']['Tables'][T]['Row'];
 export type TableInsertRow<T extends keyof Database['public']['Tables']> = Database['public']['Tables'][T]['Insert'];
 export type TableUpdateRow<T extends keyof Database['public']['Tables']> = Database['public']['Tables'][T]['Update'];
-
-
 
 
 

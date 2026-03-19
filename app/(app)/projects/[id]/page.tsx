@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import type { Route } from 'next';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowUpRight, CalendarDays, CircleDollarSign, FolderKanban, Paperclip, ReceiptText, Users } from 'lucide-react';
 import { toast } from 'sonner';
@@ -161,6 +161,7 @@ function ProjectSummaryCard({
 
 export default function ProjectDetailsPage() {
   const params = useParams<{ id: string }>();
+  const searchParams = useSearchParams();
   const projectId = params.id;
   const { companyId, role } = useAppContext();
   const queryClient = useQueryClient();
@@ -189,6 +190,13 @@ export default function ProjectDetailsPage() {
     onChange: setActiveTab
   });
   const { containerRef, registerItem } = useAutoScrollActiveTab(activeTab);
+
+  useEffect(() => {
+    const requestedTab = searchParams.get('tab');
+    if (requestedTab && projectTabs.some((tab) => tab.id === requestedTab)) {
+      setActiveTab(requestedTab as ProjectTab);
+    }
+  }, [searchParams]);
 
   function addLocalActivity(text: string) {
     setLocalActivity((prev) => [
@@ -1124,6 +1132,7 @@ export default function ProjectDetailsPage() {
         isActive={activeTab === 'updates'}
         onOpenUpdates={() => setActiveTab('updates')}
         systemActivity={activity}
+        highlightUpdateId={searchParams.get('update')}
       />
 
       <Dialog open={cancelConfirmOpen} onOpenChange={setCancelConfirmOpen}>

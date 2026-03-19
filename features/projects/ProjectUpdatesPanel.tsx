@@ -1,15 +1,22 @@
 'use client';
 
-import { Fragment, useMemo, useRef, useState } from 'react';
-import { Edit3, Paperclip, Reply, Send, Trash2, X } from 'lucide-react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { Edit3, FileText, ImagePlus, Paperclip, Reply, Send, Trash2, Type } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
+} from '@/components/ui/dropdown-menu';
+import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { createClient } from '@/lib/supabase/client';
-import type { TableRow as DbRow } from '@/lib/supabase/database.types';
+import type { Database, TableRow as DbRow } from '@/lib/supabase/database.types';
 import {
   ComposerAttachmentList,
   ProjectUpdateAttachments,
@@ -132,35 +139,62 @@ function buildAttachmentMap(updates: ProjectUpdateRow[], attachments: ProjectUpd
   return map;
 }
 
+function appendUniqueFiles(existing: File[], incoming: File[]) {
+  const next = [...existing];
+  incoming.forEach((file) => {
+    const exists = next.some(
+      (current) =>
+        current.name === file.name &&
+        current.size === file.size &&
+        current.lastModified === file.lastModified
+    );
+    if (!exists) next.push(file);
+  });
+  return next;
+}
+
+function extractMentions(content: string | null) {
+  const matches = (content ?? '').match(/@([A-Za-z0-9._%+-]+(?:@[A-Za-z0-9.-]+\.[A-Za-z]{2,})?)/g) ?? [];
+  return matches.map((match) => match.slice(1).toLowerCase());
+}
+
 export default function ProjectUpdatesPanel({
   companyId,
   projectId,
   isActive,
   onOpenUpdates,
-  systemActivity
+  systemActivity,
+  highlightUpdateId
 }: {
   companyId: string;
   projectId: string;
   isActive: boolean;
   onOpenUpdates: () => void;
   systemActivity: SystemActivityItem[];
+  highlightUpdateId?: string | null;
 }) {
   const supabase = useMemo(() => createClient(), []);
   const queryClient = useQueryClient();
-  const rootFileRef = useRef<HTMLInputElement | null>(null);
+  const rootImageFileRef = useRef<HTMLInputElement | null>(null);
+  const rootDocumentFileRef = useRef<HTMLInputElement | null>(null);
   const replyFileRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const updateRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [rootComposer, setRootComposer] = useState<ComposerState>(emptyComposer());
   const [replyTargetId, setReplyTargetId] = useState<string | null>(null);
   const [replyComposers, setReplyComposers] = useState<Record<string, ComposerState>>({});
   const [editingUpdateId, setEditingUpdateId] = useState<string | null>(null);
   const [editingContent, setEditingContent] = useState('');
+  const [expandedComposer, setExpandedComposer] = useState(false);
 
   const currentUserQuery = useQuery({
     queryKey: ['current-user-id'],
     queryFn: async () => {
       const { data, error } = await supabase.auth.getUser();
       if (error) throw error;
-      return data.user?.id ?? null;
+      return {
+        id: data.user?.id ?? null,
+        email: data.user?.email?.toLowerCase() ?? null
+      };
     }
   });
 
@@ -169,7 +203,7 @@ export default function ProjectUpdatesPanel({
     queryFn: async () => {
       const { data, error } = await supabase
         .from('project_updates')
-        .select('id,company_id,project_id,parent_id,created_by,content,attachment_path,attachment_name,attachment_type,attachment_size,created_at')
+        .select('id,company_id,project_id,parent_id,created_by,content,attachment_path,attachment_name,attachment_type,attachment_size,created_at,updated_at')
         .eq('company_id', companyId)
         .eq('project_id', projectId)
         .order('created_at', { ascending: true })
@@ -208,6 +242,27 @@ export default function ProjectUpdatesPanel({
     }
   });
 
+  const directoryQuery = useQuery({
+    queryKey: ['company-member-directory', companyId],
+    queryFn: async () => {
+      const res = await fetch(`/api/company-members/directory?companyId=${companyId}`);
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(body?.error ?? 'Kunde inte läsa medlemskatalog');
+      }
+      const body = (await res.json()) as {
+        members: Array<{
+          id: string;
+          user_id: string;
+          role: string;
+          email: string | null;
+          handle: string | null;
+        }>;
+      };
+      return body.members ?? [];
+    }
+  });
+
   const createUpdateMutation = useMutation({
     mutationFn: async ({
       parentId,
@@ -222,7 +277,7 @@ export default function ProjectUpdatesPanel({
       }
 
       const userId =
-        currentUserQuery.data ??
+        currentUserQuery.data?.id ??
         (
           await supabase.auth.getUser().catch(() => ({
             data: { user: null }
@@ -274,6 +329,62 @@ export default function ProjectUpdatesPanel({
         const { error: attachmentError } = await supabase.from('project_update_attachments').insert(uploaded);
         if (attachmentError) throw attachmentError;
       }
+
+      const notifications: Array<Database['public']['Tables']['project_update_notifications']['Insert']> = [];
+      const mentions = extractMentions(content);
+      const directory = directoryQuery.data ?? [];
+
+      directory
+        .filter((member) =>
+          mentions.some(
+            (mention) =>
+              mention === member.email?.toLowerCase() ||
+              mention === member.handle?.toLowerCase()
+          )
+        )
+        .map((member) => member.user_id)
+        .filter((recipientUserId) => recipientUserId !== userId)
+        .forEach((recipientUserId) => {
+          notifications.push({
+            company_id: companyId,
+            project_id: projectId,
+            project_update_id: update.id,
+            recipient_user_id: recipientUserId,
+            actor_user_id: userId,
+            kind: 'mention'
+          });
+        });
+
+      if (parentId) {
+        const parent = updatesQuery.data?.find((item) => item.id === parentId);
+        if (parent?.created_by && parent.created_by !== userId) {
+          notifications.push({
+            company_id: companyId,
+            project_id: projectId,
+            project_update_id: update.id,
+            recipient_user_id: parent.created_by,
+            actor_user_id: userId,
+            kind: 'reply'
+          });
+        }
+      }
+
+      if (notifications.length > 0) {
+        const uniqueNotifications = notifications.filter(
+          (notification, index, all) =>
+            all.findIndex(
+              (candidate) =>
+                candidate.recipient_user_id === notification.recipient_user_id &&
+                candidate.kind === notification.kind
+            ) === index
+        );
+
+        const { error: notificationError } = await supabase
+          .from('project_update_notifications')
+          .upsert(uniqueNotifications, { onConflict: 'project_update_id,recipient_user_id,kind' });
+
+        if (notificationError) throw notificationError;
+      }
     },
     onSuccess: async (_, variables) => {
       await Promise.all([
@@ -286,6 +397,7 @@ export default function ProjectUpdatesPanel({
         setReplyTargetId(null);
       } else {
         setRootComposer(emptyComposer());
+        setExpandedComposer(false);
       }
 
       toast.success(variables.parentId ? 'Svar tillagt' : 'Uppdatering publicerad');
@@ -347,6 +459,30 @@ export default function ProjectUpdatesPanel({
   const attachmentMap = useMemo(() => buildAttachmentMap(updates, attachments), [attachments, updates]);
   const rootUpdates = childrenMap.get(null) ?? [];
 
+  useEffect(() => {
+    if (!highlightUpdateId || !isActive) return;
+    const target = updateRefs.current[highlightUpdateId];
+    if (!target) return;
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [highlightUpdateId, isActive, updates]);
+
+  function getMentionCandidates(content: string) {
+    const match = content.match(/@([A-Za-z0-9._%+-]*)$/);
+    const query = match?.[1]?.toLowerCase();
+    if (!query) return [];
+    return (directoryQuery.data ?? [])
+      .filter((member) => {
+        const email = member.email?.toLowerCase() ?? '';
+        const handle = member.handle?.toLowerCase() ?? '';
+        return email.includes(query) || handle.includes(query);
+      })
+      .slice(0, 5);
+  }
+
+  function applyMention(content: string, mention: string) {
+    return content.replace(/@([A-Za-z0-9._%+-]*)$/, `@${mention} `);
+  }
+
   function setReplyComposerValue(id: string, next: ComposerState) {
     setReplyComposers((prev) => ({ ...prev, [id]: next }));
   }
@@ -370,7 +506,14 @@ export default function ProjectUpdatesPanel({
     const replyComposer = replyComposers[update.id] ?? emptyComposer();
     const isReplyOpen = replyTargetId === update.id;
     const isEditing = editingUpdateId === update.id;
-    const canManage = Boolean(update.created_by && currentUserQuery.data && update.created_by === currentUserQuery.data);
+      const canManage = Boolean(update.created_by && currentUserQuery.data?.id && update.created_by === currentUserQuery.data.id);
+      const isEdited = new Date(update.updated_at).getTime() > new Date(update.created_at).getTime() + 1000;
+      const mentions = extractMentions(update.content);
+      const currentEmail = currentUserQuery.data?.email ?? null;
+      const currentHandle = currentEmail?.split('@')[0] ?? null;
+      const mentionsCurrentUser = Boolean(
+        currentEmail && mentions.some((mention) => mention === currentEmail || mention === currentHandle)
+      );
     const indentClass = depth === 0 ? '' : depth === 1 ? 'ml-4' : 'ml-8';
     const attachmentsForUpdate = (attachmentMap.get(update.id) ?? []).map((attachment) => ({
       ...attachment,
@@ -379,11 +522,18 @@ export default function ProjectUpdatesPanel({
 
     return (
       <div key={update.id} className={`space-y-3 ${indentClass}`}>
-        <div className="rounded-xl border border-border/70 bg-card p-3">
+        <div
+          ref={(element) => {
+            updateRefs.current[update.id] = element;
+          }}
+          className={`rounded-xl border border-border/70 bg-card p-3 ${highlightUpdateId === update.id ? 'ring-2 ring-primary/40' : ''}`}
+        >
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              <Badge className="bg-muted/70">{authorLabel(update, currentUserQuery.data ?? null)}</Badge>
+              <Badge className="bg-muted/70">{authorLabel(update, currentUserQuery.data?.id ?? null)}</Badge>
               {update.parent_id ? <Badge className="bg-secondary/80">Svar</Badge> : <Badge>Uppdatering</Badge>}
+              {isEdited ? <Badge className="bg-muted/70">Redigerad</Badge> : null}
+              {mentionsCurrentUser ? <Badge className="bg-primary/15 text-primary">Nämner dig</Badge> : null}
             </div>
             <p className="text-xs text-foreground/55">{new Date(update.created_at).toLocaleString('sv-SE')}</p>
           </div>
@@ -464,9 +614,33 @@ export default function ProjectUpdatesPanel({
                     content: event.target.value
                   })
                 }
-                placeholder="Skriv ett svar..."
+                placeholder="Skriv ett svar... Du kan nämna någon med @namn eller @epost"
                 className="min-h-[88px]"
               />
+
+              {getMentionCandidates(replyComposer.content).length > 0 ? (
+                <div className="rounded-lg border border-border/70 bg-background p-2">
+                  <p className="mb-1 text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Förslag</p>
+                  <div className="space-y-1">
+                    {getMentionCandidates(replyComposer.content).map((member) => (
+                      <button
+                        key={member.id}
+                        type="button"
+                        className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm transition hover:bg-muted"
+                        onClick={() =>
+                          setReplyComposerValue(update.id, {
+                            ...replyComposer,
+                            content: applyMention(replyComposer.content, member.handle ?? member.email ?? '')
+                          })
+                        }
+                      >
+                        <span>{member.handle ? `@${member.handle}` : member.email}</span>
+                        <span className="text-xs text-foreground/55">{member.email}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
 
               <ComposerAttachmentList
                 files={replyComposer.files}
@@ -486,10 +660,14 @@ export default function ProjectUpdatesPanel({
                     }}
                     type="file"
                     multiple
+                    accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.txt"
                     className="hidden"
                     onChange={(event) => {
                       const files = Array.from(event.target.files ?? []);
-                      setReplyComposerValue(update.id, { ...replyComposer, files });
+                      setReplyComposerValue(update.id, {
+                        ...replyComposer,
+                        files: appendUniqueFiles(replyComposer.files, files)
+                      });
                     }}
                   />
                   <Button type="button" variant="outline" size="sm" onClick={() => replyFileRefs.current[update.id]?.click()}>
@@ -554,59 +732,150 @@ export default function ProjectUpdatesPanel({
       ) : null}
 
       <Card className="sticky bottom-[calc(env(safe-area-inset-bottom)+5.5rem)] z-20 border-primary/20 bg-background/95 shadow-lg backdrop-blur md:bottom-4">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Ny projektuppdatering</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <Textarea
-            value={rootComposer.content}
-            onChange={(event) => setRootComposer((prev) => ({ ...prev, content: event.target.value }))}
-            placeholder={'Skriv en uppdatering...\n- du kan använda punktlistor\n- eller bara vanlig text'}
-          />
-
-          <ComposerAttachmentList
-            files={rootComposer.files}
-            onRemove={(index) =>
-              setRootComposer((prev) => ({
-                ...prev,
-                files: prev.files.filter((_, currentIndex) => currentIndex !== index)
-              }))
-            }
-          />
-
-          <div className="flex flex-wrap items-center justify-between gap-2">
+        <CardContent className="space-y-3 p-3">
+          <div className="flex items-center gap-2">
             <input
-              ref={rootFileRef}
+              ref={rootImageFileRef}
               type="file"
               multiple
+              accept="image/*"
               className="hidden"
               onChange={(event) => {
                 const files = Array.from(event.target.files ?? []);
-                setRootComposer((prev) => ({ ...prev, files }));
+                setRootComposer((prev) => ({ ...prev, files: appendUniqueFiles(prev.files, files) }));
+              }}
+            />
+            <input
+              ref={rootDocumentFileRef}
+              type="file"
+              multiple
+              accept="application/pdf,.doc,.docx,.xls,.xlsx,.txt"
+              className="hidden"
+              onChange={(event) => {
+                const files = Array.from(event.target.files ?? []);
+                setRootComposer((prev) => ({ ...prev, files: appendUniqueFiles(prev.files, files) }));
               }}
             />
 
-            <div className="flex gap-2">
-              <Button type="button" variant="outline" onClick={() => rootFileRef.current?.click()}>
-                <Paperclip className="mr-2 h-4 w-4" />
-                Bilagor
-              </Button>
-              {!isActive ? (
-                <Button type="button" variant="ghost" onClick={onOpenUpdates}>
-                  Visa uppdateringar
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button type="button" variant="outline" size="icon" aria-label="Lägg till innehåll" className="relative">
+                  <Paperclip className="h-4 w-4" />
+                  {rootComposer.files.length > 0 ? (
+                    <span className="absolute -right-1 -top-1 inline-flex min-h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground">
+                      {rootComposer.files.length > 9 ? '9+' : rootComposer.files.length}
+                    </span>
+                  ) : null}
                 </Button>
-              ) : null}
-            </div>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-44">
+                <DropdownMenuItem onClick={() => document.getElementById('project-update-input')?.focus()}>
+                  <Type className="mr-2 h-4 w-4" />
+                  Text
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => rootImageFileRef.current?.click()}>
+                  <ImagePlus className="mr-2 h-4 w-4" />
+                  Bild
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => rootDocumentFileRef.current?.click()}>
+                  <FileText className="mr-2 h-4 w-4" />
+                  Fil
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setExpandedComposer((prev) => !prev)}>
+                  <Type className="mr-2 h-4 w-4" />
+                  {expandedComposer ? 'Kompakt läge' : 'Större skrivläge'}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            {expandedComposer ? (
+              <Textarea
+                id="project-update-input"
+                value={rootComposer.content}
+                onChange={(event) => setRootComposer((prev) => ({ ...prev, content: event.target.value }))}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && !event.shiftKey) {
+                    event.preventDefault();
+                    createUpdateMutation.mutate({ parentId: null, composer: rootComposer });
+                  }
+                }}
+                placeholder="Skriv en uppdatering eller nämn någon med @..."
+                className="min-h-[88px] flex-1"
+              />
+            ) : (
+              <Input
+                id="project-update-input"
+                value={rootComposer.content}
+                onChange={(event) => setRootComposer((prev) => ({ ...prev, content: event.target.value }))}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && event.shiftKey) {
+                    event.preventDefault();
+                    setExpandedComposer(true);
+                    return;
+                  }
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    createUpdateMutation.mutate({ parentId: null, composer: rootComposer });
+                  }
+                }}
+                placeholder="Skriv en uppdatering eller nämn någon med @..."
+                className="h-11 flex-1"
+              />
+            )}
 
             <Button
               type="button"
+              size="icon"
               onClick={() => createUpdateMutation.mutate({ parentId: null, composer: rootComposer })}
               disabled={createUpdateMutation.isPending}
+              aria-label="Skicka uppdatering"
             >
-              <Send className="mr-2 h-4 w-4" />
-              Publicera
+              <Send className="h-4 w-4" />
             </Button>
           </div>
+
+          {getMentionCandidates(rootComposer.content).length > 0 ? (
+            <div className="rounded-lg border border-border/70 bg-background p-2">
+              <div className="space-y-1">
+                {getMentionCandidates(rootComposer.content).map((member) => (
+                  <button
+                    key={member.id}
+                    type="button"
+                    className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm transition hover:bg-muted"
+                    onClick={() =>
+                      setRootComposer((prev) => ({
+                        ...prev,
+                        content: applyMention(prev.content, member.handle ?? member.email ?? '')
+                      }))
+                    }
+                  >
+                    <span>{member.handle ? `@${member.handle}` : member.email}</span>
+                    <span className="text-xs text-foreground/55">{member.email}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {rootComposer.files.length > 0 ? (
+            <ComposerAttachmentList
+              files={rootComposer.files}
+              onRemove={(index) =>
+                setRootComposer((prev) => ({
+                  ...prev,
+                  files: prev.files.filter((_, currentIndex) => currentIndex !== index)
+                }))
+              }
+            />
+          ) : null}
+
+          {!isActive ? (
+            <div className="flex justify-end">
+              <Button type="button" variant="ghost" size="sm" onClick={onOpenUpdates}>
+                Visa uppdateringar
+              </Button>
+            </div>
+          ) : null}
         </CardContent>
       </Card>
     </Fragment>
