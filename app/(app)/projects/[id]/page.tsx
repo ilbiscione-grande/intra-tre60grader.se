@@ -635,6 +635,14 @@ export default function ProjectDetailsPage() {
     return items.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
   }, [localActivity, orderQuery.data, projectQuery.data, linesQuery.data, invoicesQuery.data]);
 
+  const invoiceSourceCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const row of invoiceSourceCountsQuery.data ?? []) {
+      counts.set(row.invoice_id, (counts.get(row.invoice_id) ?? 0) + 1);
+    }
+    return counts;
+  }, [invoiceSourceCountsQuery.data]);
+
   if (projectQuery.isLoading) return <p>Laddar...</p>;
   if (!projectQuery.data) return <p>Projekt saknas.</p>;
 
@@ -648,13 +656,6 @@ export default function ProjectDetailsPage() {
     economyLockQuery.data ?? (invoicesQuery.data ?? []).some((invoice) => invoice.status !== 'void');
   const isEconomyBusy = economyLockQuery.isPending;
   const latestInvoice = invoicesQuery.data?.[0] ?? null;
-  const invoiceSourceCounts = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const row of invoiceSourceCountsQuery.data ?? []) {
-      counts.set(row.invoice_id, (counts.get(row.invoice_id) ?? 0) + 1);
-    }
-    return counts;
-  }, [invoiceSourceCountsQuery.data]);
   const latestActivityItem = activity[0] ?? null;
   const projectStatusLabel = projectColumnTitle(draftStatus || project.status, statusColumns);
   const invoiceAttachments = (invoicesQuery.data ?? []).filter((invoice) => Boolean(invoice.attachment_path));
