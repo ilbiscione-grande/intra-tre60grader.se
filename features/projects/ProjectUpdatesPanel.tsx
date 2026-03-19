@@ -182,6 +182,7 @@ export default function ProjectUpdatesPanel({
   const [editingContent, setEditingContent] = useState('');
   const [expandedComposer, setExpandedComposer] = useState(false);
   const [rootAttachmentSheetOpen, setRootAttachmentSheetOpen] = useState(false);
+  const [rootComposerVisible, setRootComposerVisible] = useState(false);
 
   const currentUserQuery = useQuery({
     queryKey: ['current-user-id'],
@@ -395,6 +396,7 @@ export default function ProjectUpdatesPanel({
       } else {
         setRootComposer(emptyComposer());
         setExpandedComposer(false);
+        setRootComposerVisible(false);
       }
 
       toast.success(variables.parentId ? 'Svar tillagt' : 'Uppdatering publicerad');
@@ -739,6 +741,7 @@ export default function ProjectUpdatesPanel({
               className="hidden"
               onChange={(event) => {
                 const files = Array.from(event.target.files ?? []);
+                if (files.length > 0) setRootComposerVisible(true);
                 setRootComposer((prev) => ({ ...prev, files: appendUniqueFiles(prev.files, files) }));
               }}
             />
@@ -750,6 +753,7 @@ export default function ProjectUpdatesPanel({
               className="hidden"
               onChange={(event) => {
                 const files = Array.from(event.target.files ?? []);
+                if (files.length > 0) setRootComposerVisible(true);
                 setRootComposer((prev) => ({ ...prev, files: appendUniqueFiles(prev.files, files) }));
               }}
             />
@@ -761,6 +765,7 @@ export default function ProjectUpdatesPanel({
               className="hidden"
               onChange={(event) => {
                 const files = Array.from(event.target.files ?? []);
+                if (files.length > 0) setRootComposerVisible(true);
                 setRootComposer((prev) => ({ ...prev, files: appendUniqueFiles(prev.files, files) }));
               }}
             />
@@ -781,50 +786,54 @@ export default function ProjectUpdatesPanel({
               ) : null}
             </Button>
 
-            {expandedComposer ? (
-              <Textarea
-                id="project-update-input"
-                value={rootComposer.content}
-                onChange={(event) => setRootComposer((prev) => ({ ...prev, content: event.target.value }))}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' && !event.shiftKey) {
-                    event.preventDefault();
-                    createUpdateMutation.mutate({ parentId: null, composer: rootComposer });
-                  }
-                }}
-                placeholder="Skriv en uppdatering eller nämn någon med @..."
-                className="min-h-[88px] flex-1"
-              />
-            ) : (
-              <Input
-                id="project-update-input"
-                value={rootComposer.content}
-                onChange={(event) => setRootComposer((prev) => ({ ...prev, content: event.target.value }))}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' && event.shiftKey) {
-                    event.preventDefault();
-                    setExpandedComposer(true);
-                    return;
-                  }
-                  if (event.key === 'Enter') {
-                    event.preventDefault();
-                    createUpdateMutation.mutate({ parentId: null, composer: rootComposer });
-                  }
-                }}
-                placeholder="Skriv en uppdatering eller nämn någon med @..."
-                className="h-11 flex-1"
-              />
-            )}
+            {rootComposerVisible ? (
+              <>
+                {expandedComposer ? (
+                  <Textarea
+                    id="project-update-input"
+                    value={rootComposer.content}
+                    onChange={(event) => setRootComposer((prev) => ({ ...prev, content: event.target.value }))}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' && !event.shiftKey) {
+                        event.preventDefault();
+                        createUpdateMutation.mutate({ parentId: null, composer: rootComposer });
+                      }
+                    }}
+                    placeholder="Skriv en uppdatering eller nämn någon med @..."
+                    className="min-h-[88px] flex-1"
+                  />
+                ) : (
+                  <Input
+                    id="project-update-input"
+                    value={rootComposer.content}
+                    onChange={(event) => setRootComposer((prev) => ({ ...prev, content: event.target.value }))}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' && event.shiftKey) {
+                        event.preventDefault();
+                        setExpandedComposer(true);
+                        return;
+                      }
+                      if (event.key === 'Enter') {
+                        event.preventDefault();
+                        createUpdateMutation.mutate({ parentId: null, composer: rootComposer });
+                      }
+                    }}
+                    placeholder="Skriv en uppdatering eller nämn någon med @..."
+                    className="h-11 flex-1"
+                  />
+                )}
 
-            <Button
-              type="button"
-              size="icon"
-              onClick={() => createUpdateMutation.mutate({ parentId: null, composer: rootComposer })}
-              disabled={createUpdateMutation.isPending}
-              aria-label="Skicka uppdatering"
-            >
-              <Send className="h-4 w-4" />
-            </Button>
+                <Button
+                  type="button"
+                  size="icon"
+                  onClick={() => createUpdateMutation.mutate({ parentId: null, composer: rootComposer })}
+                  disabled={createUpdateMutation.isPending}
+                  aria-label="Skicka uppdatering"
+                >
+                  <Send className="h-4 w-4" />
+                </Button>
+              </>
+            ) : null}
           </div>
 
           {getMentionCandidates(rootComposer.content).length > 0 ? (
@@ -878,7 +887,8 @@ export default function ProjectUpdatesPanel({
             className="h-12 justify-start rounded-2xl"
             onClick={() => {
               setRootAttachmentSheetOpen(false);
-              document.getElementById('project-update-input')?.focus();
+              setRootComposerVisible(true);
+              requestAnimationFrame(() => document.getElementById('project-update-input')?.focus());
             }}
           >
             <Type className="mr-2 h-4 w-4" />
@@ -890,6 +900,7 @@ export default function ProjectUpdatesPanel({
             className="h-12 justify-start rounded-2xl"
             onClick={() => {
               setRootAttachmentSheetOpen(false);
+              setRootComposerVisible(true);
               requestAnimationFrame(() => rootCameraFileRef.current?.click());
             }}
           >
@@ -902,6 +913,7 @@ export default function ProjectUpdatesPanel({
             className="h-12 justify-start rounded-2xl"
             onClick={() => {
               setRootAttachmentSheetOpen(false);
+              setRootComposerVisible(true);
               requestAnimationFrame(() => rootImageFileRef.current?.click());
             }}
           >
@@ -914,6 +926,7 @@ export default function ProjectUpdatesPanel({
             className="h-12 justify-start rounded-2xl"
             onClick={() => {
               setRootAttachmentSheetOpen(false);
+              setRootComposerVisible(true);
               requestAnimationFrame(() => rootDocumentFileRef.current?.click());
             }}
           >
@@ -926,6 +939,7 @@ export default function ProjectUpdatesPanel({
             className="h-12 justify-start rounded-2xl"
             onClick={() => {
               setRootAttachmentSheetOpen(false);
+              setRootComposerVisible(true);
               setExpandedComposer((prev) => !prev);
             }}
           >
