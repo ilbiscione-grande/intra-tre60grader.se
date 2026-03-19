@@ -329,6 +329,14 @@ export default function OrderDetailsPage() {
     return entries.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
   }, [invoicesQuery.data, linesQuery.data, orderQuery.data]);
 
+  const invoiceSourceCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const row of invoiceSourceCountsQuery.data ?? []) {
+      counts.set(row.invoice_id, (counts.get(row.invoice_id) ?? 0) + 1);
+    }
+    return counts;
+  }, [invoiceSourceCountsQuery.data]);
+
   if (orderQuery.isLoading) return <p>Laddar order...</p>;
   if (!orderQuery.data) return <p>Order hittades inte.</p>;
 
@@ -341,13 +349,6 @@ export default function OrderDetailsPage() {
     .filter((invoice) => invoice.status !== 'paid' && invoice.status !== 'void')
     .reduce((sum, invoice) => sum + Number(invoice.total ?? 0), 0);
   const latestInvoice = invoicesQuery.data?.[0] ?? null;
-  const invoiceSourceCounts = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const row of invoiceSourceCountsQuery.data ?? []) {
-      counts.set(row.invoice_id, (counts.get(row.invoice_id) ?? 0) + 1);
-    }
-    return counts;
-  }, [invoiceSourceCountsQuery.data]);
 
   return (
     <section className="space-y-4">
