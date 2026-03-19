@@ -27,6 +27,7 @@ export default function DesktopShell({
 }) {
   const [collapsed, setCollapsed] = useState(false);
   const { companyId } = useAppContext();
+  const showSidebar = role !== 'member';
 
   useEffect(() => {
     const stored = window.localStorage.getItem(COLLAPSE_KEY);
@@ -45,14 +46,16 @@ export default function DesktopShell({
 
   return (
     <div className="min-h-screen lg:flex">
-      <DesktopSidebar role={role} collapsed={collapsed} onToggle={toggleSidebar} />
+      {showSidebar ? <DesktopSidebar role={role} collapsed={collapsed} onToggle={toggleSidebar} /> : null}
       <div className="flex min-h-screen flex-1 flex-col">
         <header className="sticky top-0 z-[120] border-b border-border bg-card/80 px-6 py-4 backdrop-blur">
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
-              <Button variant="ghost" size="icon" onClick={toggleSidebar} aria-label="Växla sidomeny">
-                {collapsed ? <PanelLeftOpen className="h-5 w-5" /> : <PanelLeftClose className="h-5 w-5" />}
-              </Button>
+              {showSidebar ? (
+                <Button variant="ghost" size="icon" onClick={toggleSidebar} aria-label="Växla sidomeny">
+                  {collapsed ? <PanelLeftOpen className="h-5 w-5" /> : <PanelLeftClose className="h-5 w-5" />}
+                </Button>
+              ) : null}
               <p className="text-xs uppercase tracking-wide text-foreground/70">{companyName}</p>
             </div>
             <div className="flex items-center gap-2">

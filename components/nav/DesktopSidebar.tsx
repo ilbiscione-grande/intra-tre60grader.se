@@ -44,6 +44,10 @@ export default function DesktopSidebar({
   const router = useRouter();
   const visibleItems = items.filter((item) => item.roles.includes(role));
 
+  if (role === 'member') {
+    return null;
+  }
+
   useEffect(() => {
     visibleItems.forEach((item) => {
       if (!pathname?.startsWith(item.href)) {

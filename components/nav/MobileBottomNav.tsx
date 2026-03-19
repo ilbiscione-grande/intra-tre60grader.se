@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import type { Route } from 'next';
 import { usePathname, useRouter } from 'next/navigation';
-import { BriefcaseBusiness, Building2, ScrollText, Activity, Landmark } from 'lucide-react';
+import { BriefcaseBusiness, Building2, ScrollText, Activity, Landmark, Settings } from 'lucide-react';
 import { useEffect } from 'react';
 import { buttonVariants } from '@/components/ui/button';
 import { cn } from '@/lib/ui/cn';
@@ -18,10 +18,11 @@ type NavItem = {
 
 const navItems: NavItem[] = [
   { href: '/projects', label: 'Projekt', roles: ['member', 'finance', 'admin'], icon: BriefcaseBusiness },
-  { href: '/customers', label: 'Kunder', roles: ['member', 'finance', 'admin'], icon: Building2 },
-  { href: '/orders', label: 'Ordrar', roles: ['member', 'finance', 'admin'], icon: ScrollText },
+  { href: '/customers', label: 'Kunder', roles: ['finance', 'admin'], icon: Building2 },
+  { href: '/orders', label: 'Ordrar', roles: ['finance', 'admin'], icon: ScrollText },
   { href: '/finance', label: 'Ekonomi', roles: ['finance', 'admin', 'auditor'], icon: Activity },
-  { href: '/payables', label: 'Lev.resk', roles: ['finance', 'admin', 'auditor'], icon: Landmark }
+  { href: '/payables', label: 'Lev.resk', roles: ['finance', 'admin', 'auditor'], icon: Landmark },
+  { href: '/settings', label: 'Inställn.', roles: ['member'], icon: Settings }
 ];
 
 export default function MobileBottomNav({ role }: { role: Role }) {

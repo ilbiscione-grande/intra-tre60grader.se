@@ -25,7 +25,7 @@ const items: QuickCreateItem[] = [
   {
     href: '/customers',
     label: 'Ny kund',
-    roles: ['member', 'finance', 'admin'],
+    roles: ['finance', 'admin'],
     icon: UserPlus
   },
   {
