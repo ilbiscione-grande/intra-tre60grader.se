@@ -545,64 +545,16 @@ export default function ProjectDetailsPage() {
   return (
     <section className="space-y-4">
       <Card>
-        <CardHeader className="space-y-4">
-          <div className="space-y-2">
-            <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-foreground/45">Projekt</p>
-            <CardTitle className="text-xl lg:text-2xl">{project.title}</CardTitle>
-          </div>
+        <CardHeader>
+          <CardTitle>Projektdetaljer</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
           <div className="flex flex-wrap items-center gap-2">
             <Badge>{projectStatusLabel}</Badge>
             <Badge>Skapad: {new Date(project.created_at).toLocaleDateString('sv-SE')}</Badge>
             <Badge>Uppdaterad: {new Date(project.updated_at).toLocaleString('sv-SE')}</Badge>
             {project.customer_id ? <Badge>Kund kopplad</Badge> : <Badge>Ingen kund</Badge>}
             {isEconomyLocked ? <Badge>Låst efter fakturering</Badge> : null}
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            <ProjectSummaryCard
-              icon={Users}
-              label="Kund"
-              value={currentCustomer?.name ?? 'Ingen kund'}
-              helper={currentCustomer ? 'kopplad till projektet' : 'kan läggas till i översikten'}
-            />
-            <ProjectSummaryCard
-              icon={ReceiptText}
-              label="Orderrader"
-              value={String(lines.length)}
-              helper={orderId ? 'kopplade till projektets order' : 'ingen order skapad ännu'}
-            />
-            <ProjectSummaryCard
-              icon={CircleDollarSign}
-              label="Ordertotal"
-              value={`${Number(orderQuery.data?.total ?? 0).toFixed(2)} kr`}
-              helper={latestInvoice ? `senaste faktura ${latestInvoice.invoice_no}` : 'ingen faktura skapad ännu'}
-            />
-            <ProjectSummaryCard
-              icon={FolderKanban}
-              label="Senaste aktivitet"
-              value={latestActivityItem ? latestActivityItem.text : 'Ingen aktivitet ännu'}
-              helper={latestActivityItem ? new Date(latestActivityItem.at).toLocaleString('sv-SE') : 'projektet väntar på första aktivitet'}
-            />
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            {orderId ? (
-              <Button asChild variant="outline">
-                <Link href={`/orders/${orderId}`}>
-                  <span>Öppna order</span>
-                  <ArrowUpRight className="ml-2 h-4 w-4" />
-                </Link>
-              </Button>
-            ) : null}
-            {currentCustomer ? (
-              <Button asChild variant="outline">
-                <Link href={`/customers/${currentCustomer.id}` as Route}>
-                  <span>Öppna kund</span>
-                  <ArrowUpRight className="ml-2 h-4 w-4" />
-                </Link>
-              </Button>
-            ) : null}
           </div>
         </CardContent>
       </Card>
@@ -628,7 +580,53 @@ export default function ProjectDetailsPage() {
             <CardHeader>
               <CardTitle>Översikt</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3">
+            <CardContent className="space-y-4">
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <ProjectSummaryCard
+                  icon={Users}
+                  label="Kund"
+                  value={currentCustomer?.name ?? 'Ingen kund'}
+                  helper={currentCustomer ? 'kopplad till projektet' : 'kan läggas till i översikten'}
+                />
+                <ProjectSummaryCard
+                  icon={ReceiptText}
+                  label="Orderrader"
+                  value={String(lines.length)}
+                  helper={orderId ? 'kopplade till projektets order' : 'ingen order skapad ännu'}
+                />
+                <ProjectSummaryCard
+                  icon={CircleDollarSign}
+                  label="Ordertotal"
+                  value={`${Number(orderQuery.data?.total ?? 0).toFixed(2)} kr`}
+                  helper={latestInvoice ? `senaste faktura ${latestInvoice.invoice_no}` : 'ingen faktura skapad ännu'}
+                />
+                <ProjectSummaryCard
+                  icon={FolderKanban}
+                  label="Senaste aktivitet"
+                  value={latestActivityItem ? latestActivityItem.text : 'Ingen aktivitet ännu'}
+                  helper={latestActivityItem ? new Date(latestActivityItem.at).toLocaleString('sv-SE') : 'projektet väntar på första aktivitet'}
+                />
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                {orderId ? (
+                  <Button asChild variant="outline">
+                    <Link href={`/orders/${orderId}`}>
+                      <span>Öppna order</span>
+                      <ArrowUpRight className="ml-2 h-4 w-4" />
+                    </Link>
+                  </Button>
+                ) : null}
+                {currentCustomer ? (
+                  <Button asChild variant="outline">
+                    <Link href={`/customers/${currentCustomer.id}` as Route}>
+                      <span>Öppna kund</span>
+                      <ArrowUpRight className="ml-2 h-4 w-4" />
+                    </Link>
+                  </Button>
+                ) : null}
+              </div>
+
               <div className="grid gap-3 md:grid-cols-2">
                 <label className="space-y-1">
                   <span className="text-sm">Titel</span>
