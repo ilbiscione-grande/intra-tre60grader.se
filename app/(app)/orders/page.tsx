@@ -31,10 +31,10 @@ function orderStatusEtikett(status: string) {
 
 function orderStatusBadgeClass(status: string) {
   const map: Record<string, string> = {
-    draft: 'border-amber-200/80 bg-amber-100/80 text-amber-900 dark:border-amber-900/70 dark:bg-amber-950/60 dark:text-amber-200',
-    sent: 'border-sky-200/80 bg-sky-100/80 text-sky-900 dark:border-sky-900/70 dark:bg-sky-950/60 dark:text-sky-200',
+    draft: 'border-slate-200 bg-white text-slate-800 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100',
+    sent: 'border-amber-200/80 bg-amber-100/80 text-amber-900 dark:border-amber-900/70 dark:bg-amber-950/60 dark:text-amber-200',
     paid: 'border-emerald-200/80 bg-emerald-100/80 text-emerald-900 dark:border-emerald-900/70 dark:bg-emerald-950/60 dark:text-emerald-200',
-    invoiced: 'border-emerald-200/80 bg-emerald-100/80 text-emerald-900 dark:border-emerald-900/70 dark:bg-emerald-950/60 dark:text-emerald-200',
+    invoiced: 'border-sky-200/80 bg-sky-100/80 text-sky-900 dark:border-sky-900/70 dark:bg-sky-950/60 dark:text-sky-200',
     cancelled: 'border-rose-200/80 bg-rose-100/80 text-rose-900 dark:border-rose-900/70 dark:bg-rose-950/60 dark:text-rose-200'
   };
 
@@ -43,10 +43,10 @@ function orderStatusBadgeClass(status: string) {
 
 function orderStatusSurfaceClass(status: string) {
   const map: Record<string, string> = {
-    draft: 'border-amber-200/80 bg-amber-50/85 hover:bg-amber-100/85 dark:border-amber-900/60 dark:bg-amber-950/30 dark:hover:bg-amber-950/40',
-    sent: 'border-sky-200/80 bg-sky-50/85 hover:bg-sky-100/85 dark:border-sky-900/60 dark:bg-sky-950/30 dark:hover:bg-sky-950/40',
+    draft: 'border-slate-200 bg-white hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950/80 dark:hover:bg-slate-900',
+    sent: 'border-amber-200/80 bg-amber-50/85 hover:bg-amber-100/85 dark:border-amber-900/60 dark:bg-amber-950/30 dark:hover:bg-amber-950/40',
     paid: 'border-emerald-200/80 bg-emerald-50/85 hover:bg-emerald-100/85 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:hover:bg-emerald-950/40',
-    invoiced: 'border-emerald-200/80 bg-emerald-50/85 hover:bg-emerald-100/85 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:hover:bg-emerald-950/40',
+    invoiced: 'border-sky-200/80 bg-sky-50/85 hover:bg-sky-100/85 dark:border-sky-900/60 dark:bg-sky-950/30 dark:hover:bg-sky-950/40',
     cancelled: 'border-rose-200/80 bg-rose-50/85 hover:bg-rose-100/85 dark:border-rose-900/60 dark:bg-rose-950/30 dark:hover:bg-rose-950/40'
   };
 
