@@ -4,10 +4,8 @@ import Link from 'next/link';
 import type { Route } from 'next';
 import { useRouter } from 'next/navigation';
 import { FilePlus2, FolderPlus, Plus, UserPlus } from 'lucide-react';
-import ActionSheet from '@/components/common/ActionSheet';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { useState } from 'react';
 import type { Role } from '@/lib/types';
 
 type QuickCreateItem = {
@@ -41,45 +39,6 @@ const items: QuickCreateItem[] = [
 export default function QuickCreateMenu({ role, compact = false }: { role: Role; compact?: boolean }) {
   const visibleItems = items.filter((item) => item.roles.includes(role));
   const router = useRouter();
-  const [sheetOpen, setSheetOpen] = useState(false);
-
-  if (compact) {
-    return (
-      <>
-        <Button variant="default" size="icon" className="rounded-full" aria-label="Lägg till" onClick={() => setSheetOpen(true)}>
-          <Plus className="h-4 w-4" />
-        </Button>
-
-        <ActionSheet
-          open={sheetOpen}
-          onClose={() => setSheetOpen(false)}
-          title="Lägg till"
-          description="Välj vad du vill skapa."
-        >
-          <div className="grid gap-2">
-            {visibleItems.map((item) => {
-              const Icon = item.icon;
-              return (
-                <Button
-                  key={item.href}
-                  type="button"
-                  variant="outline"
-                  className="h-12 justify-start rounded-2xl"
-                  onClick={() => {
-                    setSheetOpen(false);
-                    void router.push(item.href);
-                  }}
-                >
-                  <Icon className="mr-2 h-4 w-4" />
-                  {item.label}
-                </Button>
-              );
-            })}
-          </div>
-        </ActionSheet>
-      </>
-    );
-  }
 
   return (
     <DropdownMenu>
