@@ -15,17 +15,38 @@ import {
 } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Ellipsis, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import ActionSheet from '@/components/common/ActionSheet';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import ProjectCard from '@/features/projects/ProjectCard';
 import { useMoveProject, useProjectColumns, useProjects } from '@/features/projects/projectQueries';
+import { createClient } from '@/lib/supabase/client';
 import type { Project } from '@/lib/types';
 import { useAutoScrollActiveTab } from '@/lib/ui/useAutoScrollActiveTab';
 
 type BoardState = Record<string, Project[]>;
+
+function toKeySeed(title: string) {
+  return title
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 40);
+}
+
+function makeUniqueKey(existing: string[], seed: string) {
+  const base = seed || 'kolumn';
+  if (!existing.includes(base)) return base;
+  let i = 2;
+  while (existing.includes(`${base}_${i}`)) i += 1;
+  return `${base}_${i}`;
+}
 
 function columnId(status: string) {
   return `mobile-column:${status}`;
@@ -151,11 +172,19 @@ function MobileColumn({
 }
 
 export default function ProjectBoardMobile({ companyId }: { companyId: string }) {
+  const supabase = useMemo(() => createClient(), []);
+  const queryClient = useQueryClient();
   const [activeStatus, setActiveStatus] = useState<string>('');
   const [selected, setSelected] = useState<Project | null>(null);
   const [board, setBoard] = useState<BoardState>({});
   const [activeId, setActiveId] = useState<string | null>(null);
   const [lockedStatus, setLockedStatus] = useState<string | null>(null);
+  const [columnSheetOpen, setColumnSheetOpen] = useState(false);
+  const [createColumnOpen, setCreateColumnOpen] = useState(false);
+  const [renameColumnOpen, setRenameColumnOpen] = useState(false);
+  const [deleteColumnOpen, setDeleteColumnOpen] = useState(false);
+  const [newColumnTitle, setNewColumnTitle] = useState('');
+  const [renameColumnTitle, setRenameColumnTitle] = useState('');
   const trackRef = useRef<HTMLDivElement | null>(null);
   const activeStatusRef = useRef<string>('');
   const activeIndexRef = useRef(0);
@@ -173,6 +202,110 @@ export default function ProjectBoardMobile({ companyId }: { companyId: string })
   const columns = columnsQuery.data ?? [];
   const projects = projectsQuery.data ?? [];
   const statuses = useMemo(() => columns.map((column) => column.key), [columns]);
+  const activeColumn = useMemo(() => columns.find((column) => column.key === activeStatus) ?? null, [activeStatus, columns]);
+
+  useEffect(() => {
+    setRenameColumnTitle(activeColumn?.title ?? '');
+  }, [activeColumn?.title]);
+
+  const addColumnMutation = useMutation({
+    mutationFn: async () => {
+      const title = newColumnTitle.trim();
+      if (!title) throw new Error('Kolumnnamn krävs');
+
+      const existingKeys = columns.map((c) => c.key);
+      const key = makeUniqueKey(existingKeys, toKeySeed(title));
+      const position = (columns.at(-1)?.position ?? 0) + 1;
+
+      const { error } = await supabase.from('project_columns').insert({
+        company_id: companyId,
+        key,
+        title,
+        position
+      });
+      if (error) throw error;
+      return key;
+    },
+    onSuccess: async (key) => {
+      setNewColumnTitle('');
+      setCreateColumnOpen(false);
+      await queryClient.invalidateQueries({ queryKey: ['project-columns', companyId] });
+      toast.success('Kolumn tillagd');
+      setActiveColumn(key);
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'Kunde inte lägga till kolumn')
+  });
+
+  const renameColumnMutation = useMutation({
+    mutationFn: async () => {
+      const clean = renameColumnTitle.trim();
+      if (!clean) throw new Error('Kolumnnamn krävs');
+      if (!activeColumn) throw new Error('Kolumn hittades inte');
+
+      const { error } = await supabase
+        .from('project_columns')
+        .update({ title: clean })
+        .eq('company_id', companyId)
+        .eq('id', activeColumn.id);
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      setRenameColumnOpen(false);
+      setColumnSheetOpen(false);
+      await queryClient.invalidateQueries({ queryKey: ['project-columns', companyId] });
+      toast.success('Kolumn uppdaterad');
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'Kunde inte uppdatera kolumn')
+  });
+
+  const deleteColumnMutation = useMutation({
+    mutationFn: async () => {
+      if (!activeColumn) throw new Error('Kolumn hittades inte');
+      if (columns.length <= 1) throw new Error('Minst en kolumn måste finnas kvar');
+
+      const fallback = columns.find((c) => c.key !== activeColumn.key);
+      if (!fallback) throw new Error('Ingen reservkolumn hittades');
+
+      const { error: moveError } = await supabase
+        .from('projects')
+        .update({ status: fallback.key })
+        .eq('company_id', companyId)
+        .eq('status', activeColumn.key);
+      if (moveError) throw moveError;
+
+      const { error: deleteError } = await supabase
+        .from('project_columns')
+        .delete()
+        .eq('company_id', companyId)
+        .eq('id', activeColumn.id);
+      if (deleteError) throw deleteError;
+
+      const remaining = columns
+        .filter((c) => c.id !== activeColumn.id)
+        .sort((a, b) => a.position - b.position)
+        .map((c, i) => ({ id: c.id, position: i + 1 }));
+
+      for (const item of remaining) {
+        const { error: posError } = await supabase
+          .from('project_columns')
+          .update({ position: item.position })
+          .eq('company_id', companyId)
+          .eq('id', item.id);
+        if (posError) throw posError;
+      }
+
+      return fallback.key;
+    },
+    onSuccess: async (fallbackKey) => {
+      setDeleteColumnOpen(false);
+      setColumnSheetOpen(false);
+      await queryClient.invalidateQueries({ queryKey: ['project-columns', companyId] });
+      await queryClient.invalidateQueries({ queryKey: ['projects', companyId] });
+      toast.success('Kolumn borttagen');
+      setActiveColumn(fallbackKey);
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'Kunde inte ta bort kolumn')
+  });
 
   useEffect(() => {
     if (!activeStatus && columns.length > 0) {
@@ -425,6 +558,26 @@ export default function ProjectBoardMobile({ companyId }: { companyId: string })
             variant="outline"
             size="icon"
             className="h-9 w-9"
+            onClick={() => setCreateColumnOpen(true)}
+            aria-label="Lägg till kolumn"
+          >
+            <Plus className="h-4 w-4" />
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="h-9 w-9"
+            onClick={() => setColumnSheetOpen(true)}
+            aria-label="Kolumninställningar"
+          >
+            <Ellipsis className="h-4 w-4" />
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="h-9 w-9"
             disabled={activeIndex <= 0}
             onClick={() => setActiveColumn(columns[Math.max(0, activeIndex - 1)]?.key ?? activeStatus)}
             aria-label="Föregående kolumn"
@@ -553,6 +706,99 @@ export default function ProjectBoardMobile({ companyId }: { companyId: string })
               {column.title}
             </Button>
           ))}
+        </div>
+      </ActionSheet>
+
+      <ActionSheet
+        open={columnSheetOpen}
+        onClose={() => setColumnSheetOpen(false)}
+        title={activeColumn?.title ?? 'Kolumn'}
+        description="Hantera den aktiva kolumnen."
+      >
+        <div className="grid gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            className="h-12 justify-start rounded-2xl"
+            onClick={() => {
+              setColumnSheetOpen(false);
+              setRenameColumnOpen(true);
+            }}
+          >
+            <Pencil className="mr-2 h-4 w-4" />
+            Byt namn
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="h-12 justify-start rounded-2xl"
+            onClick={() => {
+              setColumnSheetOpen(false);
+              setDeleteColumnOpen(true);
+            }}
+            disabled={columns.length <= 1}
+          >
+            <Trash2 className="mr-2 h-4 w-4" />
+            Ta bort kolumn
+          </Button>
+        </div>
+      </ActionSheet>
+
+      <ActionSheet
+        open={createColumnOpen}
+        onClose={() => setCreateColumnOpen(false)}
+        title="Ny kolumn"
+        description="Lägg till en ny kolumn i projektflödet."
+      >
+        <div className="space-y-3">
+          <Input
+            placeholder="Kolumnnamn"
+            value={newColumnTitle}
+            onChange={(event) => setNewColumnTitle(event.target.value)}
+          />
+          <Button type="button" className="w-full" onClick={() => addColumnMutation.mutate()} disabled={addColumnMutation.isPending}>
+            {addColumnMutation.isPending ? 'Lägger till...' : 'Lägg till kolumn'}
+          </Button>
+        </div>
+      </ActionSheet>
+
+      <ActionSheet
+        open={renameColumnOpen}
+        onClose={() => setRenameColumnOpen(false)}
+        title="Byt namn på kolumn"
+        description={activeColumn?.title ?? undefined}
+      >
+        <div className="space-y-3">
+          <Input
+            placeholder="Kolumnnamn"
+            value={renameColumnTitle}
+            onChange={(event) => setRenameColumnTitle(event.target.value)}
+          />
+          <Button type="button" className="w-full" onClick={() => renameColumnMutation.mutate()} disabled={renameColumnMutation.isPending}>
+            {renameColumnMutation.isPending ? 'Sparar...' : 'Spara namn'}
+          </Button>
+        </div>
+      </ActionSheet>
+
+      <ActionSheet
+        open={deleteColumnOpen}
+        onClose={() => setDeleteColumnOpen(false)}
+        title="Ta bort kolumn"
+        description="Projekt i kolumnen flyttas till en annan kolumn."
+      >
+        <div className="space-y-3">
+          <p className="text-sm text-foreground/70">
+            Vill du ta bort <span className="font-medium text-foreground">{activeColumn?.title}</span>?
+          </p>
+          <Button
+            type="button"
+            variant="destructive"
+            className="w-full"
+            onClick={() => deleteColumnMutation.mutate()}
+            disabled={deleteColumnMutation.isPending || columns.length <= 1}
+          >
+            {deleteColumnMutation.isPending ? 'Tar bort...' : 'Ta bort kolumn'}
+          </Button>
         </div>
       </ActionSheet>
     </div>

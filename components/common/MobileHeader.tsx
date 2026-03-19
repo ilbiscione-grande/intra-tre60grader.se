@@ -18,7 +18,7 @@ export default function MobileHeader({
   const { companyId } = useAppContext();
 
   return (
-    <header className="safe-top sticky top-0 z-[70] border-b border-border bg-card/90 px-4 pb-3 pt-2 backdrop-blur">
+    <header className="safe-top sticky top-0 z-[120] border-b border-border bg-card/90 px-4 pb-3 pt-2 backdrop-blur">
       <div className="flex items-center justify-between gap-3">
         <p className="text-xs uppercase tracking-wide text-foreground/70">{companyName}</p>
         <div className="flex items-center gap-2">

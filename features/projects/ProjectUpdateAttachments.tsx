@@ -1,6 +1,7 @@
 'use client';
 
-import { Paperclip } from 'lucide-react';
+import { useEffect, useMemo } from 'react';
+import { FileText, Paperclip } from 'lucide-react';
 
 export type ProjectUpdateAttachmentView = {
   id: string;
@@ -19,6 +20,11 @@ function formatSize(fileSize: number | null) {
   if (!fileSize) return '';
   if (fileSize < 1024) return `${fileSize} B`;
   return `${Math.max(fileSize / 1024, 1).toFixed(0)} KB`;
+}
+
+function fileExtension(fileName: string) {
+  const extension = fileName.split('.').pop()?.trim().toUpperCase();
+  return extension && extension.length <= 5 ? extension : 'FIL';
 }
 
 export function ProjectUpdateAttachments({
@@ -75,26 +81,51 @@ export function ComposerAttachmentList({
   files: File[];
   onRemove: (index: number) => void;
 }) {
+  const previews = useMemo(
+    () =>
+      files.map((file) => ({
+        file,
+        url: file.type.startsWith('image/') ? URL.createObjectURL(file) : null
+      })),
+    [files]
+  );
+
+  useEffect(() => {
+    return () => {
+      previews.forEach((preview) => {
+        if (preview.url) URL.revokeObjectURL(preview.url);
+      });
+    };
+  }, [previews]);
+
   if (files.length === 0) return null;
 
   return (
-    <div className="space-y-2">
-      {files.map((file, index) => (
-        <div key={`${file.name}-${index}`} className="flex items-center justify-between rounded-lg border border-border/70 bg-muted/15 px-3 py-2 text-sm">
-          <div className="min-w-0">
-            <p className="truncate">{file.name}</p>
-            <p className="text-xs text-foreground/55">
-              {file.size < 1024 ? `${file.size} B` : `${Math.max(file.size / 1024, 1).toFixed(0)} KB`}
-            </p>
-          </div>
+    <div className="-mx-1 flex gap-3 overflow-x-auto px-1 pb-1">
+      {previews.map(({ file, url }, index) => (
+        <div key={`${file.name}-${index}`} className="relative w-[88px] shrink-0">
           <button
             type="button"
-            className="text-foreground/55 transition hover:text-foreground"
+            className="absolute right-1 top-1 z-10 inline-flex h-6 w-6 items-center justify-center rounded-full bg-background/90 text-foreground/65 shadow-sm transition hover:text-foreground"
             onClick={() => onRemove(index)}
             aria-label="Ta bort bilaga"
           >
             ×
           </button>
+          <div className="overflow-hidden rounded-2xl border border-border/70 bg-muted/15">
+            {url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={url} alt={file.name} className="h-[88px] w-[88px] object-cover" />
+            ) : (
+              <div className="flex h-[88px] w-[88px] flex-col items-center justify-center gap-1 bg-muted/30 text-foreground/65">
+                <FileText className="h-5 w-5" />
+                <span className="text-[10px] font-semibold uppercase tracking-[0.14em]">
+                  {fileExtension(file.name)}
+                </span>
+              </div>
+            )}
+          </div>
+          <p className="mt-1 text-center text-[11px] text-foreground/55">{formatSize(file.size)}</p>
         </div>
       ))}
     </div>

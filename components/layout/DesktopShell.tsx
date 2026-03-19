@@ -47,7 +47,7 @@ export default function DesktopShell({
     <div className="min-h-screen lg:flex">
       <DesktopSidebar role={role} collapsed={collapsed} onToggle={toggleSidebar} />
       <div className="flex min-h-screen flex-1 flex-col">
-        <header className="sticky top-0 z-[70] border-b border-border bg-card/80 px-6 py-4 backdrop-blur">
+        <header className="sticky top-0 z-[120] border-b border-border bg-card/80 px-6 py-4 backdrop-blur">
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
               <Button variant="ghost" size="icon" onClick={toggleSidebar} aria-label="Växla sidomeny">
