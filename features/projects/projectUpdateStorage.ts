@@ -33,3 +33,12 @@ export async function createProjectUpdateAttachmentSignedUrl(path: string, expir
   if (error) throw error;
   return data.signedUrl;
 }
+
+export async function removeProjectUpdateAttachments(paths: string[]) {
+  const cleanPaths = paths.filter(Boolean);
+  if (cleanPaths.length === 0) return;
+
+  const supabase = createClient();
+  const { error } = await supabase.storage.from(PROJECT_UPDATE_BUCKET).remove(cleanPaths);
+  if (error) throw error;
+}

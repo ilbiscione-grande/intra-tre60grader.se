@@ -744,6 +744,64 @@ export type Database = {
           },
         ]
       }
+      project_update_attachments: {
+        Row: {
+          company_id: string
+          created_at: string
+          file_name: string | null
+          file_size: number | null
+          file_type: string | null
+          id: string
+          path: string
+          project_id: string
+          project_update_id: string
+        }
+        Insert: {
+          company_id: string
+          created_at?: string
+          file_name?: string | null
+          file_size?: number | null
+          file_type?: string | null
+          id?: string
+          path: string
+          project_id: string
+          project_update_id: string
+        }
+        Update: {
+          company_id?: string
+          created_at?: string
+          file_name?: string | null
+          file_size?: number | null
+          file_type?: string | null
+          id?: string
+          path?: string
+          project_id?: string
+          project_update_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_update_attachments_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_update_attachments_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_update_attachments_project_update_id_fkey"
+            columns: ["project_update_id"]
+            isOneToOne: false
+            referencedRelation: "project_updates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_company_preferences: {
         Row: {
           company_id: string
@@ -1226,7 +1284,6 @@ export const Constants = {
 export type TableRow<T extends keyof Database['public']['Tables']> = Database['public']['Tables'][T]['Row'];
 export type TableInsertRow<T extends keyof Database['public']['Tables']> = Database['public']['Tables'][T]['Insert'];
 export type TableUpdateRow<T extends keyof Database['public']['Tables']> = Database['public']['Tables'][T]['Update'];
-
 
 
 
