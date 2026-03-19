@@ -5,7 +5,7 @@ import Link from 'next/link';
 import type { Route } from 'next';
 import { useParams, useSearchParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowUpRight, CalendarDays, CircleDollarSign, FolderKanban, Paperclip, ReceiptText, Users } from 'lucide-react';
+import { ArrowLeft, ArrowUpRight, CalendarDays, CircleDollarSign, FolderKanban, Paperclip, ReceiptText, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import RoleGate from '@/components/common/RoleGate';
 import { useAppContext } from '@/components/providers/AppContext';
@@ -617,9 +617,16 @@ export default function ProjectDetailsPage() {
 
   return (
     <section className="space-y-3 md:space-y-4">
-      <div className="space-y-0.5">
-        <p className="text-[10px] font-medium uppercase tracking-[0.16em] text-foreground/40">Projekt</p>
-        <h1 className="text-lg font-semibold tracking-tight sm:text-xl lg:text-2xl">{project.title}</h1>
+      <div className="flex items-start gap-3">
+        <Button asChild variant="secondary" size="icon" aria-label="Tillbaka till projekt">
+          <Link href="/projects">
+            <ArrowLeft className="h-4 w-4" />
+          </Link>
+        </Button>
+        <div className="space-y-0.5">
+          <p className="text-[10px] font-medium uppercase tracking-[0.16em] text-foreground/40">Projekt</p>
+          <h1 className="text-lg font-semibold tracking-tight sm:text-xl lg:text-2xl">{project.title}</h1>
+        </div>
       </div>
 
       <div ref={containerRef} className="-mx-4 flex overflow-x-auto border-b border-border/70 px-4">

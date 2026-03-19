@@ -348,14 +348,18 @@ export default function OrderDetailsPage() {
         </CardContent>
       </Card>
 
-      <div ref={containerRef} className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+      <div ref={containerRef} className="-mx-4 flex overflow-x-auto border-b border-border/70 px-4">
         {orderTabs.map((tab) => (
           <Button
             key={tab.id}
             ref={registerItem(tab.id)}
             type="button"
-            variant={activeTab === tab.id ? 'default' : 'outline'}
-            className="shrink-0"
+            variant="ghost"
+            className={`shrink-0 rounded-none border-b-2 px-3 py-3 text-sm ${
+              activeTab === tab.id
+                ? 'border-primary text-foreground'
+                : 'border-transparent text-foreground/60 hover:border-border hover:text-foreground'
+            }`}
             onClick={() => setActiveTab(tab.id)}
           >
             {tab.label}

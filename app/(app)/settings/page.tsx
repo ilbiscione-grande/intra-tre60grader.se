@@ -314,7 +314,7 @@ export default function SettingsPage() {
 
       <MfaSettingsCard />
 
-      <RoleGate role={role} allow={['admin']}>
+      <RoleGate role={role} allow={['admin']} fallback={null}>
         <BackupRetentionCard companyId={companyId} isAdmin={role === 'admin'} canWrite={role === 'admin'} />
 
         <Card>
