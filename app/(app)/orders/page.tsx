@@ -31,14 +31,26 @@ function orderStatusEtikett(status: string) {
 
 function orderStatusBadgeClass(status: string) {
   const map: Record<string, string> = {
-    draft: 'border-amber-200 bg-amber-50 text-amber-800',
-    sent: 'border-sky-200 bg-sky-50 text-sky-800',
-    paid: 'border-emerald-200 bg-emerald-50 text-emerald-800',
-    invoiced: 'border-emerald-200 bg-emerald-50 text-emerald-800',
-    cancelled: 'border-rose-200 bg-rose-50 text-rose-800'
+    draft: 'border-amber-200/80 bg-amber-100/80 text-amber-900 dark:border-amber-900/70 dark:bg-amber-950/60 dark:text-amber-200',
+    sent: 'border-sky-200/80 bg-sky-100/80 text-sky-900 dark:border-sky-900/70 dark:bg-sky-950/60 dark:text-sky-200',
+    paid: 'border-emerald-200/80 bg-emerald-100/80 text-emerald-900 dark:border-emerald-900/70 dark:bg-emerald-950/60 dark:text-emerald-200',
+    invoiced: 'border-emerald-200/80 bg-emerald-100/80 text-emerald-900 dark:border-emerald-900/70 dark:bg-emerald-950/60 dark:text-emerald-200',
+    cancelled: 'border-rose-200/80 bg-rose-100/80 text-rose-900 dark:border-rose-900/70 dark:bg-rose-950/60 dark:text-rose-200'
   };
 
-  return map[status] ?? 'border-slate-200 bg-slate-50 text-slate-700';
+  return map[status] ?? 'border-slate-200/80 bg-slate-100/80 text-slate-800 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-200';
+}
+
+function orderStatusSurfaceClass(status: string) {
+  const map: Record<string, string> = {
+    draft: 'border-amber-200/80 bg-amber-50/85 hover:bg-amber-100/85 dark:border-amber-900/60 dark:bg-amber-950/30 dark:hover:bg-amber-950/40',
+    sent: 'border-sky-200/80 bg-sky-50/85 hover:bg-sky-100/85 dark:border-sky-900/60 dark:bg-sky-950/30 dark:hover:bg-sky-950/40',
+    paid: 'border-emerald-200/80 bg-emerald-50/85 hover:bg-emerald-100/85 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:hover:bg-emerald-950/40',
+    invoiced: 'border-emerald-200/80 bg-emerald-50/85 hover:bg-emerald-100/85 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:hover:bg-emerald-950/40',
+    cancelled: 'border-rose-200/80 bg-rose-50/85 hover:bg-rose-100/85 dark:border-rose-900/60 dark:bg-rose-950/30 dark:hover:bg-rose-950/40'
+  };
+
+  return map[status] ?? 'border-border/70 bg-card hover:bg-muted/20';
 }
 
 type OrderListItem = {
@@ -196,8 +208,8 @@ export default function OrdersPage() {
 
         {filteredOrders.map((row) => (
           <Link key={row.id} href={`/orders/${row.id}`} className="block">
-            <Card className="overflow-hidden p-0 transition hover:border-primary/40 hover:bg-muted/20">
-              <div className="border-b border-border/70 bg-muted/30 px-4 py-3">
+            <Card className={`overflow-hidden p-0 transition ${orderStatusSurfaceClass(row.status)}`}>
+              <div className="border-b border-black/5 px-4 py-3 dark:border-white/10">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
                     <p className="text-xs font-medium uppercase tracking-[0.18em] text-foreground/45">Order</p>
@@ -208,7 +220,7 @@ export default function OrdersPage() {
                     <button
                       type="button"
                       aria-label="Kopiera ordernummer"
-                      className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border/70 bg-card text-foreground/70 transition hover:bg-muted"
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-black/10 bg-white/70 text-foreground/70 transition hover:bg-white dark:border-white/10 dark:bg-black/20 dark:hover:bg-black/30"
                       onClick={(event) => copyOrderId(event, row.id)}
                     >
                       <Copy className="h-4 w-4" />
@@ -219,19 +231,19 @@ export default function OrdersPage() {
 
               <div className="space-y-4 p-4">
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="rounded-xl border border-border/70 bg-card px-3 py-2.5">
+                  <div className="rounded-xl border border-black/5 bg-white/60 px-3 py-2.5 dark:border-white/10 dark:bg-black/15">
                     <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-foreground/45">Projekt</p>
                     <p className="mt-1 text-sm font-medium leading-snug">{row.projectTitle}</p>
                   </div>
-                  <div className="rounded-xl border border-border/70 bg-card px-3 py-2.5">
+                  <div className="rounded-xl border border-black/5 bg-white/60 px-3 py-2.5 dark:border-white/10 dark:bg-black/15">
                     <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-foreground/45">Kund</p>
                     <p className="mt-1 text-sm font-medium leading-snug">{row.customerName}</p>
                   </div>
-                  <div className="rounded-xl border border-border/70 bg-card px-3 py-2.5">
+                  <div className="rounded-xl border border-black/5 bg-white/60 px-3 py-2.5 dark:border-white/10 dark:bg-black/15">
                     <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-foreground/45">Total</p>
                     <p className="mt-1 text-sm font-semibold">{row.total.toFixed(2)} kr</p>
                   </div>
-                  <div className="rounded-xl border border-border/70 bg-card px-3 py-2.5">
+                  <div className="rounded-xl border border-black/5 bg-white/60 px-3 py-2.5 dark:border-white/10 dark:bg-black/15">
                     <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-foreground/45">Skapad</p>
                     <p className="mt-1 text-sm font-medium">{new Date(row.createdAt).toLocaleDateString('sv-SE')}</p>
                   </div>
@@ -271,7 +283,7 @@ export default function OrdersPage() {
             )}
 
             {filteredOrders.map((row) => (
-              <TableRow key={row.id}>
+              <TableRow key={row.id} className={orderStatusSurfaceClass(row.status)}>
                 <TableCell className="font-mono text-xs">{row.orderNo ?? row.id}</TableCell>
                 <TableCell>{row.projectTitle}</TableCell>
                 <TableCell>{row.customerName}</TableCell>
