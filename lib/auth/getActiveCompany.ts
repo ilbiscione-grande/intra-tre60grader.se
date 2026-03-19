@@ -5,7 +5,7 @@ import type { AvailableCompany, Role } from '@/lib/types';
 
 type MembershipRow = {
   company_id: string;
-  role: Role;
+  role: Role | 'employee';
 };
 
 type CompanyRow = {
@@ -17,6 +17,14 @@ type CompanyAccess = {
   companies: AvailableCompany[];
   active: AvailableCompany | null;
 };
+
+function normalizeCompanyRole(role: MembershipRow['role']): Role {
+  if (role === 'employee') {
+    return 'member';
+  }
+
+  return role;
+}
 
 export async function getCompanyAccess(): Promise<CompanyAccess> {
   const authContext = await getAuthContext();
@@ -55,7 +63,7 @@ export async function getCompanyAccess(): Promise<CompanyAccess> {
     .map((m) => ({
       companyId: m.company_id,
       companyName: nameById.get(m.company_id)!,
-      role: m.role
+      role: normalizeCompanyRole(m.role)
     }));
 
   const requestedCompanyId = cookieStore.get('active_company_id')?.value ?? null;
