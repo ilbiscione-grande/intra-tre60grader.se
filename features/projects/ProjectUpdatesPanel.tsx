@@ -1,7 +1,7 @@
 'use client';
 
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
-import { Camera, Edit3, FileText, ImagePlus, Paperclip, Reply, Send, Trash2, Type } from 'lucide-react';
+import { Camera, Edit3, FileText, ImagePlus, Paperclip, Reply, Send, Trash2, Type, X } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import ActionSheet from '@/components/common/ActionSheet';
@@ -173,6 +173,7 @@ export default function ProjectUpdatesPanel({
   const rootCameraFileRef = useRef<HTMLInputElement | null>(null);
   const rootImageFileRef = useRef<HTMLInputElement | null>(null);
   const rootDocumentFileRef = useRef<HTMLInputElement | null>(null);
+  const rootComposerCardRef = useRef<HTMLDivElement | null>(null);
   const replyFileRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const updateRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [rootComposer, setRootComposer] = useState<ComposerState>(emptyComposer());
@@ -465,6 +466,27 @@ export default function ProjectUpdatesPanel({
     target.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }, [highlightUpdateId, isActive, updates]);
 
+  useEffect(() => {
+    if (!rootComposerVisible) return;
+
+    function handlePointerDown(event: MouseEvent | TouchEvent) {
+      if (rootAttachmentSheetOpen) return;
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (rootComposerCardRef.current?.contains(target)) return;
+      setRootComposerVisible(false);
+      setExpandedComposer(false);
+    }
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('touchstart', handlePointerDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('touchstart', handlePointerDown);
+    };
+  }, [rootAttachmentSheetOpen, rootComposerVisible]);
+
   function getMentionCandidates(content: string) {
     const match = content.match(/@([A-Za-z0-9._%+-]*)$/);
     const query = match?.[1]?.toLowerCase();
@@ -730,8 +752,32 @@ export default function ProjectUpdatesPanel({
         </Card>
       ) : null}
 
-      <Card className="sticky bottom-[calc(env(safe-area-inset-bottom)+5.5rem)] z-20 border-primary/20 bg-background/95 shadow-lg backdrop-blur md:bottom-4">
-        <CardContent className="space-y-3 p-3">
+      <Card
+        ref={rootComposerCardRef}
+        className={`sticky bottom-[calc(env(safe-area-inset-bottom)+5.5rem)] z-20 md:bottom-4 ${
+          rootComposerVisible
+            ? 'border-primary/20 bg-background/95 shadow-lg backdrop-blur'
+            : 'border-transparent bg-transparent shadow-none backdrop-blur-0'
+        }`}
+      >
+        <CardContent className={`space-y-3 ${rootComposerVisible ? 'p-3' : 'p-0'}`}>
+          {rootComposerVisible ? (
+            <div className="flex justify-end">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 rounded-full text-foreground/60"
+                aria-label="Stäng uppdateringsdialog"
+                onClick={() => {
+                  setRootComposerVisible(false);
+                  setExpandedComposer(false);
+                }}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          ) : null}
           <div className="flex items-center gap-2">
             <input
               ref={rootCameraFileRef}
