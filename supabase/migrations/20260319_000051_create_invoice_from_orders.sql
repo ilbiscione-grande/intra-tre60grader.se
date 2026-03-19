@@ -8,7 +8,7 @@ security definer
 set search_path = public
 as $$
 declare
-  v_requested_order_id uuid := create_invoice_from_order.order_id;
+  v_requested_order_id uuid := $1;
   v_order public.orders;
   v_project public.projects;
   v_customer public.customers;

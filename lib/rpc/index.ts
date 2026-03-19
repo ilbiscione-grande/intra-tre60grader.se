@@ -84,10 +84,10 @@ export async function createVerificationFromWizard(payload: VerificationDraft) {
   return data;
 }
 
-export async function createInvoiceFromOrder(order_id: CreateInvoiceArgs['order_id']) {
+export async function createInvoiceFromOrder(order_id: string) {
   const supabase = createClient();
   const { data, error } = await supabase.rpc('create_invoice_from_order', {
-    order_id
+    p_order_id: order_id as CreateInvoiceArgs['p_order_id']
   });
 
   throwRpcError(error);

@@ -1117,7 +1117,7 @@ export type Database = {
       }
       book_invoice_issue: { Args: { p_invoice_id: string }; Returns: Json }
       create_credit_invoice: { Args: { p_original_invoice_id: string; p_reason?: string | null }; Returns: Json }
-      create_invoice_from_order: { Args: { order_id: string }; Returns: Json }
+      create_invoice_from_order: { Args: { p_order_id: string }; Returns: Json }
       create_invoice_from_orders: { Args: { order_ids: string[] }; Returns: Json }
       create_project_with_order: { Args: { payload: Json }; Returns: Json }
       create_verification_from_wizard: {
@@ -1425,7 +1425,6 @@ export const Constants = {
 export type TableRow<T extends keyof Database['public']['Tables']> = Database['public']['Tables'][T]['Row'];
 export type TableInsertRow<T extends keyof Database['public']['Tables']> = Database['public']['Tables'][T]['Insert'];
 export type TableUpdateRow<T extends keyof Database['public']['Tables']> = Database['public']['Tables'][T]['Update'];
-
 
 
 
