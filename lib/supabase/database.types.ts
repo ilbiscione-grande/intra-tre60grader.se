@@ -315,6 +315,68 @@ export type Database = {
             },
           ]
         }
+        invoice_sources: {
+          Row: {
+            company_id: string
+            created_at: string
+            id: string
+            invoice_id: string
+            order_id: string
+            position: number
+            project_id: string
+            source_kind: string
+          }
+          Insert: {
+            company_id: string
+            created_at?: string
+            id?: string
+            invoice_id: string
+            order_id: string
+            position?: number
+            project_id: string
+            source_kind?: string
+          }
+          Update: {
+            company_id?: string
+            created_at?: string
+            id?: string
+            invoice_id?: string
+            order_id?: string
+            position?: number
+            project_id?: string
+            source_kind?: string
+          }
+          Relationships: [
+            {
+              foreignKeyName: "invoice_sources_company_id_fkey"
+              columns: ["company_id"]
+              isOneToOne: false
+              referencedRelation: "companies"
+              referencedColumns: ["id"]
+            },
+            {
+              foreignKeyName: "invoice_sources_invoice_id_fkey"
+              columns: ["invoice_id"]
+              isOneToOne: false
+              referencedRelation: "invoices"
+              referencedColumns: ["id"]
+            },
+            {
+              foreignKeyName: "invoice_sources_order_id_fkey"
+              columns: ["order_id"]
+              isOneToOne: false
+              referencedRelation: "orders"
+              referencedColumns: ["id"]
+            },
+            {
+              foreignKeyName: "invoice_sources_project_id_fkey"
+              columns: ["project_id"]
+              isOneToOne: false
+              referencedRelation: "projects"
+              referencedColumns: ["id"]
+            },
+          ]
+        }
         order_counters: {
           Row: {
             company_id: string
@@ -1056,6 +1118,7 @@ export type Database = {
       book_invoice_issue: { Args: { p_invoice_id: string }; Returns: Json }
       create_credit_invoice: { Args: { p_original_invoice_id: string; p_reason?: string | null }; Returns: Json }
       create_invoice_from_order: { Args: { order_id: string }; Returns: Json }
+      create_invoice_from_orders: { Args: { order_ids: string[] }; Returns: Json }
       create_project_with_order: { Args: { payload: Json }; Returns: Json }
       create_verification_from_wizard: {
         Args: { payload: Json }
@@ -1064,6 +1127,10 @@ export type Database = {
       create_reversal_verification: {
         Args: { original_verification_id: string; reason?: string | null }
         Returns: Json
+      }
+      is_project_finance_locked: {
+        Args: { p_company_id: string; p_project_id: string }
+        Returns: boolean
       }
       set_period_lock: {
         Args: { p_company_id: string; p_locked_until: string | null }
@@ -1176,6 +1243,19 @@ export type Database = {
       general_ledger_report: {
         Args: { p_company_id: string; p_period_end: string; p_period_start: string }
         Returns: Json
+      }
+      get_invoice_sources: {
+        Args: { p_invoice_id: string }
+        Returns: {
+          company_id: string
+          invoice_id: string
+          order_id: string
+          order_no: string
+          order_status: string
+          project_id: string
+          project_title: string
+          source_position: number
+        }[]
       }
       trial_balance_report: {
         Args: { p_as_of: string; p_company_id: string }
@@ -1345,11 +1425,6 @@ export const Constants = {
 export type TableRow<T extends keyof Database['public']['Tables']> = Database['public']['Tables'][T]['Row'];
 export type TableInsertRow<T extends keyof Database['public']['Tables']> = Database['public']['Tables'][T]['Insert'];
 export type TableUpdateRow<T extends keyof Database['public']['Tables']> = Database['public']['Tables'][T]['Update'];
-
-
-
-
-
 
 
 

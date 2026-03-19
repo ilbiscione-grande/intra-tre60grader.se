@@ -9,6 +9,7 @@ type SetProjectStatusArgs = Fn['set_project_status']['Args'];
 type CreateProjectWithOrderArgs = Fn['create_project_with_order']['Args'];
 type CreateVerificationArgs = Fn['create_verification_from_wizard']['Args'];
 type CreateInvoiceArgs = Fn['create_invoice_from_order']['Args'];
+type CreateCombinedInvoiceArgs = Fn['create_invoice_from_orders']['Args'];
 type VatReportArgs = Fn['vat_report']['Args'];
 type VoidVerificationArgs = Fn['void_verification']['Args'];
 type CreateReversalVerificationArgs = Fn['create_reversal_verification']['Args'];
@@ -87,6 +88,16 @@ export async function createInvoiceFromOrder(order_id: CreateInvoiceArgs['order_
   const supabase = createClient();
   const { data, error } = await supabase.rpc('create_invoice_from_order', {
     order_id
+  });
+
+  throwRpcError(error);
+  return data;
+}
+
+export async function createInvoiceFromOrders(order_ids: CreateCombinedInvoiceArgs['order_ids']) {
+  const supabase = createClient();
+  const { data, error } = await supabase.rpc('create_invoice_from_orders', {
+    order_ids
   });
 
   throwRpcError(error);

@@ -79,6 +79,17 @@ type InvoiceVersionRow = {
   created_at: string;
   created_by: string | null;
 };
+
+type InvoiceSourceRow = {
+  company_id: string;
+  invoice_id: string;
+  order_id: string;
+  order_no: string;
+  order_status: string;
+  project_id: string;
+  project_title: string;
+  source_position: number;
+};
 type SnapshotRecord = Record<string, string | number | null | undefined>;
 
 type InvoiceLine = {
@@ -252,6 +263,19 @@ export default function InvoiceDetailsPage() {
 
       if (error) throw new Error(error.message);
       return (data ?? []) as InvoiceVersionRow[];
+    },
+    enabled: role !== 'member'
+  });
+
+  const sourcesQuery = useQuery<InvoiceSourceRow[]>({
+    queryKey: ['invoice-sources', companyId, id],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('get_invoice_sources', {
+        p_invoice_id: id
+      });
+
+      if (error) throw error;
+      return (data ?? []) as InvoiceSourceRow[];
     },
     enabled: role !== 'member'
   });
@@ -550,6 +574,20 @@ export default function InvoiceDetailsPage() {
   }
 
   const invoice = query.data;
+  const invoiceSources = sourcesQuery.data ?? [];
+  const invoiceSourcesByProject = Array.from(
+    invoiceSources.reduce((map, source) => {
+      const current = map.get(source.project_id) ?? {
+        projectId: source.project_id,
+        projectTitle: source.project_title,
+        sources: [] as InvoiceSourceRow[]
+      };
+      current.sources.push(source);
+      map.set(source.project_id, current);
+      return map;
+    }, new Map<string, { projectId: string; projectTitle: string; sources: InvoiceSourceRow[] }>())
+      .values()
+  );
   const company = asRecord((invoice?.company_snapshot ?? {}) as Json);
   const customer = asRecord((invoice?.customer_snapshot ?? {}) as Json);
   const lines = parseInvoiceLines((invoice?.lines_snapshot ?? []) as Json);
@@ -605,12 +643,51 @@ export default function InvoiceDetailsPage() {
               <div className="flex flex-wrap items-center gap-2">
                 <Badge>{fakturaTypEtikett(invoice.kind)}</Badge>
                 <Badge>{fakturaStatusEtikett(invoice.status)}</Badge>
+                {invoiceSources.length > 1 ? <Badge>Samlingsfaktura</Badge> : null}
                 <Badge>Inkassosteg: {invoice.collection_stage}</Badge>
                 <Badge>Fakturadatum: {new Date(invoice.issue_date).toLocaleDateString('sv-SE')}</Badge>
                 <Badge>Leveransdatum: {new Date(invoice.supply_date ?? invoice.issue_date).toLocaleDateString('sv-SE')}</Badge>
                 <Badge>Förfallodatum: {new Date(invoice.due_date).toLocaleDateString('sv-SE')}</Badge>
                 <Badge>Villkor: {invoice.payment_terms_text ?? '30 dagar netto'}</Badge>
               </div>
+
+              {invoiceSources.length > 0 ? (
+                <div className="rounded-lg border p-3">
+                  <p className="mb-2 font-medium">
+                    {invoiceSources.length > 1 ? 'Ingående projekt och ordrar' : 'Fakturakälla'}
+                  </p>
+                  <div className="space-y-2">
+                    {invoiceSourcesByProject.map((group) => (
+                      <div key={group.projectId} className="rounded-md border px-3 py-3">
+                        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                          <div>
+                            <p className="font-medium">{group.projectTitle}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {group.sources.length} {group.sources.length === 1 ? 'order' : 'ordrar'}
+                            </p>
+                          </div>
+                          <Button asChild size="sm" variant="outline">
+                            <Link href={`/projects/${group.projectId}`}>Projekt</Link>
+                          </Button>
+                        </div>
+                        <div className="space-y-2">
+                          {group.sources.map((source) => (
+                            <div key={`${source.invoice_id}-${source.order_id}`} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-dashed px-3 py-2">
+                              <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                                <span>{source.order_no}</span>
+                                <span>{source.order_status}</span>
+                              </div>
+                              <Button asChild size="sm" variant="outline">
+                                <Link href={`/orders/${source.order_id}`}>Order</Link>
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
 
               {invoice.credit_for_invoice_id ? (
                 <p>

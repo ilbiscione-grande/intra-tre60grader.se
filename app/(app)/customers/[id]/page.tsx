@@ -3,13 +3,17 @@
 import Link from 'next/link';
 import type { Route } from 'next';
 import { ArrowLeft, Building2, CircleDollarSign, FolderKanban, Mail, MapPin, Phone, ReceiptText, ScrollText } from 'lucide-react';
-import { useParams } from 'next/navigation';
-import { useQuery } from '@tanstack/react-query';
+import { useMemo, useState } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { useAppContext } from '@/components/providers/AppContext';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { createClient } from '@/lib/supabase/client';
+import { createInvoiceFromOrders } from '@/lib/rpc';
 
 type Customer = {
   id: string;
@@ -95,10 +99,13 @@ function invoiceStatusLabel(status: string) {
 }
 
 export default function CustomerDetailsPage() {
-  const { companyId } = useAppContext();
+  const { companyId, role } = useAppContext();
   const params = useParams<{ id: string }>();
+  const router = useRouter();
   const customerId = params.id;
   const supabase = createClient();
+  const [combinedInvoiceOpen, setCombinedInvoiceOpen] = useState(false);
+  const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
 
   const query = useQuery<Customer | null>({
     queryKey: ['customer', companyId, customerId],
@@ -165,6 +172,34 @@ export default function CustomerDetailsPage() {
     enabled: (projectsQuery.data?.length ?? 0) > 0
   });
 
+  const createCombinedInvoiceMutation = useMutation({
+    mutationFn: async () => {
+      if (selectedOrderIds.length === 0) {
+        throw new Error('Välj minst en order');
+      }
+
+      return createInvoiceFromOrders(selectedOrderIds);
+    },
+    onSuccess: (result) => {
+      const response = (result ?? {}) as {
+        invoice_id?: string;
+        invoice_no?: string;
+      };
+
+      if (!response.invoice_id) {
+        throw new Error('Fakturan skapades men inget invoice_id returnerades');
+      }
+
+      toast.success(response.invoice_no ? `Samlingsfaktura skapad: ${response.invoice_no}` : 'Samlingsfaktura skapad');
+      setCombinedInvoiceOpen(false);
+      setSelectedOrderIds([]);
+      router.push(`/invoices/${response.invoice_id}` as Route);
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : 'Kunde inte skapa samlingsfaktura');
+    }
+  });
+
   if (query.isLoading) return <p>Laddar kund...</p>;
   if (!query.data) return <p>Kunden hittades inte.</p>;
 
@@ -172,6 +207,14 @@ export default function CustomerDetailsPage() {
   const projects = projectsQuery.data ?? [];
   const orders = ordersQuery.data ?? [];
   const invoices = invoicesQuery.data ?? [];
+  const projectTitleById = useMemo(
+    () => Object.fromEntries(projects.map((project) => [project.id, project.title])),
+    [projects]
+  );
+  const selectableOrders = orders.filter((order) => !['paid', 'cancelled', 'invoiced'].includes(order.status) && Number(order.total ?? 0) > 0);
+  const selectedOrders = selectableOrders.filter((order) => selectedOrderIds.includes(order.id));
+  const selectedProjectCount = new Set(selectedOrders.map((order) => order.project_id)).size;
+  const selectedTotal = selectedOrders.reduce((sum, order) => sum + Number(order.total ?? 0), 0);
   const billingAddress = [customer.address_line1, customer.address_line2, customer.postal_code, customer.city, customer.country]
     .filter(Boolean)
     .join(', ');
@@ -209,6 +252,13 @@ export default function CustomerDetailsPage() {
   ]
     .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
     .slice(0, 6);
+  const canCreateCombinedInvoice = role === 'admin' || role === 'finance';
+
+  function toggleSelectedOrder(orderId: string) {
+    setSelectedOrderIds((current) =>
+      current.includes(orderId) ? current.filter((id) => id !== orderId) : [...current, orderId]
+    );
+  }
 
   return (
     <section className="space-y-4">
@@ -237,6 +287,11 @@ export default function CustomerDetailsPage() {
             <p className="text-sm text-foreground/65">Öppna det som oftast används för kunden direkt härifrån.</p>
           </div>
           <div className="flex flex-wrap gap-2">
+            {canCreateCombinedInvoice ? (
+              <Button onClick={() => setCombinedInvoiceOpen(true)} disabled={selectableOrders.length === 0}>
+                Skapa samlingsfaktura
+              </Button>
+            ) : null}
             {projects[0] ? (
               <Button asChild variant="outline">
                 <Link href={`/projects/${projects[0].id}` as Route}>Senaste projekt</Link>
@@ -255,6 +310,100 @@ export default function CustomerDetailsPage() {
           </div>
         </CardContent>
       </Card>
+
+      <Dialog
+        open={combinedInvoiceOpen}
+        onOpenChange={(open) => {
+          setCombinedInvoiceOpen(open);
+          if (!open) setSelectedOrderIds([]);
+        }}
+      >
+        <DialogContent className="max-h-[85vh] max-w-3xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Skapa samlingsfaktura</DialogTitle>
+            <DialogDescription>
+              Välj öppna ordrar för {customer.name}. Ordrarna grupperas per projekt men faktureras tillsammans.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="grid gap-3 md:grid-cols-3">
+              <StatusCard label="Valda projekt" value={String(selectedProjectCount)} helper="unika projekt i urvalet" tone="neutral" />
+              <StatusCard label="Valda ordrar" value={String(selectedOrders.length)} helper="ordrar som kommer med" tone="primary" />
+              <StatusCard label="Total" value={`${selectedTotal.toFixed(2)} kr`} helper="summerat ordervärde" tone="neutral" />
+            </div>
+
+            {selectableOrders.length === 0 ? (
+              <Card>
+                <CardContent className="p-4 text-sm text-foreground/70">
+                  Det finns inga öppna ordrar att samla på en faktura just nu.
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="space-y-3">
+                {projects.map((project) => {
+                  const projectOrders = selectableOrders.filter((order) => order.project_id === project.id);
+                  if (projectOrders.length === 0) return null;
+
+                  return (
+                    <Card key={project.id}>
+                      <CardHeader className="pb-3">
+                        <CardTitle className="text-base">{project.title}</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-2">
+                        {projectOrders.map((order) => {
+                          const selected = selectedOrderIds.includes(order.id);
+
+                          return (
+                            <button
+                              key={order.id}
+                              type="button"
+                              onClick={() => toggleSelectedOrder(order.id)}
+                              className={`flex w-full items-center justify-between gap-3 rounded-xl border px-3 py-3 text-left transition ${
+                                selected ? 'border-primary bg-primary/8' : 'border-border/70 bg-muted/10 hover:bg-muted/20'
+                              }`}
+                            >
+                              <div className="min-w-0">
+                                <p className="font-mono text-sm">{order.order_no ?? order.id}</p>
+                                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-foreground/60">
+                                  <span>{projectTitleById[order.project_id] ?? project.title}</span>
+                                  <span>{orderStatusLabel(order.status)}</span>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-3">
+                                <p className="text-sm font-semibold">{Number(order.total ?? 0).toFixed(2)} kr</p>
+                                <div
+                                  className={`flex h-5 w-5 items-center justify-center rounded border ${
+                                    selected ? 'border-primary bg-primary text-primary-foreground' : 'border-foreground/25 bg-background'
+                                  }`}
+                                >
+                                  {selected ? <span className="text-[10px] font-bold">✓</span> : null}
+                                </div>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
+
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <Button variant="outline" onClick={() => setCombinedInvoiceOpen(false)}>
+                Avbryt
+              </Button>
+              <Button
+                onClick={() => createCombinedInvoiceMutation.mutate()}
+                disabled={selectedOrders.length === 0 || createCombinedInvoiceMutation.isPending}
+              >
+                {createCombinedInvoiceMutation.isPending ? 'Skapar...' : 'Skapa faktura'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         <SummaryCard label="Projekt" value={String(projects.length)} helper="kopplade till kunden" icon={FolderKanban} />

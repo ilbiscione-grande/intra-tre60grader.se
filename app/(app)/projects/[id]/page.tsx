@@ -40,9 +40,11 @@ type ProjectRow = Pick<
 type CustomerRow = Pick<DbRow<'customers'>, 'id' | 'name'>;
 type OrderRow = Pick<DbRow<'orders'>, 'id' | 'project_id' | 'status' | 'total' | 'created_at'>;
 type OrderLineRow = Pick<DbRow<'order_lines'>, 'id' | 'title' | 'qty' | 'unit_price' | 'vat_rate' | 'total' | 'created_at'>;
+type InvoiceSourceLinkRow = Pick<DbRow<'invoice_sources'>, 'invoice_id' | 'project_id' | 'order_id' | 'position'>;
+type InvoiceSourceCountRow = Pick<DbRow<'invoice_sources'>, 'invoice_id'>;
 type InvoiceRow = Pick<
   DbRow<'invoices'>,
-  'id' | 'invoice_no' | 'status' | 'currency' | 'issue_date' | 'due_date' | 'subtotal' | 'vat_total' | 'total' | 'created_at' | 'attachment_path'
+  'id' | 'invoice_no' | 'status' | 'currency' | 'issue_date' | 'due_date' | 'subtotal' | 'vat_total' | 'total' | 'created_at' | 'attachment_path' | 'order_id' | 'project_id'
 >;
 type MemberView = {
   id: string;
@@ -79,6 +81,15 @@ function toNumber(value: string, fallback = 0) {
 
 function computeLineTotal(qty: number, unitPrice: number) {
   return Math.round(qty * unitPrice * 100) / 100;
+}
+
+function getErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof Error && error.message.trim()) return error.message;
+  if (error && typeof error === 'object' && 'message' in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === 'string' && message.trim()) return message;
+  }
+  return fallback;
 }
 
 function extractInvoiceSummary(result: unknown) {
@@ -256,6 +267,19 @@ export default function ProjectDetailsPage() {
   const orderId = orderQuery.data?.id;
   const statusColumns = columnsQuery.data ?? [];
 
+  const economyLockQuery = useQuery<boolean>({
+    queryKey: ['project-finance-locked', companyId, projectId],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('is_project_finance_locked', {
+        p_company_id: companyId,
+        p_project_id: projectId
+      });
+
+      if (error) throw error;
+      return Boolean(data);
+    }
+  });
+
   const linesQuery = useQuery<OrderLineRow[]>({
     queryKey: ['project-order-lines', companyId, projectId, orderId ?? 'none'],
     enabled: Boolean(orderId),
@@ -274,17 +298,59 @@ export default function ProjectDetailsPage() {
     }
   });
 
-  const invoicesQuery = useQuery<InvoiceRow[]>({
-    queryKey: ['invoices', companyId, projectId],
+  const invoiceSourceLinksQuery = useQuery<InvoiceSourceLinkRow[]>({
+    queryKey: ['project-invoice-source-links', companyId, projectId],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('invoices')
-        .select('id,invoice_no,status,currency,issue_date,due_date,subtotal,vat_total,total,created_at,attachment_path')
+        .from('invoice_sources')
+        .select('invoice_id,project_id,order_id,position')
         .eq('company_id', companyId)
         .eq('project_id', projectId)
+        .order('position', { ascending: true })
+        .returns<InvoiceSourceLinkRow[]>();
+
+      if (error) throw error;
+      return data ?? [];
+    }
+  });
+
+  const invoicesQuery = useQuery<InvoiceRow[]>({
+    queryKey: ['invoices', companyId, projectId, (invoiceSourceLinksQuery.data ?? []).map((row) => row.invoice_id).join(',')],
+    queryFn: async () => {
+      const invoiceIds = (invoiceSourceLinksQuery.data ?? []).map((row) => row.invoice_id);
+      let query = supabase
+        .from('invoices')
+        .select('id,invoice_no,status,currency,issue_date,due_date,subtotal,vat_total,total,created_at,attachment_path,order_id,project_id')
+        .eq('company_id', companyId)
         .order('created_at', { ascending: false })
-        .limit(25)
-        .returns<InvoiceRow[]>();
+        .limit(25);
+
+      if (invoiceIds.length > 0) {
+        query = query.in('id', invoiceIds);
+      } else {
+        query = query.eq('project_id', projectId);
+      }
+
+      const { data, error } = await query.returns<InvoiceRow[]>();
+
+      if (error) throw error;
+      return data ?? [];
+    }
+  });
+
+  const invoiceSourceCountsQuery = useQuery<InvoiceSourceCountRow[]>({
+    queryKey: ['project-invoice-source-counts', companyId, (invoicesQuery.data ?? []).map((row) => row.id).join(',')],
+    enabled: (invoicesQuery.data?.length ?? 0) > 0,
+    queryFn: async () => {
+      const invoiceIds = (invoicesQuery.data ?? []).map((row) => row.id);
+      if (invoiceIds.length === 0) return [];
+
+      const { data, error } = await supabase
+        .from('invoice_sources')
+        .select('invoice_id')
+        .eq('company_id', companyId)
+        .in('invoice_id', invoiceIds)
+        .returns<InvoiceSourceCountRow[]>();
 
       if (error) throw error;
       return data ?? [];
@@ -386,7 +452,7 @@ export default function ProjectDetailsPage() {
       toast.success('Projekt uppdaterat');
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : 'Kunde inte spara projekt');
+      toast.error(getErrorMessage(error, 'Kunde inte spara projekt'));
     }
   });
 
@@ -407,7 +473,7 @@ export default function ProjectDetailsPage() {
       toast.success('Orderstatus uppdaterad');
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : 'Kunde inte uppdatera orderstatus');
+      toast.error(getErrorMessage(error, 'Kunde inte uppdatera orderstatus'));
     }
   });
 
@@ -447,7 +513,7 @@ export default function ProjectDetailsPage() {
       toast.success('Orderrad tillagd');
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : 'Kunde inte lägga till orderrad');
+      toast.error(getErrorMessage(error, 'Kunde inte lägga till orderrad'));
     }
   });
 
@@ -475,7 +541,7 @@ export default function ProjectDetailsPage() {
       toast.success('Orderrad uppdaterad');
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : 'Kunde inte uppdatera orderrad');
+      toast.error(getErrorMessage(error, 'Kunde inte uppdatera orderrad'));
     }
   });
 
@@ -498,7 +564,7 @@ export default function ProjectDetailsPage() {
       toast.success('Orderrad borttagen');
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : 'Kunde inte ta bort orderrad');
+      toast.error(getErrorMessage(error, 'Kunde inte ta bort orderrad'));
     }
   });
 
@@ -517,7 +583,7 @@ export default function ProjectDetailsPage() {
       await queryClient.invalidateQueries({ queryKey: ['invoices', companyId, projectId] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : 'Kunde inte skapa faktura');
+      toast.error(getErrorMessage(error, 'Kunde inte skapa faktura'));
     }
   });
 
@@ -578,8 +644,17 @@ export default function ProjectDetailsPage() {
   const statusValue = orderStatuses.includes((orderQuery.data?.status ?? 'draft') as OrderStatus)
     ? (orderQuery.data?.status as OrderStatus)
     : 'draft';
-  const isEconomyLocked = (invoicesQuery.data ?? []).some((invoice) => invoice.status !== 'void');
+  const isEconomyLocked =
+    economyLockQuery.data ?? (invoicesQuery.data ?? []).some((invoice) => invoice.status !== 'void');
+  const isEconomyBusy = economyLockQuery.isPending;
   const latestInvoice = invoicesQuery.data?.[0] ?? null;
+  const invoiceSourceCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const row of invoiceSourceCountsQuery.data ?? []) {
+      counts.set(row.invoice_id, (counts.get(row.invoice_id) ?? 0) + 1);
+    }
+    return counts;
+  }, [invoiceSourceCountsQuery.data]);
   const latestActivityItem = activity[0] ?? null;
   const projectStatusLabel = projectColumnTitle(draftStatus || project.status, statusColumns);
   const invoiceAttachments = (invoicesQuery.data ?? []).filter((invoice) => Boolean(invoice.attachment_path));
@@ -701,13 +776,13 @@ export default function ProjectDetailsPage() {
               <div className="grid gap-3 md:grid-cols-2">
                 <label className="space-y-1">
                   <span className="text-sm">Titel</span>
-                  <Input value={draftTitle} onChange={(event) => setDraftTitle(event.target.value)} disabled={isEconomyLocked} />
+                  <Input value={draftTitle} onChange={(event) => setDraftTitle(event.target.value)} disabled={isEconomyLocked || isEconomyBusy} />
                 </label>
 
                 <label className="space-y-1">
                   <span className="text-sm">Kolumn</span>
                   <Select value={draftStatus} onValueChange={(value) => setDraftStatus(value as ProjectStatus)}>
-                    <SelectTrigger disabled={isEconomyLocked}>
+                    <SelectTrigger disabled={isEconomyLocked || isEconomyBusy}>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -723,7 +798,7 @@ export default function ProjectDetailsPage() {
                 <label className="space-y-1 md:col-span-2">
                   <span className="text-sm">Kund</span>
                   <Select value={draftCustomerId} onValueChange={setDraftCustomerId}>
-                    <SelectTrigger disabled={isEconomyLocked}>
+                    <SelectTrigger disabled={isEconomyLocked || isEconomyBusy}>
                       <SelectValue placeholder="Välj kund" />
                     </SelectTrigger>
                     <SelectContent>
@@ -750,6 +825,9 @@ export default function ProjectDetailsPage() {
                 <div className="rounded-lg border p-3">
                   <p className="text-sm text-foreground/70">Fakturor</p>
                   <p className="mt-1 font-medium">{invoicesQuery.data?.length ?? 0}</p>
+                  {latestInvoice && (invoiceSourceCounts.get(latestInvoice.id) ?? 0) > 1 ? (
+                    <p className="mt-1 text-xs text-primary">Minst en samlingsfaktura ingår</p>
+                  ) : null}
                 </div>
                 <div className="rounded-lg border p-3">
                   <p className="text-sm text-foreground/70">Ordertotal</p>
@@ -758,7 +836,7 @@ export default function ProjectDetailsPage() {
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
-                <Button onClick={() => saveProjectMutation.mutate()} disabled={saveProjectMutation.isPending || isEconomyLocked}>
+                <Button onClick={() => saveProjectMutation.mutate()} disabled={saveProjectMutation.isPending || isEconomyLocked || isEconomyBusy}>
                   {saveProjectMutation.isPending ? 'Sparar...' : 'Spara projekt'}
                 </Button>
                 {orderId ? (
@@ -774,7 +852,7 @@ export default function ProjectDetailsPage() {
 
       {activeTab === 'economy' && (
         <div className="space-y-4" {...swipeHandlers}>
-          <ProjectFinancePanel companyId={companyId} projectId={projectId} role={role} isLocked={isEconomyLocked} />
+          <ProjectFinancePanel companyId={companyId} projectId={projectId} role={role} isLocked={isEconomyLocked || isEconomyBusy} />
 
           <Card>
             <CardHeader>
@@ -782,7 +860,7 @@ export default function ProjectDetailsPage() {
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="flex flex-wrap items-center gap-2">
-                <Badge>Total: {Number(orderQuery.data?.total ?? 0).toFixed(2)} kr</Badge>{isEconomyLocked && <Badge>Låst efter fakturering</Badge>}
+                <Badge>Total: {Number(orderQuery.data?.total ?? 0).toFixed(2)} kr</Badge>{(isEconomyLocked || isEconomyBusy) && <Badge>Låst efter fakturering</Badge>}
 
                 <RoleGate
                   role={role}
@@ -802,7 +880,7 @@ export default function ProjectDetailsPage() {
                         updateOrderStatusMutation.mutate(next);
                       }}
                     >
-                      <SelectTrigger disabled={isEconomyLocked}>
+                      <SelectTrigger disabled={isEconomyLocked || isEconomyBusy}>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -818,7 +896,7 @@ export default function ProjectDetailsPage() {
                   <Button
                     variant="secondary"
                     onClick={() => invoiceMutation.mutate()}
-                    disabled={invoiceMutation.isPending || !orderId || !canManageOrder(role) || isEconomyLocked}
+                    disabled={invoiceMutation.isPending || !orderId || !canManageOrder(role) || isEconomyLocked || isEconomyBusy}
                   >
                     {invoiceMutation.isPending ? 'Skapar...' : 'Skapa faktura'}
                   </Button>
@@ -842,11 +920,11 @@ export default function ProjectDetailsPage() {
                 <div className="grid gap-2 md:grid-cols-5">
                   <label className="space-y-1 md:col-span-2">
                     <span className="text-xs font-medium uppercase tracking-[0.16em] text-foreground/55">Titel</span>
-                    <Input value={lineTitle} onChange={(e) => setLineTitle(e.target.value)} placeholder="T.ex. Designarbete" disabled={isEconomyLocked} />
+                    <Input value={lineTitle} onChange={(e) => setLineTitle(e.target.value)} placeholder="T.ex. Designarbete" disabled={isEconomyLocked || isEconomyBusy} />
                   </label>
                   <label className="space-y-1">
                     <span className="text-xs font-medium uppercase tracking-[0.16em] text-foreground/55">Antal</span>
-                    <Input value={lineQty} onChange={(e) => setLineQty(e.target.value)} type="number" min="0" step="0.01" placeholder="1" disabled={isEconomyLocked} />
+                    <Input value={lineQty} onChange={(e) => setLineQty(e.target.value)} type="number" min="0" step="0.01" placeholder="1" disabled={isEconomyLocked || isEconomyBusy} />
                   </label>
                   <label className="space-y-1">
                     <span className="text-xs font-medium uppercase tracking-[0.16em] text-foreground/55">A-pris</span>
@@ -857,15 +935,15 @@ export default function ProjectDetailsPage() {
                       min="0"
                       step="0.01"
                       placeholder="0.00"
-                      disabled={isEconomyLocked}
+                      disabled={isEconomyLocked || isEconomyBusy}
                     />
                   </label>
                   <label className="space-y-1">
                     <span className="text-xs font-medium uppercase tracking-[0.16em] text-foreground/55">Moms %</span>
-                    <Input value={lineVatRate} onChange={(e) => setLineVatRate(e.target.value)} type="number" min="0" step="0.01" placeholder="25" disabled={isEconomyLocked} />
+                    <Input value={lineVatRate} onChange={(e) => setLineVatRate(e.target.value)} type="number" min="0" step="0.01" placeholder="25" disabled={isEconomyLocked || isEconomyBusy} />
                   </label>
                 </div>
-                <Button className="mt-2" onClick={() => addLineMutation.mutate()} disabled={addLineMutation.isPending || isEconomyLocked}>
+                <Button className="mt-2" onClick={() => addLineMutation.mutate()} disabled={addLineMutation.isPending || isEconomyLocked || isEconomyBusy}>
                   {addLineMutation.isPending ? 'Lägger till...' : 'Lägg till rad'}
                 </Button>
               </div>
@@ -895,7 +973,7 @@ export default function ProjectDetailsPage() {
                       key={line.id}
                       line={line}
                       saving={updateLineMutation.isPending || deleteLineMutation.isPending}
-                      canEdit={!isEconomyLocked}
+                      canEdit={!isEconomyLocked && !isEconomyBusy}
                       onSave={(nextLine) => updateLineMutation.mutate(nextLine)}
                       onDelete={() => setDeleteTarget(line)}
                     />
@@ -919,7 +997,10 @@ export default function ProjectDetailsPage() {
                 {(invoicesQuery.data ?? []).map((item) => (
                   <div key={item.id} className="rounded-lg border p-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-sm font-medium">{item.invoice_no}</p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-sm font-medium">{item.invoice_no}</p>
+                        {(invoiceSourceCounts.get(item.id) ?? 0) > 1 ? <Badge>Samlingsfaktura</Badge> : null}
+                      </div>
                       <Badge>{fakturaStatusEtikett(item.status)}</Badge>
                     </div>
                     <p className="mt-1 text-xs text-foreground/70">

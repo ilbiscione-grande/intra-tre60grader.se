@@ -145,6 +145,42 @@ Skriptet försöker även ge alla befintliga `auth.users` medlemskap i demo-bola
 - `finance/admin`: får även Finance + Reports + Invoices
 - Middleware blockerar `/finance`, `/reports` och `/invoices` för `member`.
 
+## Samlingsfaktura
+
+Stöd för samlingsfaktura finns nu som ett tillägg ovanpå standardflödet.
+
+Grundprincip:
+
+- standardflödet är fortfarande `1 projekt -> 1 order -> 1 faktura`
+- samlingsfaktura är ett aktivt valt flöde från kunddetaljen
+- första versionen bygger på flera hela `ordrar`, inte fria orderrader
+
+V1 i korthet:
+
+- startas från kunddetaljen via `Skapa samlingsfaktura`
+- alla valda ordrar måste tillhöra samma kund
+- alla valda ordrar måste tillhöra samma bolag
+- skapad faktura spårar sina källor i `invoice_sources`
+- order- och projektdetaljer markerar när en faktura är en samlingsfaktura
+
+Begränsningar i V1:
+
+- endast hela ordrar kan väljas
+- ingen efterredigering av vilka källordrar som ingår i en skapad faktura
+- ingen fördelning eller kredit på delmängd av samlingsfaktura ännu
+
+Integritet:
+
+- samma order får inte kopplas till flera aktiva vanliga fakturor
+- `invoice_sources` skyddas av periodlås och integritetstrigger i databasen
+- vanliga invoice-regler för status, datum och kreditnota gäller fortfarande
+
+Credit / void i denna fas:
+
+- `void` eller kreditering sker fortfarande på fakturan som helhet
+- nästa fas behöver definiera om och hur delkreditering per källorder ska stödjas
+- tills dess behandlas samlingsfakturan som ett sammanhållet fakturaobjekt
+
 ## Säkerhet (C4 pågår)
 
 - Login använder nu serverrouten `/api/auth/request-link` i stället för direkt klientkall.

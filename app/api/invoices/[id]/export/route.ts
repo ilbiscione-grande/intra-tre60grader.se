@@ -34,6 +34,17 @@ type InvoiceExportRow = {
   inkasso_sent_at: string | null;
 };
 
+type InvoiceSourceRow = {
+  company_id: string;
+  invoice_id: string;
+  order_id: string;
+  order_no: string;
+  order_status: string;
+  project_id: string;
+  project_title: string;
+  source_position: number;
+};
+
 export async function GET(
   request: Request,
   { params }: { params: { id: string } }
@@ -96,9 +107,18 @@ export async function GET(
     .eq('invoice_id', data.id)
     .order('sent_at', { ascending: true });
 
+  const { data: sources, error: sourcesError } = await supabase.rpc('get_invoice_sources', {
+    p_invoice_id: data.id
+  });
+
+  if (sourcesError) {
+    return NextResponse.json({ error: sourcesError.message }, { status: 500 });
+  }
+
   return NextResponse.json(
     {
       ...data,
+      invoice_sources: ((sources ?? []) as InvoiceSourceRow[]),
       payments: payments ?? [],
       reminders: reminders ?? [],
       export_mode: 'full'

@@ -427,6 +427,38 @@ export const helpArticles: HelpArticle[] = [
       }
     ],
     cta: { href: '/team' as Route, label: 'Öppna medlemmar' }
+  },
+  {
+    slug: 'samlingsfaktura',
+    title: 'När ska jag använda samlingsfaktura?',
+    summary: 'Använd samlingsfaktura när samma kund ska få flera projekt eller ordrar samlade på en faktura, men behåll standardflödet i vanliga fall.',
+    category: 'faq',
+    audience: 'Ekonomi och administration',
+    featured: true,
+    keywords: ['samlingsfaktura', 'faktura', 'ordrar', 'projekt', 'kund', 'ekonomi'],
+    sections: [
+      {
+        title: 'När samlingsfaktura passar',
+        paragraphs: [
+          'Standard i appen är fortfarande ett projekt, en order och en faktura. Det är den enklaste och tydligaste modellen i de flesta fall.',
+          'Samlingsfaktura ska användas när samma kund uttryckligen vill få flera projekt eller flera öppna ordrar samlade på ett fakturaunderlag.'
+        ],
+        steps: [
+          'Öppna rätt kunddetalj.',
+          'Välj Skapa samlingsfaktura.',
+          'Markera de öppna ordrar som ska ingå.',
+          'Kontrollera total och antal projekt innan du skapar fakturan.'
+        ]
+      },
+      {
+        title: 'Viktiga begränsningar i första versionen',
+        paragraphs: [
+          'I första versionen väljer du hela ordrar, inte enstaka orderrader. Alla val måste tillhöra samma kund och samma bolag.',
+          'Efter att fakturan är skapad behandlas den som ett sammanhållet fakturaobjekt. Det betyder att kredit och void fortfarande sker på fakturan som helhet.'
+        ]
+      }
+    ],
+    cta: { href: '/customers' as Route, label: 'Öppna kunder' }
   }
 ];
 

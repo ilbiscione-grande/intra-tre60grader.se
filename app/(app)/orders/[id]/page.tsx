@@ -25,7 +25,9 @@ type OrderRow = Pick<DbRow<'orders'>, 'id' | 'order_no' | 'project_id' | 'status
 type ProjectRow = Pick<DbRow<'projects'>, 'id' | 'title' | 'customer_id'>;
 type CustomerRow = Pick<DbRow<'customers'>, 'id' | 'name'>;
 type OrderLineRow = Pick<DbRow<'order_lines'>, 'id' | 'title' | 'qty' | 'unit_price' | 'vat_rate' | 'total' | 'created_at'>;
-type InvoiceRow = Pick<DbRow<'invoices'>, 'id' | 'invoice_no' | 'status' | 'currency' | 'total' | 'created_at' | 'attachment_path' | 'due_date'>;
+type InvoiceSourceLinkRow = Pick<DbRow<'invoice_sources'>, 'invoice_id' | 'order_id' | 'project_id' | 'position'>;
+type InvoiceSourceCountRow = Pick<DbRow<'invoice_sources'>, 'invoice_id'>;
+type InvoiceRow = Pick<DbRow<'invoices'>, 'id' | 'invoice_no' | 'status' | 'currency' | 'total' | 'created_at' | 'attachment_path' | 'due_date' | 'order_id' | 'project_id'>;
 type MemberView = {
   id: string;
   company_id: string;
@@ -174,16 +176,56 @@ export default function OrderDetailsPage() {
     }
   });
 
-  const invoicesQuery = useQuery<InvoiceRow[]>({
-    queryKey: ['order-invoices', companyId, orderId],
+  const invoiceSourceLinksQuery = useQuery<InvoiceSourceLinkRow[]>({
+    queryKey: ['order-invoice-source-links', companyId, orderId],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('invoices')
-        .select('id,invoice_no,status,currency,total,created_at,attachment_path,due_date')
+        .from('invoice_sources')
+        .select('invoice_id,order_id,project_id,position')
         .eq('company_id', companyId)
         .eq('order_id', orderId)
-        .order('created_at', { ascending: false })
-        .returns<InvoiceRow[]>();
+        .order('position', { ascending: true })
+        .returns<InvoiceSourceLinkRow[]>();
+      if (error) throw error;
+      return data ?? [];
+    }
+  });
+
+  const invoicesQuery = useQuery<InvoiceRow[]>({
+    queryKey: ['order-invoices', companyId, orderId, (invoiceSourceLinksQuery.data ?? []).map((row) => row.invoice_id).join(',')],
+    queryFn: async () => {
+      const invoiceIds = (invoiceSourceLinksQuery.data ?? []).map((row) => row.invoice_id);
+      let query = supabase
+        .from('invoices')
+        .select('id,invoice_no,status,currency,total,created_at,attachment_path,due_date,order_id,project_id')
+        .eq('company_id', companyId)
+        .order('created_at', { ascending: false });
+
+      if (invoiceIds.length > 0) {
+        query = query.in('id', invoiceIds);
+      } else {
+        query = query.eq('order_id', orderId);
+      }
+
+      const { data, error } = await query.returns<InvoiceRow[]>();
+      if (error) throw error;
+      return data ?? [];
+    }
+  });
+
+  const invoiceSourceCountsQuery = useQuery<InvoiceSourceCountRow[]>({
+    queryKey: ['order-invoice-source-counts', companyId, (invoicesQuery.data ?? []).map((row) => row.id).join(',')],
+    enabled: (invoicesQuery.data?.length ?? 0) > 0,
+    queryFn: async () => {
+      const invoiceIds = (invoicesQuery.data ?? []).map((row) => row.id);
+      if (invoiceIds.length === 0) return [];
+
+      const { data, error } = await supabase
+        .from('invoice_sources')
+        .select('invoice_id')
+        .eq('company_id', companyId)
+        .in('invoice_id', invoiceIds)
+        .returns<InvoiceSourceCountRow[]>();
       if (error) throw error;
       return data ?? [];
     }
@@ -299,6 +341,13 @@ export default function OrderDetailsPage() {
     .filter((invoice) => invoice.status !== 'paid' && invoice.status !== 'void')
     .reduce((sum, invoice) => sum + Number(invoice.total ?? 0), 0);
   const latestInvoice = invoicesQuery.data?.[0] ?? null;
+  const invoiceSourceCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const row of invoiceSourceCountsQuery.data ?? []) {
+      counts.set(row.invoice_id, (counts.get(row.invoice_id) ?? 0) + 1);
+    }
+    return counts;
+  }, [invoiceSourceCountsQuery.data]);
 
   return (
     <section className="space-y-4">
@@ -568,6 +617,9 @@ export default function OrderDetailsPage() {
                   <p className="mt-1 text-xs text-foreground/55">
                     {latestInvoice?.created_at ? new Date(latestInvoice.created_at).toLocaleDateString('sv-SE') : 'Skapa faktura när ordern är klar'}
                   </p>
+                  {latestInvoice && (invoiceSourceCounts.get(latestInvoice.id) ?? 0) > 1 ? (
+                    <p className="mt-1 text-xs text-primary">Ingår i samlingsfaktura</p>
+                  ) : null}
                 </div>
                 <div className="rounded-lg border p-3">
                   <p className="text-sm text-foreground/70">Nästa steg</p>
@@ -589,13 +641,16 @@ export default function OrderDetailsPage() {
             </CardHeader>
             <CardContent className="space-y-2">
               {(invoicesQuery.data ?? []).length === 0 && <p className="text-sm text-foreground/70">Inga fakturor ännu.</p>}
-              {(invoicesQuery.data ?? []).map((inv) => (
-                <div key={inv.id} className="rounded-lg border p-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="font-medium">{inv.invoice_no}</p>
-                    <Badge>{fakturaStatusEtikett(inv.status)}</Badge>
-                  </div>
-                  <p className="mt-1 text-sm text-foreground/70">
+                {(invoicesQuery.data ?? []).map((inv) => (
+                  <div key={inv.id} className="rounded-lg border p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-medium">{inv.invoice_no}</p>
+                        {(invoiceSourceCounts.get(inv.id) ?? 0) > 1 ? <Badge>Samlingsfaktura</Badge> : null}
+                      </div>
+                      <Badge>{fakturaStatusEtikett(inv.status)}</Badge>
+                    </div>
+                    <p className="mt-1 text-sm text-foreground/70">
                     {new Date(inv.created_at).toLocaleString('sv-SE')} • {Number(inv.total).toFixed(2)} {inv.currency}
                   </p>
                   <div className="mt-2 flex gap-2">
