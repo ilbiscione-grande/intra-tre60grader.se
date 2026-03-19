@@ -768,20 +768,40 @@ export default function ProjectUpdatesPanel({
                   ) : null}
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-44">
-                <DropdownMenuItem onClick={() => document.getElementById('project-update-input')?.focus()}>
+              <DropdownMenuContent align="start" side="top" className="w-44">
+                <DropdownMenuItem
+                  onSelect={(event) => {
+                    event.preventDefault();
+                    document.getElementById('project-update-input')?.focus();
+                  }}
+                >
                   <Type className="mr-2 h-4 w-4" />
                   Text
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => rootImageFileRef.current?.click()}>
+                <DropdownMenuItem
+                  onSelect={(event) => {
+                    event.preventDefault();
+                    requestAnimationFrame(() => rootImageFileRef.current?.click());
+                  }}
+                >
                   <ImagePlus className="mr-2 h-4 w-4" />
                   Bild
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => rootDocumentFileRef.current?.click()}>
+                <DropdownMenuItem
+                  onSelect={(event) => {
+                    event.preventDefault();
+                    requestAnimationFrame(() => rootDocumentFileRef.current?.click());
+                  }}
+                >
                   <FileText className="mr-2 h-4 w-4" />
                   Fil
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setExpandedComposer((prev) => !prev)}>
+                <DropdownMenuItem
+                  onSelect={(event) => {
+                    event.preventDefault();
+                    setExpandedComposer((prev) => !prev);
+                  }}
+                >
                   <Type className="mr-2 h-4 w-4" />
                   {expandedComposer ? 'Kompakt läge' : 'Större skrivläge'}
                 </DropdownMenuItem>

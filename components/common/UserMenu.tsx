@@ -112,7 +112,12 @@ export default function UserMenu({ userEmail, compact = false }: { userEmail?: s
         </DropdownMenuItem>
         {showMfaIndicator ? (
           <DropdownMenuItem asChild>
-            <Link href={'/settings/security' as Route}>MFA rekommenderas</Link>
+            <Link
+              href={'/settings/security' as Route}
+              className="my-1 flex items-center rounded-xl border border-amber-300/70 bg-amber-50 px-3 py-2 font-medium text-amber-950 outline-none transition-colors hover:bg-amber-100 focus:bg-amber-100"
+            >
+              MFA rekommenderas
+            </Link>
           </DropdownMenuItem>
         ) : null}
         <DropdownMenuItem onClick={signOut}>Logga ut</DropdownMenuItem>
