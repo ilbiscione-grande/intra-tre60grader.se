@@ -2,12 +2,14 @@
 
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
-import { Copy } from 'lucide-react';
+import { Copy, Search } from 'lucide-react';
+import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { useAppContext } from '@/components/providers/AppContext';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { createClient } from '@/lib/supabase/client';
 import type { TableRow as DbRow } from '@/lib/supabase/database.types';
@@ -41,6 +43,7 @@ type OrderListItem = {
 export default function OrdersPage() {
   const { companyId } = useAppContext();
   const supabase = createClient();
+  const [search, setSearch] = useState('');
 
   const query = useQuery<OrderListItem[]>({
     queryKey: ['orders', companyId],
@@ -100,6 +103,29 @@ export default function OrdersPage() {
     }
   });
 
+  const filteredOrders = useMemo(() => {
+    const normalizedSearch = search.trim().toLowerCase();
+    if (!normalizedSearch) return query.data ?? [];
+
+    return (query.data ?? []).filter((row) => {
+      const searchableText = [
+        row.orderNo,
+        row.id,
+        row.projectTitle,
+        row.projectId,
+        row.customerName,
+        orderStatusEtikett(row.status),
+        row.status,
+        new Date(row.createdAt).toLocaleDateString('sv-SE')
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+
+      return searchableText.includes(normalizedSearch);
+    });
+  }, [query.data, search]);
+
   async function copyOrderId(event: React.MouseEvent<HTMLButtonElement>, orderId: string) {
     event.preventDefault();
     event.stopPropagation();
@@ -121,16 +147,33 @@ export default function OrdersPage() {
         </Button>
       </div>
 
+      <Card className="p-4">
+        <div className="space-y-3">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-foreground/45" />
+            <Input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Sök på ordernummer, kund, projekt, status eller datum..."
+              className="pl-10"
+            />
+          </div>
+          <p className="text-sm text-foreground/65">
+            Visar {filteredOrders.length} av {query.data?.length ?? 0} ordrar
+          </p>
+        </div>
+      </Card>
+
       <div className="space-y-3 md:hidden">
         {query.isLoading && (
           <Card className="p-4 text-sm text-foreground/70">Laddar ordrar...</Card>
         )}
 
-        {!query.isLoading && (query.data?.length ?? 0) === 0 && (
+        {!query.isLoading && (filteredOrders.length ?? 0) === 0 && (
           <Card className="p-4 text-sm text-foreground/70">Inga ordrar hittades.</Card>
         )}
 
-        {(query.data ?? []).map((row) => (
+        {filteredOrders.map((row) => (
           <Link key={row.id} href={`/orders/${row.id}`} className="block">
             <Card className="overflow-hidden p-0 transition hover:border-primary/40 hover:bg-muted/20">
               <div className="border-b border-border/70 bg-muted/30 px-4 py-3">
@@ -198,7 +241,7 @@ export default function OrdersPage() {
               </TableRow>
             )}
 
-            {!query.isLoading && (query.data?.length ?? 0) === 0 && (
+            {!query.isLoading && (filteredOrders.length ?? 0) === 0 && (
               <TableRow>
                 <TableCell colSpan={7} className="text-foreground/70">
                   Inga ordrar hittades.
@@ -206,7 +249,7 @@ export default function OrdersPage() {
               </TableRow>
             )}
 
-            {(query.data ?? []).map((row) => (
+            {filteredOrders.map((row) => (
               <TableRow key={row.id}>
                 <TableCell className="font-mono text-xs">{row.orderNo ?? row.id}</TableCell>
                 <TableCell>{row.projectTitle}</TableCell>
