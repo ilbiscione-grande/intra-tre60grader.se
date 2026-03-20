@@ -198,10 +198,23 @@ export default function ProjectBoardMobile({ companyId }: { companyId: string })
   const trackRef = useRef<HTMLDivElement | null>(null);
   const activeStatusRef = useRef<string>('');
   const activeIndexRef = useRef(0);
-  const edgeScrollRef = useRef<{ side: 'left' | 'right' | null; lastStepAt: number; startedAt: number }>({
+  const dragIntentRef = useRef<{
+    startedAt: number;
+    crossColumnUnlocked: boolean;
+  }>({
+    startedAt: 0,
+    crossColumnUnlocked: false
+  });
+  const edgeScrollRef = useRef<{
+    side: 'left' | 'right' | null;
+    lastStepAt: number;
+    startedAt: number;
+    enteredEdgeAt: number;
+  }>({
     side: null,
     lastStepAt: 0,
-    startedAt: 0
+    startedAt: 0,
+    enteredEdgeAt: 0
   });
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
   const { containerRef: columnTabsRef, registerItem: registerColumnTab } = useAutoScrollActiveTab(activeStatus);
@@ -449,7 +462,11 @@ export default function ProjectBoardMobile({ companyId }: { companyId: string })
 
   function handleDragStart(event: DragStartEvent) {
     setActiveId(String(event.active.id));
-    edgeScrollRef.current = { side: null, lastStepAt: 0, startedAt: Date.now() };
+    dragIntentRef.current = {
+      startedAt: Date.now(),
+      crossColumnUnlocked: false
+    };
+    edgeScrollRef.current = { side: null, lastStepAt: 0, startedAt: Date.now(), enteredEdgeAt: 0 };
   }
 
   function handleDragMove(event: DragMoveEvent) {
@@ -458,26 +475,48 @@ export default function ProjectBoardMobile({ companyId }: { companyId: string })
     if (!track || !translated) return;
 
     const rect = track.getBoundingClientRect();
-    const edgeThreshold = 28;
-    const minLateralDelta = 52;
+    const edgeThreshold = 20;
+    const minLateralDelta = 72;
+    const minHorizontalLead = 36;
     const now = Date.now();
     const cooldownMs = 1700;
+    const edgeDwellMs = 320;
     const currentIndex = activeIndexRef.current;
     const translatedCenterX = translated.left + translated.width / 2;
     const dragAgeMs = now - edgeScrollRef.current.startedAt;
     const deltaX = Math.abs(event.delta.x);
+    const deltaY = Math.abs(event.delta.y);
+    const horizontalIntent = deltaX > deltaY + minHorizontalLead;
 
-    if (dragAgeMs < 220 || deltaX < minLateralDelta) {
-      edgeScrollRef.current = { ...edgeScrollRef.current, side: null };
+    if (horizontalIntent && deltaX >= minLateralDelta) {
+      dragIntentRef.current.crossColumnUnlocked = true;
+    }
+
+    if (dragAgeMs < 220 || deltaX < minLateralDelta || !horizontalIntent) {
+      edgeScrollRef.current = { ...edgeScrollRef.current, side: null, enteredEdgeAt: 0 };
       return;
     }
 
     if (translatedCenterX > rect.right - edgeThreshold) {
+      if (event.delta.x <= 0) {
+        edgeScrollRef.current = { ...edgeScrollRef.current, side: null, enteredEdgeAt: 0 };
+        return;
+      }
+
+      if (edgeScrollRef.current.side !== 'right') {
+        edgeScrollRef.current = { ...edgeScrollRef.current, side: 'right', enteredEdgeAt: now };
+        return;
+      }
+
+      if (now - edgeScrollRef.current.enteredEdgeAt < edgeDwellMs) {
+        return;
+      }
+
       const canAdvance =
         edgeScrollRef.current.side !== 'right' || now - edgeScrollRef.current.lastStepAt >= cooldownMs;
 
       if (canAdvance) {
-        edgeScrollRef.current = { ...edgeScrollRef.current, side: 'right', lastStepAt: now };
+        edgeScrollRef.current = { ...edgeScrollRef.current, side: 'right', lastStepAt: now, enteredEdgeAt: now };
         const nextIndex = Math.min(columns.length - 1, currentIndex + 1);
         const nextColumn = columns[nextIndex];
         if (nextColumn) {
@@ -489,11 +528,25 @@ export default function ProjectBoardMobile({ companyId }: { companyId: string })
     }
 
     if (translatedCenterX < rect.left + edgeThreshold) {
+      if (event.delta.x >= 0) {
+        edgeScrollRef.current = { ...edgeScrollRef.current, side: null, enteredEdgeAt: 0 };
+        return;
+      }
+
+      if (edgeScrollRef.current.side !== 'left') {
+        edgeScrollRef.current = { ...edgeScrollRef.current, side: 'left', enteredEdgeAt: now };
+        return;
+      }
+
+      if (now - edgeScrollRef.current.enteredEdgeAt < edgeDwellMs) {
+        return;
+      }
+
       const canAdvance =
         edgeScrollRef.current.side !== 'left' || now - edgeScrollRef.current.lastStepAt >= cooldownMs;
 
       if (canAdvance) {
-        edgeScrollRef.current = { ...edgeScrollRef.current, side: 'left', lastStepAt: now };
+        edgeScrollRef.current = { ...edgeScrollRef.current, side: 'left', lastStepAt: now, enteredEdgeAt: now };
         const nextIndex = Math.max(0, currentIndex - 1);
         const nextColumn = columns[nextIndex];
         if (nextColumn) {
@@ -504,7 +557,7 @@ export default function ProjectBoardMobile({ companyId }: { companyId: string })
       return;
     }
 
-    edgeScrollRef.current = { ...edgeScrollRef.current, side: null };
+    edgeScrollRef.current = { ...edgeScrollRef.current, side: null, enteredEdgeAt: 0 };
   }
 
   function handleDragOver(event: DragOverEvent) {
@@ -517,6 +570,24 @@ export default function ProjectBoardMobile({ companyId }: { companyId: string })
       const targetStatus = statusFromColumnId(overId) ?? findContainer(overId, current);
 
       if (!sourceStatus || !targetStatus) return current;
+
+      if (sourceStatus !== targetStatus) {
+        const deltaX = Math.abs(event.delta.x);
+        const deltaY = Math.abs(event.delta.y);
+        const horizontalIntent = deltaX > deltaY + 36;
+        const dragAgeMs = Date.now() - dragIntentRef.current.startedAt;
+        const columnWasActivated = targetStatus === activeStatusRef.current;
+
+        if (
+          !dragIntentRef.current.crossColumnUnlocked ||
+          !horizontalIntent ||
+          deltaX < 72 ||
+          dragAgeMs < 220 ||
+          !columnWasActivated
+        ) {
+          return current;
+        }
+      }
 
       if (sourceStatus === targetStatus) {
         return current;
@@ -544,7 +615,8 @@ export default function ProjectBoardMobile({ companyId }: { companyId: string })
     const overId = event.over?.id ? String(event.over.id) : null;
     setActiveId(null);
     setLockedStatus(null);
-    edgeScrollRef.current = { side: null, lastStepAt: 0, startedAt: 0 };
+    dragIntentRef.current = { startedAt: 0, crossColumnUnlocked: false };
+    edgeScrollRef.current = { side: null, lastStepAt: 0, startedAt: 0, enteredEdgeAt: 0 };
 
     if (!overId) {
       setBoard(initialBoard);
