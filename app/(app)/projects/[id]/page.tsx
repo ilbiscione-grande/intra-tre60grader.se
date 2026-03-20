@@ -1,11 +1,11 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import type { Route } from 'next';
 import { useParams, useSearchParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, ArrowUpRight, CalendarDays, CircleDollarSign, FolderKanban, Paperclip, ReceiptText, Users } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, ArrowUpRight, CalendarDays, CircleDollarSign, FolderKanban, Paperclip, ReceiptText, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import ProfileBadge from '@/components/common/ProfileBadge';
 import RoleGate from '@/components/common/RoleGate';
@@ -53,7 +53,7 @@ type ActivityItem = {
   text: string;
   source: 'system' | 'user';
 };
-type ProjectTab = 'overview' | 'updates' | 'economy' | 'attachments' | 'members' | 'logs';
+type ProjectTab = 'overview' | 'planning' | 'updates' | 'economy' | 'attachments' | 'members' | 'logs';
 type ProjectMilestone = {
   id: string;
   title: string;
@@ -65,6 +65,7 @@ const orderStatuses = ['draft', 'sent', 'paid', 'cancelled', 'invoiced'] as cons
 type OrderStatus = (typeof orderStatuses)[number];
 const projectTabs: Array<{ id: ProjectTab; label: string }> = [
   { id: 'overview', label: 'Översikt' },
+  { id: 'planning', label: 'Tidsplan' },
   { id: 'updates', label: 'Uppdateringar' },
   { id: 'economy', label: 'Ekonomi' },
   { id: 'attachments', label: 'Bilagor' },
@@ -249,6 +250,7 @@ export default function ProjectDetailsPage() {
   const [activeTab, setActiveTab] = useState<ProjectTab>('overview');
   const [memberSearch, setMemberSearch] = useState('');
   const [memberRoleFilter, setMemberRoleFilter] = useState<'all' | Role>('all');
+  const hasAutoOpenedPlanningRef = useRef(false);
   const swipeHandlers = useSwipeTabs({
     tabs: projectTabs.map((tab) => tab.id),
     activeTab,
@@ -790,6 +792,17 @@ export default function ProjectDetailsPage() {
 
     return alerts;
   }, [draftMilestones, projectQuery.data?.end_date]);
+  const hasPlanningAttention = planningAlerts.some((alert) => alert.tone === 'danger' || alert.tone === 'warning');
+
+  useEffect(() => {
+    const requestedTab = searchParams.get('tab');
+    if (requestedTab) return;
+    if (hasAutoOpenedPlanningRef.current) return;
+    if (!hasPlanningAttention) return;
+
+    hasAutoOpenedPlanningRef.current = true;
+    setActiveTab('planning');
+  }, [hasPlanningAttention, searchParams]);
 
   if (projectQuery.isLoading) return <p>Laddar...</p>;
   if (!projectQuery.data) return <p>Projekt saknas.</p>;
@@ -803,6 +816,7 @@ export default function ProjectDetailsPage() {
   const isEconomyLocked =
     economyLockQuery.data ?? (invoicesQuery.data ?? []).some((invoice) => invoice.status !== 'void');
   const isEconomyBusy = economyLockQuery.isPending;
+  const isProjectMetaBusy = saveProjectMutation.isPending;
   const latestInvoice = invoicesQuery.data?.[0] ?? null;
   const latestActivityItem = activity[0] ?? null;
   const projectStatusLabel = projectColumnTitle(draftStatus || project.status, statusColumns);
@@ -844,7 +858,10 @@ export default function ProjectDetailsPage() {
             }`}
             onClick={() => setActiveTab(tab.id)}
           >
-            {tab.label}
+            <span className="inline-flex items-center gap-1.5">
+              {tab.id === 'planning' && hasPlanningAttention ? <AlertTriangle className="h-3.5 w-3.5 text-amber-500" /> : null}
+              <span>{tab.label}</span>
+            </span>
           </Button>
         ))}
       </div>
@@ -902,13 +919,13 @@ export default function ProjectDetailsPage() {
               <div className="grid gap-3 md:grid-cols-2">
                 <label className="space-y-1">
                   <span className="text-sm">Titel</span>
-                  <Input value={draftTitle} onChange={(event) => setDraftTitle(event.target.value)} disabled={isEconomyLocked || isEconomyBusy} />
+                  <Input value={draftTitle} onChange={(event) => setDraftTitle(event.target.value)} disabled={isProjectMetaBusy} />
                 </label>
 
                 <label className="space-y-1">
                   <span className="text-sm">Kolumn</span>
                   <Select value={draftStatus} onValueChange={(value) => setDraftStatus(value as ProjectStatus)}>
-                    <SelectTrigger disabled={isEconomyLocked || isEconomyBusy}>
+                    <SelectTrigger disabled={isProjectMetaBusy}>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -924,7 +941,7 @@ export default function ProjectDetailsPage() {
                 <label className="space-y-1 md:col-span-2">
                   <span className="text-sm">Kund</span>
                   <Select value={draftCustomerId} onValueChange={setDraftCustomerId}>
-                    <SelectTrigger disabled={isEconomyLocked || isEconomyBusy}>
+                    <SelectTrigger disabled={isProjectMetaBusy}>
                       <SelectValue placeholder="Välj kund" />
                     </SelectTrigger>
                     <SelectContent>
@@ -938,104 +955,6 @@ export default function ProjectDetailsPage() {
                   </Select>
                 </label>
 
-                <label className="space-y-1">
-                  <span className="text-sm">Startdatum</span>
-                  <Input type="date" value={draftStartDate} onChange={(event) => setDraftStartDate(event.target.value)} disabled={isEconomyLocked || isEconomyBusy} />
-                </label>
-
-                <label className="space-y-1">
-                  <span className="text-sm">Slutdatum</span>
-                  <Input type="date" value={draftEndDate} onChange={(event) => setDraftEndDate(event.target.value)} disabled={isEconomyLocked || isEconomyBusy} />
-                </label>
-              </div>
-
-              <div className="space-y-3 rounded-2xl border border-border/70 bg-muted/10 p-4">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <p className="text-sm font-medium">Delmål</p>
-                    <p className="text-xs text-foreground/60">Planera nästa steg och viktiga hållpunkter för projektet.</p>
-                  </div>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    disabled={isEconomyLocked || isEconomyBusy}
-                    onClick={() =>
-                      setDraftMilestones((prev) => [...prev, { id: crypto.randomUUID(), title: '', date: '', completed: false }])
-                    }
-                  >
-                    Lägg till delmål
-                  </Button>
-                </div>
-
-                {draftMilestones.length === 0 ? (
-                  <p className="text-sm text-foreground/65">Inga delmål ännu.</p>
-                ) : (
-                  <div className="space-y-2">
-                    {orderedMilestones.map((milestone) => {
-                      const today = todayIsoDate();
-                      const isOverdue = !milestone.completed && Boolean(milestone.date) && milestone.date < today;
-                      const isUpcoming = !milestone.completed && Boolean(milestone.date) && milestone.date >= today;
-
-                      return (
-                      <div
-                        key={milestone.id}
-                        className={`grid gap-2 rounded-xl border p-3 md:grid-cols-[1fr_180px_auto_auto] ${
-                          milestone.completed
-                            ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-500/25 dark:bg-emerald-500/10'
-                            : isOverdue
-                              ? 'border-rose-200 bg-rose-50 dark:border-rose-500/25 dark:bg-rose-500/10'
-                              : isUpcoming
-                                ? 'border-amber-200 bg-amber-50 dark:border-amber-500/25 dark:bg-amber-500/10'
-                                : 'border-border/60 bg-background/60'
-                        }`}
-                      >
-                        <Input
-                          placeholder="Delmål, t.ex. Första utkast klart"
-                          value={milestone.title}
-                          disabled={isEconomyLocked || isEconomyBusy}
-                          onChange={(event) =>
-                            setDraftMilestones((prev) =>
-                              prev.map((item) => (item.id === milestone.id ? { ...item, title: event.target.value } : item))
-                            )
-                          }
-                        />
-                        <Input
-                          type="date"
-                          value={milestone.date}
-                          disabled={isEconomyLocked || isEconomyBusy}
-                          onChange={(event) =>
-                            setDraftMilestones((prev) =>
-                              prev.map((item) => (item.id === milestone.id ? { ...item, date: event.target.value } : item))
-                            )
-                          }
-                        />
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant={milestone.completed ? 'secondary' : 'outline'}
-                          disabled={isEconomyLocked || isEconomyBusy}
-                          onClick={() =>
-                            setDraftMilestones((prev) =>
-                              prev.map((item) => (item.id === milestone.id ? { ...item, completed: !item.completed } : item))
-                            )
-                          }
-                        >
-                          {milestone.completed ? 'Klart' : 'Markera klar'}
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="ghost"
-                          disabled={isEconomyLocked || isEconomyBusy}
-                          onClick={() => setDraftMilestones((prev) => prev.filter((item) => item.id !== milestone.id))}
-                        >
-                          Ta bort
-                        </Button>
-                      </div>
-                    )})}
-                  </div>
-                )}
               </div>
 
               <div className="grid gap-3 md:grid-cols-4">
@@ -1078,7 +997,7 @@ export default function ProjectDetailsPage() {
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
-                <Button onClick={() => saveProjectMutation.mutate()} disabled={saveProjectMutation.isPending || isEconomyLocked || isEconomyBusy}>
+                <Button onClick={() => saveProjectMutation.mutate()} disabled={saveProjectMutation.isPending}>
                   {saveProjectMutation.isPending ? 'Sparar...' : 'Spara projekt'}
                 </Button>
                 {orderId ? (
@@ -1086,6 +1005,138 @@ export default function ProjectDetailsPage() {
                     <Link href={`/orders/${orderId}`}>Öppna order</Link>
                   </Button>
                 ) : null}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {activeTab === 'planning' && (
+        <div className="space-y-4" {...swipeHandlers}>
+          <Card>
+            <CardContent className="space-y-4">
+              <div className="grid gap-3 md:grid-cols-3">
+                <div className="rounded-lg border p-3">
+                  <p className="text-sm text-foreground/70">Startdatum</p>
+                  <p className="mt-1 font-medium">{formatProjectDate(draftStartDate)}</p>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <p className="text-sm text-foreground/70">Nästa delmål</p>
+                  <p className="mt-1 font-medium">{nextMilestone?.title || 'Inget satt'}</p>
+                  <p className="mt-1 text-xs text-foreground/55">{nextMilestone?.date ? formatProjectDate(nextMilestone.date) : 'Lägg till ett delmål'}</p>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <p className="text-sm text-foreground/70">Slutdatum</p>
+                  <p className="mt-1 font-medium">{formatProjectDate(draftEndDate)}</p>
+                </div>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-2">
+                <label className="space-y-1">
+                  <span className="text-sm">Startdatum</span>
+                  <Input type="date" value={draftStartDate} onChange={(event) => setDraftStartDate(event.target.value)} disabled={isProjectMetaBusy} />
+                </label>
+
+                <label className="space-y-1">
+                  <span className="text-sm">Slutdatum</span>
+                  <Input type="date" value={draftEndDate} onChange={(event) => setDraftEndDate(event.target.value)} disabled={isProjectMetaBusy} />
+                </label>
+              </div>
+
+              <div className="space-y-3 rounded-2xl border border-border/70 bg-muted/10 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-medium">Delmål</p>
+                    <p className="text-xs text-foreground/60">Planera nästa steg och viktiga hållpunkter för projektet.</p>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={isProjectMetaBusy}
+                    onClick={() =>
+                      setDraftMilestones((prev) => [...prev, { id: crypto.randomUUID(), title: '', date: '', completed: false }])
+                    }
+                  >
+                    Lägg till delmål
+                  </Button>
+                </div>
+
+                {orderedMilestones.length === 0 ? (
+                  <p className="text-sm text-foreground/65">Inga delmål ännu.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {orderedMilestones.map((milestone) => {
+                      const today = todayIsoDate();
+                      const isOverdue = !milestone.completed && Boolean(milestone.date) && milestone.date < today;
+                      const isUpcoming = !milestone.completed && Boolean(milestone.date) && milestone.date >= today;
+
+                      return (
+                        <div
+                          key={milestone.id}
+                          className={`grid gap-2 rounded-xl border p-3 md:grid-cols-[1fr_180px_auto_auto] ${
+                            milestone.completed
+                              ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-500/25 dark:bg-emerald-500/10'
+                              : isOverdue
+                                ? 'border-rose-200 bg-rose-50 dark:border-rose-500/25 dark:bg-rose-500/10'
+                                : isUpcoming
+                                  ? 'border-amber-200 bg-amber-50 dark:border-amber-500/25 dark:bg-amber-500/10'
+                                  : 'border-border/60 bg-background/60'
+                          }`}
+                        >
+                          <Input
+                            placeholder="Delmål, t.ex. Första utkast klart"
+                            value={milestone.title}
+                            disabled={isProjectMetaBusy}
+                            onChange={(event) =>
+                              setDraftMilestones((prev) =>
+                                prev.map((item) => (item.id === milestone.id ? { ...item, title: event.target.value } : item))
+                              )
+                            }
+                          />
+                          <Input
+                            type="date"
+                            value={milestone.date}
+                            disabled={isProjectMetaBusy}
+                            onChange={(event) =>
+                              setDraftMilestones((prev) =>
+                                prev.map((item) => (item.id === milestone.id ? { ...item, date: event.target.value } : item))
+                              )
+                            }
+                          />
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant={milestone.completed ? 'secondary' : 'outline'}
+                            disabled={isProjectMetaBusy}
+                            onClick={() =>
+                              setDraftMilestones((prev) =>
+                                prev.map((item) => (item.id === milestone.id ? { ...item, completed: !item.completed } : item))
+                              )
+                            }
+                          >
+                            {milestone.completed ? 'Klart' : 'Markera klar'}
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            disabled={isProjectMetaBusy}
+                            onClick={() => setDraftMilestones((prev) => prev.filter((item) => item.id !== milestone.id))}
+                          >
+                            Ta bort
+                          </Button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <Button onClick={() => saveProjectMutation.mutate()} disabled={saveProjectMutation.isPending}>
+                  {saveProjectMutation.isPending ? 'Sparar...' : 'Spara tidsplan'}
+                </Button>
               </div>
             </CardContent>
           </Card>

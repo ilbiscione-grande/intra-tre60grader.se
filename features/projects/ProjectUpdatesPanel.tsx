@@ -1,7 +1,7 @@
 'use client';
 
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
-import { Camera, Edit3, FileText, ImagePlus, Paperclip, Reply, Send, Trash2, Type, X } from 'lucide-react';
+import { Camera, Edit3, FileText, ImagePlus, MessageSquarePlus, Paperclip, Reply, Send, Trash2, Type, X } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import ActionSheet from '@/components/common/ActionSheet';
@@ -811,7 +811,7 @@ export default function ProjectUpdatesPanel({
               className="relative"
               onClick={() => setRootAttachmentSheetOpen(true)}
             >
-              <Paperclip className="h-4 w-4" />
+              <MessageSquarePlus className="h-4 w-4" />
               {rootComposer.files.length > 0 ? (
                 <span className="absolute -right-1 -top-1 inline-flex min-h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground">
                   {rootComposer.files.length > 9 ? '9+' : rootComposer.files.length}
