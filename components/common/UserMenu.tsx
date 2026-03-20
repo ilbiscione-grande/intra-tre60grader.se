@@ -78,7 +78,7 @@ export default function UserMenu({ userEmail, compact = false }: { userEmail?: s
   }
 
   return (
-    <DropdownMenu>
+    <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
         <Button variant="secondary" size={compact ? 'icon' : 'sm'} className={compact ? 'h-10 w-10 rounded-full' : 'gap-2 rounded-full pl-2 pr-3'}>
           <span className="relative">
@@ -98,7 +98,7 @@ export default function UserMenu({ userEmail, compact = false }: { userEmail?: s
           {!compact ? <span>{getFirstName(userEmail)}</span> : null}
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-[280px]">
+      <DropdownMenuContent align="end" side="bottom" sideOffset={8} collisionPadding={12} className="z-[1000] w-[280px]">
         {userEmail ? <DropdownMenuItem disabled>{userEmail}</DropdownMenuItem> : null}
         {companies.length > 1 ? (
           <div className="my-1 rounded-md border border-border/70 bg-muted/20 p-1">
