@@ -93,6 +93,7 @@ export default function SettingsPage() {
   const [closePeriodEnd, setClosePeriodEnd] = useState(new Date().toISOString().slice(0, 10));
   const [profileColor, setProfileColor] = useState(DEFAULT_PROFILE_BADGE_COLOR);
   const [profileEmoji, setProfileEmoji] = useState<string | null>(null);
+  const [profileDisplayName, setProfileDisplayName] = useState('');
   const [profileFile, setProfileFile] = useState<File | null>(null);
   const [removeAvatarOnSave, setRemoveAvatarOnSave] = useState(false);
   const isProduction = process.env.NODE_ENV === 'production';
@@ -158,6 +159,7 @@ export default function SettingsPage() {
     if (!ownProfileBadgeQuery.data) return;
     setProfileColor(ownProfileBadgeQuery.data.color || DEFAULT_PROFILE_BADGE_COLOR);
     setProfileEmoji(ownProfileBadgeQuery.data.emoji ?? null);
+    setProfileDisplayName(ownProfileBadgeQuery.data.displayName ?? '');
   }, [ownProfileBadgeQuery.data]);
 
   const saveCompanyMutation = useMutation({
@@ -261,7 +263,8 @@ export default function SettingsPage() {
           preference_value: {
             color: profileColor,
             avatar_path: avatarPath,
-            emoji: profileEmoji
+            emoji: profileEmoji,
+            display_name: profileDisplayName.trim() || null
           }
         },
         {
@@ -405,7 +408,7 @@ export default function SettingsPage() {
         <CardContent className="space-y-4">
           <div className="flex items-center gap-4">
             <ProfileBadge
-              label={currentUserQuery.data?.email}
+              label={profileDisplayName || currentUserQuery.data?.email}
               color={avatarPreview ? undefined : profileColor}
               avatarUrl={avatarPreview}
               emoji={avatarPreview ? null : profileEmoji}
@@ -429,6 +432,13 @@ export default function SettingsPage() {
                 style={{ backgroundColor: color }}
               />
             ))}
+          </div>
+
+          <div className="space-y-2">
+            <label className="space-y-1">
+              <span className="text-sm">Visningsnamn</span>
+              <Input value={profileDisplayName} onChange={(event) => setProfileDisplayName(event.target.value)} placeholder="Ditt namn" />
+            </label>
           </div>
 
           <div className="space-y-2">

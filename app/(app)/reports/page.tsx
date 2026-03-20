@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { useAppContext } from '@/components/providers/AppContext';
+import { canViewReporting } from '@/lib/auth/capabilities';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -64,7 +65,8 @@ function getVatBox(data: unknown, key: '05' | '06' | '07' | '10' | '11' | '12' |
 }
 
 export default function ReportsPage() {
-  const { companyId, role } = useAppContext();
+  const { companyId, role, capabilities } = useAppContext();
+  const canReadReports = canViewReporting(role, capabilities);
   const [periodStart, setPeriodStart] = useState(
     new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10)
   );
@@ -74,43 +76,43 @@ export default function ReportsPage() {
   const vatQuery = useQuery({
     queryKey: ['vat-report', companyId, periodStart, periodEnd],
     queryFn: () => vatReport(companyId, periodStart, periodEnd),
-    enabled: role !== 'member'
+    enabled: canReadReports
   });
 
   const generalLedgerQuery = useQuery({
     queryKey: ['general-ledger-report', companyId, periodStart, periodEnd],
     queryFn: () => generalLedgerReport(companyId, periodStart, periodEnd),
-    enabled: role !== 'member'
+    enabled: canReadReports
   });
 
   const trialBalanceQuery = useQuery({
     queryKey: ['trial-balance-report', companyId, periodEnd],
     queryFn: () => trialBalanceReport(companyId, periodEnd),
-    enabled: role !== 'member'
+    enabled: canReadReports
   });
 
   const incomeStatementQuery = useQuery({
     queryKey: ['income-statement-report', companyId, periodStart, periodEnd],
     queryFn: () => incomeStatementReport(companyId, periodStart, periodEnd),
-    enabled: role !== 'member'
+    enabled: canReadReports
   });
 
   const balanceSheetQuery = useQuery({
     queryKey: ['balance-sheet-report', companyId, periodEnd],
     queryFn: () => balanceSheetReport(companyId, periodEnd),
-    enabled: role !== 'member'
+    enabled: canReadReports
   });
 
   const financeAuditLogQuery = useQuery({
     queryKey: ['finance-audit-log-report', companyId],
     queryFn: () => financeAuditLogReport(companyId, 50),
-    enabled: role !== 'member'
+    enabled: canReadReports
   });
 
   const financeAuditChainVerifyQuery = useQuery({
     queryKey: ['finance-audit-chain-verify', companyId],
     queryFn: () => financeAuditChainVerify(companyId),
-    enabled: role !== 'member'
+    enabled: canReadReports
   });
 
   const auditQuery = useVerificationAuditLog(companyId, periodStart, periodEnd, statusFilter);
@@ -164,7 +166,7 @@ export default function ReportsPage() {
     window.open(url, '_blank', 'noopener,noreferrer');
   }
 
-  if (role === 'member') {
+  if (!canReadReports) {
     return <p className="rounded-lg bg-muted p-4 text-sm">Rapporter är endast för ekonomi/admin/revisor.</p>;
   }
 

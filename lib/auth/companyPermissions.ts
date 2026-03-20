@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
-import type { Role } from '@/lib/types';
+import { hasCapability } from '@/lib/auth/capabilities';
+import type { Capability, Role } from '@/lib/types';
 
 export type CompanyAction = 'finance.read' | 'finance.write' | 'finance.governance' | 'members.manage';
 const STEP_UP_MAX_AGE_MINUTES = 30;
@@ -8,6 +9,7 @@ type PermissionResult = {
   ok: true;
   status: 200;
   role: Role;
+  capabilities: Capability[];
   userId: string;
   supabase: ReturnType<typeof createClient>;
 } | {
@@ -19,11 +21,11 @@ type PermissionResult = {
   supabase: null;
 };
 
-function hasActionPermission(role: Role, action: CompanyAction) {
-  if (action === 'finance.read') return role === 'finance' || role === 'admin' || role === 'auditor';
-  if (action === 'finance.write') return role === 'finance' || role === 'admin';
+function hasActionPermission(role: Role, capabilities: Capability[], action: CompanyAction) {
+  if (action === 'finance.read') return role === 'finance' || role === 'admin' || role === 'auditor' || hasCapability(capabilities, 'finance');
+  if (action === 'finance.write') return role === 'finance' || role === 'admin' || hasCapability(capabilities, 'finance');
   if (action === 'finance.governance') return role === 'admin';
-  if (action === 'members.manage') return role === 'admin';
+  if (action === 'members.manage') return role === 'admin' || hasCapability(capabilities, 'team_admin');
   return false;
 }
 
@@ -53,11 +55,23 @@ export async function requireCompanyPermission(companyId: string, action: Compan
     return { ok: false, status: 403, error: 'Forbidden', role: null, userId: null, supabase: null };
   }
 
-  if (!hasActionPermission(member.role, action)) {
+  const { data: capabilityRows, error: capabilityError } = await supabase
+    .from('company_member_capabilities')
+    .select('capability')
+    .eq('company_id', companyId)
+    .eq('user_id', user.id);
+
+  if (capabilityError) {
+    return { ok: false, status: 403, error: 'Failed to read capabilities', role: null, userId: null, supabase: null };
+  }
+
+  const capabilities = (capabilityRows ?? []).map((row) => row.capability as Capability);
+
+  if (!hasActionPermission(member.role, capabilities, action)) {
     return { ok: false, status: 403, error: 'Insufficient role for action', role: null, userId: null, supabase: null };
   }
 
-  return { ok: true, status: 200, role: member.role, userId: user.id, supabase };
+  return { ok: true, status: 200, role: member.role, capabilities, userId: user.id, supabase };
 }
 
 export async function requireRecentSignIn(maxAgeMinutes = STEP_UP_MAX_AGE_MINUTES): Promise<

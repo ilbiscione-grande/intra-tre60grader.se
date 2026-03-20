@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { getUserDisplayName } from '@/features/profile/profileBadge';
 import { createClient } from '@/lib/supabase/client';
 import type { TableRow as DbRow } from '@/lib/supabase/database.types';
 import { useBreakpointMode } from '@/lib/ui/useBreakpointMode';
@@ -370,7 +371,12 @@ export default function ProjectTasksPanel({
                         <SelectItem value="none">Ingen ansvarig ännu</SelectItem>
                         {members.map((member) => (
                           <SelectItem key={member.id} value={member.user_id}>
-                            {member.email ?? member.handle ?? member.user_id}
+                            {getUserDisplayName({
+                              displayName: member.display_name,
+                              email: member.email,
+                              handle: member.handle,
+                              userId: member.user_id
+                            })}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -488,11 +494,16 @@ export default function ProjectTasksPanel({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">Ingen ansvarig ännu</SelectItem>
-                    {members.map((member) => (
-                      <SelectItem key={member.id} value={member.user_id}>
-                        {member.email ?? member.handle ?? member.user_id}
-                      </SelectItem>
-                    ))}
+                        {members.map((member) => (
+                          <SelectItem key={member.id} value={member.user_id}>
+                            {getUserDisplayName({
+                              displayName: member.display_name,
+                              email: member.email,
+                              handle: member.handle,
+                              userId: member.user_id
+                            })}
+                          </SelectItem>
+                        ))}
                   </SelectContent>
                 </Select>
               </label>
@@ -632,14 +643,21 @@ export default function ProjectTasksPanel({
                         {assignee ? (
                           <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-muted px-2 py-1 text-xs">
                             <ProfileBadge
-                              label={assignee.email ?? assignee.user_id}
+                              label={assignee.display_name ?? assignee.email ?? assignee.user_id}
                               color={assignee.color}
                               avatarUrl={assignee.avatar_url}
                               emoji={assignee.emoji}
                               className="h-5 w-5 shrink-0"
                               textClassName="text-[9px] font-semibold text-white"
                             />
-                            <span className="max-w-[140px] truncate">{assignee.handle ?? assignee.email ?? 'Ansvarig'}</span>
+                            <span className="max-w-[140px] truncate">
+                              {getUserDisplayName({
+                                displayName: assignee.display_name,
+                                email: assignee.email,
+                                handle: assignee.handle,
+                                userId: assignee.user_id
+                              })}
+                            </span>
                           </div>
                         ) : null}
                       </div>
@@ -689,14 +707,21 @@ export default function ProjectTasksPanel({
                   {assignee ? (
                     <span className="inline-flex items-center gap-2 rounded-full bg-muted px-2 py-1 text-xs">
                       <ProfileBadge
-                        label={assignee.email ?? assignee.user_id}
+                        label={assignee.display_name ?? assignee.email ?? assignee.user_id}
                         color={assignee.color}
                         avatarUrl={assignee.avatar_url}
                         emoji={assignee.emoji}
                         className="h-5 w-5 shrink-0"
                         textClassName="text-[9px] font-semibold text-white"
                       />
-                      <span className="max-w-[140px] truncate">{assignee.handle ?? assignee.email ?? 'Ansvarig'}</span>
+                      <span className="max-w-[140px] truncate">
+                        {getUserDisplayName({
+                          displayName: assignee.display_name,
+                          email: assignee.email,
+                          handle: assignee.handle,
+                          userId: assignee.user_id
+                        })}
+                      </span>
                     </span>
                   ) : (
                     <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs text-foreground/70">
@@ -855,7 +880,12 @@ export default function ProjectTasksPanel({
                         <SelectItem value="none">Ingen ansvarig</SelectItem>
                         {members.map((member) => (
                           <SelectItem key={member.id} value={member.user_id}>
-                            {member.email ?? member.handle ?? member.user_id}
+                            {getUserDisplayName({
+                              displayName: member.display_name,
+                              email: member.email,
+                              handle: member.handle,
+                              userId: member.user_id
+                            })}
                           </SelectItem>
                         ))}
                       </SelectContent>

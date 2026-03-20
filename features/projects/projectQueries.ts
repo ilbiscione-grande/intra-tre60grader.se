@@ -23,6 +23,7 @@ export type CompanyMemberDirectoryEntry = {
   created_at: string;
   email: string | null;
   handle: string | null;
+  display_name: string | null;
 };
 
 export type ProjectMemberVisual = CompanyMemberDirectoryEntry & {

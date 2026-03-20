@@ -1,7 +1,7 @@
 import { cookies } from 'next/headers';
 import { createClient } from '@/lib/supabase/server';
 import { getAuthContext, isStaff } from '@/lib/auth/authContext';
-import type { AvailableCompany, Role } from '@/lib/types';
+import type { AvailableCompany, Capability, Role } from '@/lib/types';
 
 type MembershipRow = {
   company_id: string;
@@ -11,6 +11,11 @@ type MembershipRow = {
 type CompanyRow = {
   id: string;
   name: string;
+};
+
+type CapabilityRow = {
+  company_id: string;
+  capability: Capability;
 };
 
 type CompanyAccess = {
@@ -56,14 +61,29 @@ export async function getCompanyAccess(): Promise<CompanyAccess> {
     .in('id', companyIds)
     .returns<CompanyRow[]>();
 
+  const { data: capabilitiesData } = await supabase
+    .from('company_member_capabilities')
+    .select('company_id,capability')
+    .eq('user_id', authContext.user_id)
+    .in('company_id', companyIds)
+    .returns<CapabilityRow[]>();
+
   const nameById = new Map((companiesData ?? []).map((c) => [c.id, c.name]));
+  const capabilitiesByCompanyId = new Map<string, Capability[]>();
+
+  for (const row of capabilitiesData ?? []) {
+    const current = capabilitiesByCompanyId.get(row.company_id) ?? [];
+    current.push(row.capability);
+    capabilitiesByCompanyId.set(row.company_id, current);
+  }
 
   const companies: AvailableCompany[] = memberships
     .filter((m) => nameById.has(m.company_id))
     .map((m) => ({
       companyId: m.company_id,
       companyName: nameById.get(m.company_id)!,
-      role: normalizeCompanyRole(m.role)
+      role: normalizeCompanyRole(m.role),
+      capabilities: capabilitiesByCompanyId.get(m.company_id) ?? []
     }));
 
   const requestedCompanyId = cookieStore.get('active_company_id')?.value ?? null;

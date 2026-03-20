@@ -15,19 +15,21 @@ export type ProfileBadgePreference = {
   avatarPath: string | null;
   avatarUrl: string | null;
   emoji: string | null;
+  displayName: string | null;
 };
 
-function parsePreference(value: Json | null | undefined): { color: string; avatarPath: string | null; emoji: string | null } {
+function parsePreference(value: Json | null | undefined): { color: string; avatarPath: string | null; emoji: string | null; displayName: string | null } {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return { color: DEFAULT_PROFILE_BADGE_COLOR, avatarPath: null, emoji: null };
+    return { color: DEFAULT_PROFILE_BADGE_COLOR, avatarPath: null, emoji: null, displayName: null };
   }
 
   const record = value as Record<string, unknown>;
   const color = typeof record.color === 'string' && record.color.trim() ? record.color : DEFAULT_PROFILE_BADGE_COLOR;
   const avatarPath = typeof record.avatar_path === 'string' && record.avatar_path.trim() ? record.avatar_path : null;
   const emoji = typeof record.emoji === 'string' && record.emoji.trim() ? record.emoji : null;
+  const displayName = typeof record.display_name === 'string' && record.display_name.trim() ? record.display_name.trim() : null;
 
-  return { color, avatarPath, emoji };
+  return { color, avatarPath, emoji, displayName };
 }
 
 export function buildUserInitials(label?: string | null) {
@@ -44,6 +46,40 @@ export function buildUserInitials(label?: string | null) {
   return initials || '?';
 }
 
+export function getUserDisplayName({
+  displayName,
+  fullName,
+  email,
+  handle,
+  userId
+}: {
+  displayName?: string | null;
+  fullName?: string | null;
+  email?: string | null;
+  handle?: string | null;
+  userId?: string | null;
+}) {
+  const explicitName = typeof displayName === 'string' && displayName.trim() ? displayName.trim() : null;
+  if (explicitName) return explicitName;
+
+  const metadataName = typeof fullName === 'string' && fullName.trim() ? fullName.trim() : null;
+  if (metadataName) return metadataName;
+
+  if (typeof handle === 'string' && handle.trim()) {
+    const formatted = handle
+      .trim()
+      .split(/[._-]+/)
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ');
+    if (formatted) return formatted;
+  }
+
+  if (typeof email === 'string' && email.trim()) return email.trim();
+  if (typeof userId === 'string' && userId.trim()) return userId.trim();
+  return 'Okänd användare';
+}
+
 export function useOwnProfileBadge(companyId: string) {
   return useQuery<ProfileBadgePreference>({
     queryKey: ['own-profile-badge', companyId],
@@ -56,7 +92,7 @@ export function useOwnProfileBadge(companyId: string) {
 
       if (userError) throw userError;
       if (!user) {
-        return { color: DEFAULT_PROFILE_BADGE_COLOR, avatarPath: null, avatarUrl: null, emoji: null };
+        return { color: DEFAULT_PROFILE_BADGE_COLOR, avatarPath: null, avatarUrl: null, emoji: null, displayName: null };
       }
 
       const { data, error } = await supabase
@@ -85,7 +121,8 @@ export function useOwnProfileBadge(companyId: string) {
         color: pref.color,
         avatarPath: pref.avatarPath,
         avatarUrl,
-        emoji: pref.emoji
+        emoji: pref.emoji,
+        displayName: pref.displayName
       };
     },
     staleTime: 1000 * 60 * 15

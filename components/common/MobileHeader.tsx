@@ -15,7 +15,7 @@ export default function MobileHeader({
   companyName: string;
   userEmail?: string;
 }) {
-  const { companyId } = useAppContext();
+  const { companyId, capabilities } = useAppContext();
 
   return (
     <header className="safe-top sticky top-0 z-[120] border-b border-border bg-card/90 px-4 pb-3 pt-2 backdrop-blur">
@@ -23,7 +23,7 @@ export default function MobileHeader({
         <p className="text-xs uppercase tracking-wide text-foreground/70">{companyName}</p>
         <div className="flex items-center gap-2">
           <NotificationMenu companyId={companyId} compact />
-          <QuickCreateMenu role={role} compact />
+          <QuickCreateMenu role={role} capabilities={capabilities} compact />
           <UserMenu userEmail={userEmail} compact />
         </div>
       </div>

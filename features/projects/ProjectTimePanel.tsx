@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { getUserDisplayName } from '@/features/profile/profileBadge';
 import { Textarea } from '@/components/ui/textarea';
 import { createClient } from '@/lib/supabase/client';
 import type { TableRow as DbRow } from '@/lib/supabase/database.types';
@@ -293,7 +294,12 @@ export default function ProjectTimePanel({
                         <SelectItem value="self">Mig själv</SelectItem>
                         {members.map((member) => (
                           <SelectItem key={member.id} value={member.user_id}>
-                            {member.email ?? member.handle ?? member.user_id}
+                            {getUserDisplayName({
+                              displayName: member.display_name,
+                              email: member.email,
+                              handle: member.handle,
+                              userId: member.user_id
+                            })}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -381,11 +387,16 @@ export default function ProjectTimePanel({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="self">Mig själv</SelectItem>
-                    {members.map((member) => (
-                      <SelectItem key={member.id} value={member.user_id}>
-                        {member.email ?? member.handle ?? member.user_id}
-                      </SelectItem>
-                    ))}
+                      {members.map((member) => (
+                        <SelectItem key={member.id} value={member.user_id}>
+                          {getUserDisplayName({
+                            displayName: member.display_name,
+                            email: member.email,
+                            handle: member.handle,
+                            userId: member.user_id
+                          })}
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
               </label>
@@ -540,14 +551,21 @@ export default function ProjectTimePanel({
                     </div>
                     <div className="flex items-center gap-2">
                       <ProfileBadge
-                        label={member?.email ?? entry.user_id}
+                        label={member?.display_name ?? member?.email ?? entry.user_id}
                         color={member?.color}
                         avatarUrl={member?.avatar_url}
                         emoji={member?.emoji}
                         className="h-6 w-6 shrink-0"
                         textClassName="text-[10px] font-semibold text-white"
                       />
-                      <p className="text-sm font-medium">{member?.handle ?? member?.email ?? entry.user_id}</p>
+                      <p className="text-sm font-medium">
+                        {getUserDisplayName({
+                          displayName: member?.display_name,
+                          email: member?.email,
+                          handle: member?.handle,
+                          userId: entry.user_id
+                        })}
+                      </p>
                     </div>
                     {entry.note ? <p className="text-sm text-foreground/70">{entry.note}</p> : null}
                   </div>

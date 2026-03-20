@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { DEFAULT_PROFILE_BADGE_COLOR, PROFILE_AVATAR_BUCKET, PROFILE_BADGE_PREFERENCE_KEY } from '@/features/profile/profileBadge';
 import type { Json, Database } from '@/lib/supabase/database.types';
+import { resolveUserDisplayName } from '@/lib/users/displayName';
 
 type CompanyMemberRow = Database['public']['Tables']['company_members']['Row'];
 type ProjectMemberRow = Database['public']['Tables']['project_members']['Row'];
@@ -10,14 +11,15 @@ type UserPreferenceRow = Database['public']['Tables']['user_company_preferences'
 
 function parseProfilePreference(value: Json | null | undefined) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return { color: DEFAULT_PROFILE_BADGE_COLOR, avatarPath: null as string | null, emoji: null as string | null };
+    return { color: DEFAULT_PROFILE_BADGE_COLOR, avatarPath: null as string | null, emoji: null as string | null, displayName: null as string | null };
   }
 
   const record = value as Record<string, unknown>;
   return {
     color: typeof record.color === 'string' && record.color.trim() ? record.color : DEFAULT_PROFILE_BADGE_COLOR,
     avatarPath: typeof record.avatar_path === 'string' && record.avatar_path.trim() ? record.avatar_path : null,
-    emoji: typeof record.emoji === 'string' && record.emoji.trim() ? record.emoji : null
+    emoji: typeof record.emoji === 'string' && record.emoji.trim() ? record.emoji : null,
+    displayName: typeof record.display_name === 'string' && record.display_name.trim() ? record.display_name.trim() : null
   };
 }
 
@@ -97,7 +99,7 @@ export async function GET(request: NextRequest) {
       const { data: userData } = await admin.auth.admin.getUserById(member.user_id);
       const email = userData.user?.email ?? null;
       const handle = email?.split('@')[0]?.toLowerCase() ?? null;
-      const pref = prefByUserId.get(member.user_id) ?? { color: DEFAULT_PROFILE_BADGE_COLOR, avatarPath: null, emoji: null };
+      const pref = prefByUserId.get(member.user_id) ?? { color: DEFAULT_PROFILE_BADGE_COLOR, avatarPath: null, emoji: null, displayName: null };
       let avatarUrl: string | null = null;
 
       if (pref.avatarPath) {
@@ -109,6 +111,13 @@ export async function GET(request: NextRequest) {
         ...member,
         email,
         handle,
+        display_name: resolveUserDisplayName({
+          displayName: pref.displayName,
+          metadata: userData.user?.user_metadata,
+          email,
+          handle,
+          userId: member.user_id
+        }),
         color: pref.color,
         avatar_path: pref.avatarPath,
         avatar_url: avatarUrl,

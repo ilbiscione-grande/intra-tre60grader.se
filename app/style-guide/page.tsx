@@ -199,7 +199,7 @@ export default function StyleGuidePage() {
         <div className="rounded-card border bg-card p-3">
           <p className="text-sm text-muted-foreground">Desktop preview</p>
           <div className="mt-3 hidden overflow-hidden rounded-lg border lg:block">
-            <DesktopSidebar role="admin" collapsed={false} onToggle={() => {}} />
+            <DesktopSidebar role="admin" capabilities={['finance', 'project_lead', 'reporting', 'team_admin']} collapsed={false} onToggle={() => {}} />
           </div>
           <div className="mt-3 grid grid-cols-4 gap-2 lg:hidden">
             <div className="flex min-h-action items-center justify-center rounded-button bg-primary-soft text-xs font-medium text-primary">
@@ -302,7 +302,7 @@ export default function StyleGuidePage() {
       </ActionSheet>
 
       <div className="block lg:hidden" aria-hidden>
-        <MobileBottomNav role="admin" />
+        <MobileBottomNav role="admin" capabilities={['finance', 'project_lead', 'reporting', 'team_admin']} />
       </div>
       <div className="hidden lg:block rounded-card border bg-card p-4">
         <p className="text-sm text-muted-foreground">Desktop topbar area for expanded mode</p>

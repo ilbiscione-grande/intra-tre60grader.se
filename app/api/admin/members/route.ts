@@ -1,12 +1,15 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { requireElevatedAdminSession } from '@/lib/auth/companyPermissions';
+import { requireCompanyPermission, requireElevatedAdminSession, requireRecentSignIn } from '@/lib/auth/companyPermissions';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getRequestIp, safeLogSecurityEvent } from '@/lib/security/server';
 import type { Database } from '@/lib/supabase/database.types';
 import type { Role } from '@/lib/types';
+import { PROFILE_BADGE_PREFERENCE_KEY } from '@/features/profile/profileBadge';
+import { resolveUserDisplayName } from '@/lib/users/displayName';
 
 type CompanyMemberRow = Database['public']['Tables']['company_members']['Row'];
+type UserPreferenceRow = Database['public']['Tables']['user_company_preferences']['Row'];
 
 const allowedRoles: Role[] = ['member', 'finance', 'admin', 'auditor'];
 
@@ -34,29 +37,29 @@ async function findUserByEmail(email: string) {
   }
 }
 
-async function requireAdmin(companyId: string) {
-  const supabase = createClient();
-  const {
-    data: { user },
-    error: userError
-  } = await supabase.auth.getUser();
-
-  if (userError || !user) {
-    return { ok: false as const, status: 401, message: 'Unauthorized', userId: null };
+async function requireTeamManager(companyId: string) {
+  const permission = await requireCompanyPermission(companyId, 'members.manage');
+  if (!permission.ok) {
+    return {
+      ok: false as const,
+      status: permission.status,
+      message: permission.error,
+      userId: null,
+      role: null as Role | null
+    };
   }
 
-  const { data: member, error: memberError } = await supabase
-    .from('company_members')
-    .select('role')
-    .eq('company_id', companyId)
-    .eq('user_id', user.id)
-    .maybeSingle<Pick<CompanyMemberRow, 'role'>>();
+  return {
+    ok: true as const,
+    status: 200,
+    message: 'ok',
+    userId: permission.userId,
+    role: permission.role
+  };
+}
 
-  if (memberError || !member || member.role !== 'admin') {
-    return { ok: false as const, status: 403, message: 'Admin required', userId: user.id };
-  }
-
-  return { ok: true as const, status: 200, message: 'ok', userId: user.id };
+function getNeedsMfa(stepUp: { ok: false; needsMfa?: boolean }) {
+  return stepUp.needsMfa ?? false;
 }
 
 export async function GET(request: NextRequest) {
@@ -65,30 +68,57 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'companyId required' }, { status: 400 });
   }
 
-  const auth = await requireAdmin(companyId);
+  const auth = await requireTeamManager(companyId);
   if (!auth.ok) {
     return NextResponse.json({ error: auth.message }, { status: auth.status });
   }
 
   const supabase = createClient();
-  const { data: members, error } = await supabase
-    .from('company_members')
-    .select('id,company_id,user_id,role,created_at')
-    .eq('company_id', companyId)
-    .order('created_at', { ascending: true })
-    .returns<Array<Pick<CompanyMemberRow, 'id' | 'company_id' | 'user_id' | 'role' | 'created_at'>>>();
+  const admin = createAdminClient();
+  const [{ data: members, error }, { data: preferences, error: preferencesError }] = await Promise.all([
+    supabase
+      .from('company_members')
+      .select('id,company_id,user_id,role,created_at')
+      .eq('company_id', companyId)
+      .order('created_at', { ascending: true })
+      .returns<Array<Pick<CompanyMemberRow, 'id' | 'company_id' | 'user_id' | 'role' | 'created_at'>>>(),
+    admin
+      .from('user_company_preferences')
+      .select('user_id,preference_value')
+      .eq('company_id', companyId)
+      .eq('preference_key', PROFILE_BADGE_PREFERENCE_KEY)
+      .returns<Array<Pick<UserPreferenceRow, 'user_id' | 'preference_value'>>>()
+  ]);
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error || preferencesError) {
+    return NextResponse.json({ error: error?.message ?? preferencesError?.message ?? 'Kunde inte läsa medlemmar' }, { status: 500 });
   }
 
-  const admin = createAdminClient();
+  const displayNameByUserId = new Map(
+    (preferences ?? []).map((preference) => {
+      const value = preference.preference_value;
+      const displayName =
+        value && typeof value === 'object' && !Array.isArray(value) && typeof (value as Record<string, unknown>).display_name === 'string'
+          ? (((value as Record<string, unknown>).display_name as string).trim() || null)
+          : null;
+      return [preference.user_id, displayName] as const;
+    })
+  );
+
   const enriched = await Promise.all(
     (members ?? []).map(async (member) => {
       const { data: userData } = await admin.auth.admin.getUserById(member.user_id);
+      const email = userData.user?.email ?? null;
       return {
         ...member,
-        email: userData.user?.email ?? null
+        email,
+        display_name: resolveUserDisplayName({
+          displayName: displayNameByUserId.get(member.user_id) ?? null,
+          metadata: userData.user?.user_metadata,
+          email,
+          handle: email?.split('@')[0]?.toLowerCase() ?? null,
+          userId: member.user_id
+        })
       };
     })
   );
@@ -106,12 +136,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'companyId, email and valid role are required' }, { status: 400 });
   }
 
-  const auth = await requireAdmin(companyId);
+  const auth = await requireTeamManager(companyId);
   if (!auth.ok) {
     return NextResponse.json({ error: auth.message }, { status: auth.status });
   }
 
-  const stepUp = await requireElevatedAdminSession();
+  const stepUp = auth.role === 'admin' ? await requireElevatedAdminSession() : await requireRecentSignIn();
   if (!stepUp.ok) {
     await safeLogSecurityEvent({
       companyId,
@@ -124,7 +154,7 @@ export async function POST(request: NextRequest) {
       payload: {
         reason: stepUp.error,
         last_sign_in_at: stepUp.lastSignInAt,
-        needs_mfa: stepUp.needsMfa
+        needs_mfa: getNeedsMfa(stepUp)
       }
     });
 
@@ -196,12 +226,12 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: 'companyId, userId and valid role are required' }, { status: 400 });
   }
 
-  const auth = await requireAdmin(companyId);
+  const auth = await requireTeamManager(companyId);
   if (!auth.ok) {
     return NextResponse.json({ error: auth.message }, { status: auth.status });
   }
 
-  const stepUp = await requireElevatedAdminSession();
+  const stepUp = auth.role === 'admin' ? await requireElevatedAdminSession() : await requireRecentSignIn();
   if (!stepUp.ok) {
     await safeLogSecurityEvent({
       companyId,
@@ -214,7 +244,7 @@ export async function PATCH(request: NextRequest) {
       payload: {
         reason: stepUp.error,
         last_sign_in_at: stepUp.lastSignInAt,
-        needs_mfa: stepUp.needsMfa
+        needs_mfa: getNeedsMfa(stepUp)
       }
     });
 
@@ -258,12 +288,12 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: 'companyId and userId are required' }, { status: 400 });
   }
 
-  const auth = await requireAdmin(companyId);
+  const auth = await requireTeamManager(companyId);
   if (!auth.ok) {
     return NextResponse.json({ error: auth.message }, { status: auth.status });
   }
 
-  const stepUp = await requireElevatedAdminSession();
+  const stepUp = auth.role === 'admin' ? await requireElevatedAdminSession() : await requireRecentSignIn();
   if (!stepUp.ok) {
     await safeLogSecurityEvent({
       companyId,
@@ -276,7 +306,7 @@ export async function DELETE(request: NextRequest) {
       payload: {
         reason: stepUp.error,
         last_sign_in_at: stepUp.lastSignInAt,
-        needs_mfa: stepUp.needsMfa
+        needs_mfa: getNeedsMfa(stepUp)
       }
     });
 

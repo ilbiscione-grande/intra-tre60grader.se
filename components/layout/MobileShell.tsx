@@ -4,6 +4,7 @@ import MobileBottomNav from '@/components/nav/MobileBottomNav';
 import MobileHeader from '@/components/common/MobileHeader';
 import OfflineBanner from '@/components/common/OfflineBanner';
 import MfaReminder from '@/components/security/MfaReminder';
+import { useAppContext } from '@/components/providers/AppContext';
 import type { Role } from '@/lib/types';
 
 export default function MobileShell({
@@ -17,6 +18,8 @@ export default function MobileShell({
   userEmail?: string;
   children: React.ReactNode;
 }) {
+  const { capabilities } = useAppContext();
+
   return (
     <div className="min-h-screen lg:hidden">
       <MobileHeader role={role} companyName={companyName} userEmail={userEmail} />
@@ -25,7 +28,7 @@ export default function MobileShell({
         <MfaReminder />
         {children}
       </main>
-      <MobileBottomNav role={role} />
+      <MobileBottomNav role={role} capabilities={capabilities} />
     </div>
   );
 }

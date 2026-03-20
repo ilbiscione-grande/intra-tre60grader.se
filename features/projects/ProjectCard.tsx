@@ -16,6 +16,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import type { Project } from '@/lib/types';
 import type { ProjectActivitySummary, ProjectMemberVisual } from '@/features/projects/projectQueries';
+import { getUserDisplayName } from '@/features/profile/profileBadge';
 
 function fallbackLabel(status: string) {
   const map: Record<string, string> = {
@@ -215,7 +216,12 @@ export default function ProjectCard({
               >
                 <div className="flex items-center -space-x-2 rounded-full bg-background/85 pl-1 pr-1.5 shadow-sm ring-1 ring-border/70 backdrop-blur-sm">
                   {visibleMembers.map((member) => {
-                    const label = member.handle || member.email || member.user_id;
+                    const label = getUserDisplayName({
+                      displayName: member.display_name,
+                      email: member.email,
+                      handle: member.handle,
+                      userId: member.user_id
+                    });
 
                     return (
                       <ProfileBadge
@@ -249,20 +255,20 @@ export default function ProjectCard({
                   >
                     <div className="flex min-w-0 items-center gap-2">
                       <ProfileBadge
-                        label={member.email ?? member.user_id}
+                        label={member.display_name ?? member.email ?? member.user_id}
                         color={member.color}
                         avatarUrl={member.avatar_url}
                         emoji={member.emoji}
                         className="h-6 w-6 shrink-0"
                         textClassName="text-[10px] font-semibold text-white"
                       />
-                      <span className="truncate text-xs text-foreground">{member.email ?? member.handle ?? member.user_id}</span>
+                      <span className="truncate text-xs text-foreground">{member.display_name ?? member.email ?? member.handle ?? member.user_id}</span>
                     </div>
                     {canManageMembers ? (
                       <button
                         type="button"
                         className="inline-flex h-7 w-7 items-center justify-center rounded-md text-foreground/55 transition hover:bg-muted hover:text-foreground disabled:opacity-50"
-                        aria-label={`Ta bort ${member.email ?? member.user_id}`}
+                        aria-label={`Ta bort ${member.display_name ?? member.email ?? member.user_id}`}
                         disabled={removeMemberMutation.isPending}
                         onClick={(event) => {
                           event.preventDefault();
@@ -296,14 +302,14 @@ export default function ProjectCard({
                       >
                         <div className="flex min-w-0 items-center gap-2">
                           <ProfileBadge
-                            label={member.email ?? member.user_id}
+                            label={member.display_name ?? member.email ?? member.user_id}
                             color={member.color}
                             avatarUrl={member.avatar_url}
                             emoji={member.emoji}
                             className="h-6 w-6 shrink-0"
                             textClassName="text-[10px] font-semibold text-white"
                           />
-                          <span className="truncate text-xs text-foreground">{member.email ?? member.handle ?? member.user_id}</span>
+                          <span className="truncate text-xs text-foreground">{member.display_name ?? member.email ?? member.handle ?? member.user_id}</span>
                         </div>
                         <span className="text-xs text-foreground/55">Lägg till</span>
                       </button>

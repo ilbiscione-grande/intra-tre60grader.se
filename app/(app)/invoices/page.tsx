@@ -2,12 +2,12 @@
 
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
-import RoleGate from '@/components/common/RoleGate';
 import { useAppContext } from '@/components/providers/AppContext';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { canViewFinance } from '@/lib/auth/capabilities';
 import { createClient } from '@/lib/supabase/client';
 import type { TableRow as DbRow } from '@/lib/supabase/database.types';
 
@@ -31,8 +31,9 @@ function fakturaTypEtikett(kind: string) {
 }
 
 export default function InvoicesPage() {
-  const { companyId, role } = useAppContext();
+  const { companyId, role, capabilities } = useAppContext();
   const supabase = createClient();
+  const canReadFinance = canViewFinance(role, capabilities);
 
   const query = useQuery<InvoiceListRow[]>({
     queryKey: ['invoices', companyId, 'all'],
@@ -48,12 +49,15 @@ export default function InvoicesPage() {
       if (error) throw error;
       return data ?? [];
     },
-    enabled: role !== 'member'
+    enabled: canReadFinance
   });
 
+  if (!canReadFinance) {
+    return <p className="rounded-lg bg-muted p-4 text-sm">Fakturor är endast tillgängliga för ekonomi, admin eller revisor.</p>;
+  }
+
   return (
-    <RoleGate role={role} allow={['finance', 'admin', 'auditor']}>
-      <section className="space-y-4">
+    <section className="space-y-4">
         <div className="flex items-center justify-between gap-2">
           <h2 className="text-lg font-semibold">Fakturor</h2>
           <Button asChild variant="secondary">
@@ -119,6 +123,5 @@ export default function InvoicesPage() {
           </Table>
         </Card>
       </section>
-    </RoleGate>
   );
 }

@@ -6,29 +6,30 @@ import { usePathname, useRouter } from 'next/navigation';
 import { BriefcaseBusiness, Building2, ScrollText, Activity, Landmark, Settings } from 'lucide-react';
 import { useEffect } from 'react';
 import { buttonVariants } from '@/components/ui/button';
+import { canAccessCustomers, canAccessFinance, canAccessOrders } from '@/lib/auth/navigation';
 import { cn } from '@/lib/ui/cn';
-import type { Role } from '@/lib/types';
+import type { Capability, Role } from '@/lib/types';
 
 type NavItem = {
   href: Route;
   label: string;
-  roles: Role[];
+  visible: (role: Role, capabilities: Capability[]) => boolean;
   icon: React.ComponentType<{ className?: string }>;
 };
 
 const navItems: NavItem[] = [
-  { href: '/projects', label: 'Projekt', roles: ['member', 'finance', 'admin'], icon: BriefcaseBusiness },
-  { href: '/customers', label: 'Kunder', roles: ['finance', 'admin'], icon: Building2 },
-  { href: '/orders', label: 'Ordrar', roles: ['finance', 'admin'], icon: ScrollText },
-  { href: '/finance', label: 'Ekonomi', roles: ['finance', 'admin', 'auditor'], icon: Activity },
-  { href: '/payables', label: 'Lev.resk', roles: ['finance', 'admin', 'auditor'], icon: Landmark },
-  { href: '/settings', label: 'Inställn.', roles: ['member'], icon: Settings }
+  { href: '/projects', label: 'Projekt', visible: () => true, icon: BriefcaseBusiness },
+  { href: '/customers', label: 'Kunder', visible: (role, capabilities) => canAccessCustomers(role, capabilities), icon: Building2 },
+  { href: '/orders', label: 'Ordrar', visible: (role, capabilities) => canAccessOrders(role, capabilities), icon: ScrollText },
+  { href: '/finance', label: 'Ekonomi', visible: (role, capabilities) => canAccessFinance(role, capabilities), icon: Activity },
+  { href: '/payables', label: 'Lev.resk', visible: (role, capabilities) => canAccessFinance(role, capabilities), icon: Landmark },
+  { href: '/settings', label: 'Inställn.', visible: (role) => role === 'member', icon: Settings }
 ];
 
-export default function MobileBottomNav({ role }: { role: Role }) {
+export default function MobileBottomNav({ role, capabilities }: { role: Role; capabilities: Capability[] }) {
   const pathname = usePathname();
   const router = useRouter();
-  const visibleItems = navItems.filter((item) => item.roles.includes(role));
+  const visibleItems = navItems.filter((item) => item.visible(role, capabilities));
   const columns = Math.min(Math.max(visibleItems.length, 1), 7);
 
   useEffect(() => {

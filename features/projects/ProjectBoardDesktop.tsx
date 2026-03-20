@@ -27,6 +27,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { getUserDisplayName } from '@/features/profile/profileBadge';
 import ProjectCard from '@/features/projects/ProjectCard';
 import { useMoveProject, useProjectActivitySummaries, useProjectColumns, useProjectMembers, useProjects } from '@/features/projects/projectQueries';
 import { createClient } from '@/lib/supabase/client';
@@ -307,11 +308,18 @@ export default function ProjectBoardDesktop({ companyId }: { companyId: string }
     const next = new Map<string, NonNullable<React.ComponentProps<typeof ProjectCard>['activitySummary']>>();
     for (const item of activitySummariesQuery.data ?? []) {
       const actor = item.actor_user_id ? availableMembers.find((member) => member.user_id === item.actor_user_id) ?? null : null;
-      next.set(item.project_id, {
-        ...item,
-        actorLabel: actor?.email ?? actor?.handle ?? null
-      });
-    }
+        next.set(item.project_id, {
+          ...item,
+          actorLabel: actor
+            ? getUserDisplayName({
+                displayName: actor.display_name,
+                email: actor.email,
+                handle: actor.handle,
+                userId: actor.user_id
+              })
+            : null
+        });
+      }
     return next;
   }, [activitySummariesQuery.data, availableMembers]);
   const statuses = useMemo(() => columns.map((c) => c.key), [columns]);

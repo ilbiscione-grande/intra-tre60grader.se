@@ -6,47 +6,46 @@ import { usePathname, useRouter } from 'next/navigation';
 import { Activity, BarChart3, BriefcaseBusiness, Building2, ChevronLeft, ChevronRight, CircleHelp, Receipt, ScrollText, Settings, Shield, WalletCards, Landmark } from 'lucide-react';
 import { useEffect } from 'react';
 import { buttonVariants } from '@/components/ui/button';
+import { canAccessCustomers, canAccessFinance, canAccessOrders, canAccessReports, canAccessTeam } from '@/lib/auth/navigation';
 import { cn } from '@/lib/ui/cn';
-import type { Role } from '@/lib/types';
+import type { Capability, Role } from '@/lib/types';
 
 type NavItem = {
   href: Route;
   label: string;
-  roles: Role[];
+  visible: (role: Role, capabilities: Capability[]) => boolean;
   icon: React.ComponentType<{ className?: string }>;
 };
 
 const items: NavItem[] = [
-  { href: '/projects', label: 'Projekt', roles: ['member', 'finance', 'admin'], icon: BriefcaseBusiness },
-  { href: '/customers', label: 'Kunder', roles: ['member', 'finance', 'admin'], icon: Building2 },
-  { href: '/orders', label: 'Ordrar', roles: ['member', 'finance', 'admin'], icon: ScrollText },
-  { href: '/finance', label: 'Ekonomi', roles: ['finance', 'admin', 'auditor'], icon: Activity },
-  { href: '/reports', label: 'Rapporter', roles: ['finance', 'admin', 'auditor'], icon: BarChart3 },
-  { href: '/invoices', label: 'Fakturor', roles: ['finance', 'admin', 'auditor'], icon: Receipt },
-  { href: '/receivables', label: 'Kundreskontra', roles: ['finance', 'admin', 'auditor'], icon: WalletCards },
-  { href: '/payables', label: 'Leverantörsreskontra', roles: ['finance', 'admin', 'auditor'], icon: Landmark },
-  { href: '/sync', label: 'Synk', roles: ['member', 'finance', 'admin'], icon: Activity },
-  { href: '/help' as Route, label: 'Hjälp', roles: ['member', 'finance', 'admin', 'auditor'], icon: CircleHelp },
-  { href: '/settings', label: 'Inställningar', roles: ['member', 'finance', 'admin', 'auditor'], icon: Settings },
-  { href: '/team', label: 'Medlemmar', roles: ['admin'], icon: Shield }
+  { href: '/projects', label: 'Projekt', visible: () => true, icon: BriefcaseBusiness },
+  { href: '/customers', label: 'Kunder', visible: (role, capabilities) => canAccessCustomers(role, capabilities), icon: Building2 },
+  { href: '/orders', label: 'Ordrar', visible: (role, capabilities) => canAccessOrders(role, capabilities), icon: ScrollText },
+  { href: '/finance', label: 'Ekonomi', visible: (role, capabilities) => canAccessFinance(role, capabilities), icon: Activity },
+  { href: '/reports', label: 'Rapporter', visible: (role, capabilities) => canAccessReports(role, capabilities), icon: BarChart3 },
+  { href: '/invoices', label: 'Fakturor', visible: (role, capabilities) => canAccessFinance(role, capabilities), icon: Receipt },
+  { href: '/receivables', label: 'Kundreskontra', visible: (role, capabilities) => canAccessFinance(role, capabilities), icon: WalletCards },
+  { href: '/payables', label: 'Leverantörsreskontra', visible: (role, capabilities) => canAccessFinance(role, capabilities), icon: Landmark },
+  { href: '/sync', label: 'Synk', visible: () => true, icon: Activity },
+  { href: '/help' as Route, label: 'Hjälp', visible: () => true, icon: CircleHelp },
+  { href: '/settings', label: 'Inställningar', visible: () => true, icon: Settings },
+  { href: '/team', label: 'Medlemmar', visible: (role, capabilities) => canAccessTeam(role, capabilities), icon: Shield }
 ];
 
 export default function DesktopSidebar({
   role,
+  capabilities,
   collapsed,
   onToggle
 }: {
   role: Role;
+  capabilities: Capability[];
   collapsed: boolean;
   onToggle: () => void;
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const visibleItems = items.filter((item) => item.roles.includes(role));
-
-  if (role === 'member') {
-    return null;
-  }
+  const visibleItems = items.filter((item) => item.visible(role, capabilities));
 
   useEffect(() => {
     visibleItems.forEach((item) => {

@@ -3,7 +3,6 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import RoleGate from '@/components/common/RoleGate';
 import { useAppContext } from '@/components/providers/AppContext';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -12,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useFinanceOverview } from '@/features/finance/financeQueries';
+import { canViewFinance, canWriteFinance } from '@/lib/auth/capabilities';
 import { vatReport } from '@/lib/rpc';
 import { createClient } from '@/lib/supabase/client';
 import BankReconciliationCard from '@/features/finance/BankReconciliationCard';
@@ -135,9 +135,11 @@ function normalizeTodoPreference(value: unknown, today: string): TodoPreference 
 }
 
 export default function FinancePage() {
-  const { role, companyId } = useAppContext();
+  const { role, companyId, capabilities } = useAppContext();
   const supabase = useMemo(() => createClient(), []);
   const query = useFinanceOverview(companyId);
+  const canReadFinance = canViewFinance(role, capabilities);
+  const canEditFinance = canWriteFinance(role, capabilities);
 
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all');
@@ -154,7 +156,7 @@ export default function FinancePage() {
   const monthVatQuery = useQuery({
     queryKey: ['finance-month-vat', companyId, monthRange.start, monthRange.end],
     queryFn: () => vatReport(companyId, monthRange.start, monthRange.end),
-    enabled: role !== 'member'
+    enabled: canReadFinance
   });
 
   const invoiceTodoQuery = useQuery<InvoiceTodoRow[]>({
@@ -171,8 +173,12 @@ export default function FinancePage() {
       if (error) throw error;
       return data ?? [];
     },
-    enabled: role !== 'member'
+    enabled: canReadFinance
   });
+
+  if (!canReadFinance) {
+    return <p className="rounded-lg bg-muted p-4 text-sm">Ekonomi är endast tillgängligt för ekonomi, admin eller revisor.</p>;
+  }
 
   useEffect(() => {
     let active = true;
@@ -335,10 +341,9 @@ export default function FinancePage() {
   const hiddenCount = Number(dismissed.unbooked_invoices) + Number(dismissed.overdue_invoices) + Number(dismissed.verifications_without_attachment);
 
   return (
-    <RoleGate role={role} allow={['finance', 'admin', 'auditor']}>
       <section className="space-y-4">
         <div className="flex flex-wrap gap-2">
-          {role !== 'auditor' ? (
+          {canEditFinance ? (
             <>
               <Button asChild><Link href="/finance/verifications/new">Ny verifikation</Link></Button>
               <Button variant="secondary" asChild><Link href="/finance/verifications/drafts">Utkast</Link></Button>
@@ -536,7 +541,6 @@ export default function FinancePage() {
           </Card>
         ) : null}
       </section>
-    </RoleGate>
   );
 }
 

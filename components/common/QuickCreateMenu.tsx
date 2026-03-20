@@ -6,12 +6,14 @@ import { useRouter } from 'next/navigation';
 import { FilePlus2, FolderPlus, Plus, UserPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import type { Role } from '@/lib/types';
+import { canAccessCustomers } from '@/lib/auth/navigation';
+import { canWriteFinance } from '@/lib/auth/capabilities';
+import type { Capability, Role } from '@/lib/types';
 
 type QuickCreateItem = {
   href: Route;
   label: string;
-  roles: Role[];
+  visible: (role: Role, capabilities: Capability[]) => boolean;
   icon: React.ComponentType<{ className?: string }>;
 };
 
@@ -19,25 +21,33 @@ const items: QuickCreateItem[] = [
   {
     href: '/projects',
     label: 'Nytt projekt',
-    roles: ['member', 'finance', 'admin'],
+    visible: () => true,
     icon: FolderPlus
   },
   {
     href: '/customers',
     label: 'Ny kund',
-    roles: ['finance', 'admin'],
+    visible: (role, capabilities) => canAccessCustomers(role, capabilities),
     icon: UserPlus
   },
   {
     href: '/finance/verifications/new',
     label: 'Ny verifikation',
-    roles: ['finance', 'admin'],
+    visible: (role, capabilities) => canWriteFinance(role, capabilities),
     icon: FilePlus2
   }
 ];
 
-export default function QuickCreateMenu({ role, compact = false }: { role: Role; compact?: boolean }) {
-  const visibleItems = items.filter((item) => item.roles.includes(role));
+export default function QuickCreateMenu({
+  role,
+  capabilities,
+  compact = false
+}: {
+  role: Role;
+  capabilities: Capability[];
+  compact?: boolean;
+}) {
+  const visibleItems = items.filter((item) => item.visible(role, capabilities));
   const router = useRouter();
 
   return (

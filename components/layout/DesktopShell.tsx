@@ -10,6 +10,7 @@ import MfaReminder from '@/components/security/MfaReminder';
 import { useAppContext } from '@/components/providers/AppContext';
 import UserMenu from '@/components/common/UserMenu';
 import { Button } from '@/components/ui/button';
+import { shouldShowDesktopSidebar } from '@/lib/auth/navigation';
 import type { Role } from '@/lib/types';
 
 const COLLAPSE_KEY = 'desktop_sidebar_collapsed';
@@ -26,8 +27,8 @@ export default function DesktopShell({
   children: React.ReactNode;
 }) {
   const [collapsed, setCollapsed] = useState(false);
-  const { companyId } = useAppContext();
-  const showSidebar = role !== 'member';
+  const { companyId, capabilities } = useAppContext();
+  const showSidebar = shouldShowDesktopSidebar(role, capabilities);
 
   useEffect(() => {
     const stored = window.localStorage.getItem(COLLAPSE_KEY);
@@ -46,7 +47,7 @@ export default function DesktopShell({
 
   return (
     <div className="min-h-screen lg:flex">
-      {showSidebar ? <DesktopSidebar role={role} collapsed={collapsed} onToggle={toggleSidebar} /> : null}
+      {showSidebar ? <DesktopSidebar role={role} capabilities={capabilities} collapsed={collapsed} onToggle={toggleSidebar} /> : null}
       <div className="flex min-h-screen flex-1 flex-col">
         <header className="sticky top-0 z-[120] border-b border-border bg-card/80 px-6 py-4 backdrop-blur">
           <div className="flex items-center justify-between gap-4">
@@ -60,7 +61,7 @@ export default function DesktopShell({
             </div>
             <div className="flex items-center gap-2">
               <NotificationMenu companyId={companyId} />
-              <QuickCreateMenu role={role} />
+              <QuickCreateMenu role={role} capabilities={capabilities} />
               <UserMenu userEmail={userEmail} />
             </div>
           </div>

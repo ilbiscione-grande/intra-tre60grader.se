@@ -7,6 +7,7 @@ import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import ActionSheet from '@/components/common/ActionSheet';
 import ProfileBadge from '@/components/common/ProfileBadge';
+import { getUserDisplayName } from '@/features/profile/profileBadge';
 import { createClient } from '@/lib/supabase/client';
 import {
   useCreateProject,
@@ -445,7 +446,7 @@ function ProjectForm({
               >
                 <div className="flex min-w-0 items-center gap-3">
                   <ProfileBadge
-                    label={member.email ?? member.user_id}
+                    label={member.display_name ?? member.email ?? member.user_id}
                     color={member.color}
                     avatarUrl={member.avatar_url}
                     emoji={member.emoji}
@@ -453,7 +454,14 @@ function ProjectForm({
                     textClassName="text-xs font-semibold text-white"
                   />
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-medium">{member.email ?? member.user_id}</p>
+                    <p className="truncate text-sm font-medium">
+                      {getUserDisplayName({
+                        displayName: member.display_name,
+                        email: member.email,
+                        handle: member.handle,
+                        userId: member.user_id
+                      })}
+                    </p>
                     <p className="text-xs text-foreground/55">{member.role}</p>
                   </div>
                 </div>

@@ -3,13 +3,13 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import RoleGate from '@/components/common/RoleGate';
 import { useAppContext } from '@/components/providers/AppContext';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { canViewFinance } from '@/lib/auth/capabilities';
 import { receivablesOpenReport, receivablesReconciliationReport } from '@/lib/rpc';
 
 type OpenRow = {
@@ -104,26 +104,30 @@ function parseReconciliationReport(value: unknown): ReconciliationReport {
 }
 
 export default function ReceivablesPage() {
-  const { companyId, role } = useAppContext();
+  const { companyId, role, capabilities } = useAppContext();
   const [asOf, setAsOf] = useState(new Date().toISOString().slice(0, 10));
+  const canReadFinance = canViewFinance(role, capabilities);
 
   const openQuery = useQuery({
     queryKey: ['receivables-open-report', companyId, asOf],
     queryFn: async () => parseOpenReport(await receivablesOpenReport(companyId, asOf)),
-    enabled: role !== 'member'
+    enabled: canReadFinance
   });
 
   const reconciliationQuery = useQuery({
     queryKey: ['receivables-reconciliation-report', companyId, asOf],
     queryFn: async () => parseReconciliationReport(await receivablesReconciliationReport(companyId, asOf)),
-    enabled: role !== 'member'
+    enabled: canReadFinance
   });
 
   const report = openQuery.data;
   const recon = reconciliationQuery.data;
 
+  if (!canReadFinance) {
+    return <p className="rounded-lg bg-muted p-4 text-sm">Kundreskontra är endast tillgänglig för ekonomi, admin eller revisor.</p>;
+  }
+
   return (
-    <RoleGate role={role} allow={['finance', 'admin', 'auditor']}>
       <section className="space-y-4">
         <div className="flex flex-wrap items-end gap-2">
           <label className="space-y-1 text-sm">
@@ -214,7 +218,6 @@ export default function ReceivablesPage() {
           </CardContent>
         </Card>
       </section>
-    </RoleGate>
   );
 }
 

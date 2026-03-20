@@ -2,13 +2,16 @@ import type { TableRow } from '@/lib/supabase/database.types';
 
 export type Role = 'member' | 'finance' | 'admin' | 'auditor';
 export type InternalAuthRole = 'admin' | 'employee';
+export type Capability = 'finance' | 'project_lead' | 'reporting' | 'team_admin';
 
 export type CompanyMember = TableRow<'company_members'>;
+export type CompanyMemberCapability = TableRow<'company_member_capabilities'>;
 
 export type AvailableCompany = {
   companyId: string;
   companyName: string;
   role: Role;
+  capabilities: Capability[];
 };
 
 export type ProjectStatus = string;

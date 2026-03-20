@@ -25,6 +25,7 @@ export default async function AppLayout({
           companyId: active.companyId,
           companyName: active.companyName,
           role: active.role,
+          capabilities: active.capabilities,
           authRole: authContext.role,
           userEmail: session.user.email,
           companies,

@@ -4,12 +4,12 @@ import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import Link from 'next/link';
-import RoleGate from '@/components/common/RoleGate';
 import { useAppContext } from '@/components/providers/AppContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { canViewFinance, canWriteFinance } from '@/lib/auth/capabilities';
 import { createClient } from '@/lib/supabase/client';
 
 type Supplier = {
@@ -89,9 +89,11 @@ function parsePayablesReport(value: unknown) {
 }
 
 export default function PayablesPage() {
-  const { companyId, role } = useAppContext();
+  const { companyId, role, capabilities } = useAppContext();
   const supabase = useMemo(() => createClient(), []);
   const queryClient = useQueryClient();
+  const canReadFinance = canViewFinance(role, capabilities);
+  const canEditFinance = canWriteFinance(role, capabilities);
 
   const [asOf, setAsOf] = useState(new Date().toISOString().slice(0, 10));
 
@@ -132,7 +134,7 @@ export default function PayablesPage() {
       if (error) throw new Error(error.message);
       return data ?? [];
     },
-    enabled: role !== 'member'
+    enabled: canReadFinance
   });
 
   const invoicesQuery = useQuery<SupplierInvoice[]>({
@@ -157,7 +159,7 @@ export default function PayablesPage() {
       if (error) throw new Error(error.message);
       return data ?? [];
     },
-    enabled: role !== 'member'
+    enabled: canReadFinance
   });
 
   const payablesQuery = useQuery({
@@ -175,7 +177,7 @@ export default function PayablesPage() {
       if (error) throw new Error(error.message);
       return parsePayablesReport(data);
     },
-    enabled: role !== 'member'
+    enabled: canReadFinance
   });
 
   const createSupplierMutation = useMutation({
@@ -283,8 +285,11 @@ export default function PayablesPage() {
   const invoices = invoicesQuery.data ?? [];
   const report = payablesQuery.data;
 
+  if (!canReadFinance) {
+    return <p className="rounded-lg bg-muted p-4 text-sm">Leverantörsreskontra är endast tillgänglig för ekonomi, admin eller revisor.</p>;
+  }
+
   return (
-    <RoleGate role={role} allow={['finance', 'admin', 'auditor']}>
       <section className="space-y-4">
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" asChild><Link href="/finance">Ekonomi</Link></Button>
@@ -307,7 +312,7 @@ export default function PayablesPage() {
           </CardContent>
         </Card>
 
-        {role !== 'auditor' ? (
+        {canEditFinance ? (
           <Card>
             <CardHeader><CardTitle>Ny leverantör / leverantörsfaktura</CardTitle></CardHeader>
             <CardContent className="space-y-4">
@@ -332,7 +337,7 @@ export default function PayablesPage() {
           </Card>
         ) : null}
 
-        {role !== 'auditor' ? (
+        {canEditFinance ? (
           <Card>
             <CardHeader><CardTitle>Registrera betalning</CardTitle></CardHeader>
             <CardContent className="grid gap-2 md:grid-cols-4">
@@ -387,7 +392,6 @@ export default function PayablesPage() {
           </CardContent>
         </Card>
       </section>
-    </RoleGate>
   );
 }
 

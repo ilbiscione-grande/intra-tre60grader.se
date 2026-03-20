@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import ActionSheet from '@/components/common/ActionSheet';
 import ProfileBadge from '@/components/common/ProfileBadge';
+import { getUserDisplayName } from '@/features/profile/profileBadge';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -687,8 +688,8 @@ export default function ProjectUpdatesPanel({
                         }
                       >
                         <div className="flex min-w-0 items-center gap-2">
-                          <ProfileBadge
-                            label={member.email ?? member.user_id}
+                            <ProfileBadge
+                            label={member.display_name ?? member.email ?? member.user_id}
                             color={member.color}
                             avatarUrl={member.avatar_url}
                             emoji={member.emoji}
@@ -696,7 +697,14 @@ export default function ProjectUpdatesPanel({
                             textClassName="text-[10px] font-semibold text-white"
                           />
                           <div className="min-w-0">
-                            <p className="truncate">{member.handle ? `@${member.handle}` : member.email}</p>
+                            <p className="truncate">
+                              {getUserDisplayName({
+                                displayName: member.display_name,
+                                email: member.email,
+                                handle: member.handle,
+                                userId: member.user_id
+                              })}
+                            </p>
                             <p className="truncate text-xs text-foreground/55">{member.email}</p>
                           </div>
                         </div>
@@ -923,8 +931,8 @@ export default function ProjectUpdatesPanel({
                     }
                   >
                     <div className="flex min-w-0 items-center gap-2">
-                      <ProfileBadge
-                        label={member.email ?? member.user_id}
+                        <ProfileBadge
+                        label={member.display_name ?? member.email ?? member.user_id}
                         color={member.color}
                         avatarUrl={member.avatar_url}
                         emoji={member.emoji}
@@ -932,7 +940,14 @@ export default function ProjectUpdatesPanel({
                         textClassName="text-[10px] font-semibold text-white"
                       />
                       <div className="min-w-0">
-                        <p className="truncate">{member.handle ? `@${member.handle}` : member.email}</p>
+                        <p className="truncate">
+                          {getUserDisplayName({
+                            displayName: member.display_name,
+                            email: member.email,
+                            handle: member.handle,
+                            userId: member.user_id
+                          })}
+                        </p>
                         <p className="truncate text-xs text-foreground/55">{member.email}</p>
                       </div>
                     </div>
