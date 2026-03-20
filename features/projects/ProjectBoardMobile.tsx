@@ -120,7 +120,8 @@ function SortableProjectCard({
   members,
   availableMembers,
   activitySummary,
-  onOpenMoveMenu
+  onOpenMoveMenu,
+  onPressStart
 }: {
   project: Project;
   statusLabel: string;
@@ -128,6 +129,7 @@ function SortableProjectCard({
   availableMembers: React.ComponentProps<typeof ProjectCard>['availableMembers'];
   activitySummary?: React.ComponentProps<typeof ProjectCard>['activitySummary'];
   onOpenMoveMenu: () => void;
+  onPressStart: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: project.id
@@ -143,6 +145,7 @@ function SortableProjectCard({
         zIndex: isDragging ? 20 : 1
       }}
       className={isDragging ? 'project-card-dragging touch-none' : 'project-card-idle touch-pan-y'}
+      onPointerDownCapture={onPressStart}
       {...attributes}
       {...listeners}
     >
@@ -219,6 +222,7 @@ export default function ProjectBoardMobile({ companyId }: { companyId: string })
   const [selected, setSelected] = useState<Project | null>(null);
   const [board, setBoard] = useState<BoardState>({});
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [trackTouchLocked, setTrackTouchLocked] = useState(false);
   const [lockedStatus, setLockedStatus] = useState<string | null>(null);
   const [columnSheetOpen, setColumnSheetOpen] = useState(false);
   const [createColumnOpen, setCreateColumnOpen] = useState(false);
@@ -462,6 +466,22 @@ export default function ProjectBoardMobile({ companyId }: { companyId: string })
     return () => window.clearTimeout(timeout);
   }, [lockedStatus]);
 
+  useEffect(() => {
+    if (!trackTouchLocked) return;
+
+    function releaseTrackLock() {
+      setTrackTouchLocked(false);
+    }
+
+    window.addEventListener('pointerup', releaseTrackLock);
+    window.addEventListener('pointercancel', releaseTrackLock);
+
+    return () => {
+      window.removeEventListener('pointerup', releaseTrackLock);
+      window.removeEventListener('pointercancel', releaseTrackLock);
+    };
+  }, [trackTouchLocked]);
+
   function scrollToColumn(columnIndex: number, behavior: ScrollBehavior = 'smooth') {
     const track = trackRef.current;
     if (!track) return;
@@ -512,6 +532,7 @@ export default function ProjectBoardMobile({ companyId }: { companyId: string })
 
   function handleDragStart(event: DragStartEvent) {
     setActiveId(String(event.active.id));
+    setTrackTouchLocked(true);
     dragIntentRef.current = {
       startedAt: Date.now(),
       crossColumnUnlocked: false
@@ -674,6 +695,7 @@ export default function ProjectBoardMobile({ companyId }: { companyId: string })
     const activeProjectId = String(event.active.id);
     const overId = event.over?.id ? String(event.over.id) : null;
     setActiveId(null);
+    setTrackTouchLocked(false);
     setLockedStatus(null);
     dragIntentRef.current = { startedAt: 0, crossColumnUnlocked: false };
     dragOverlayMetricsRef.current = { width: 0, height: 0, offsetX: 0, offsetY: 0 };
@@ -814,7 +836,9 @@ export default function ProjectBoardMobile({ companyId }: { companyId: string })
         <div
           ref={trackRef}
           onScroll={updateActiveFromScroll}
-          className="flex snap-x snap-mandatory gap-4 overflow-x-auto px-[6%] pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          className={`flex snap-x snap-mandatory gap-4 overflow-x-auto px-[6%] pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${
+            trackTouchLocked || activeId ? 'touch-none' : ''
+          }`}
         >
           {columns.map((column, columnIndex) => {
             const list = board[column.key] ?? [];
@@ -846,6 +870,7 @@ export default function ProjectBoardMobile({ companyId }: { companyId: string })
                         availableMembers={availableMembers}
                         activitySummary={activitySummaryByProjectId.get(project.id)}
                         onOpenMoveMenu={() => setSelected(project)}
+                        onPressStart={() => setTrackTouchLocked(true)}
                       />
                     ))}
 
