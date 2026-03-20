@@ -5,7 +5,7 @@ import Link from 'next/link';
 import type { Route } from 'next';
 import { useParams, useSearchParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, ArrowLeft, ArrowUpRight, CalendarDays, CircleDollarSign, FolderKanban, Paperclip, ReceiptText, Users } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, ArrowUpRight, CalendarDays, CircleDollarSign, FolderKanban, ReceiptText, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import ProfileBadge from '@/components/common/ProfileBadge';
 import RoleGate from '@/components/common/RoleGate';
@@ -26,6 +26,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { createInvoiceFromOrder } from '@/lib/rpc';
 import { useProjectColumns, useProjectMembers, type ProjectMemberVisual } from '@/features/projects/projectQueries';
 import ProjectFinancePanel from '@/features/projects/ProjectFinancePanel';
+import ProjectFilesPanel from '@/features/projects/ProjectFilesPanel';
+import ProjectTasksPanel from '@/features/projects/ProjectTasksPanel';
+import ProjectTimePanel from '@/features/projects/ProjectTimePanel';
 import ProjectUpdatesPanel from '@/features/projects/ProjectUpdatesPanel';
 import { createClient } from '@/lib/supabase/client';
 import type { Json, TableRow as DbRow } from '@/lib/supabase/database.types';
@@ -43,17 +46,22 @@ type OrderRow = Pick<DbRow<'orders'>, 'id' | 'project_id' | 'status' | 'total' |
 type OrderLineRow = Pick<DbRow<'order_lines'>, 'id' | 'title' | 'qty' | 'unit_price' | 'vat_rate' | 'total' | 'created_at'>;
 type InvoiceSourceLinkRow = Pick<DbRow<'invoice_sources'>, 'invoice_id' | 'project_id' | 'order_id' | 'position'>;
 type InvoiceSourceCountRow = Pick<DbRow<'invoice_sources'>, 'invoice_id'>;
+type ProjectUpdateActivityRow = Pick<DbRow<'project_updates'>, 'id' | 'project_id' | 'created_by' | 'created_at' | 'parent_id'>;
+type ProjectTaskActivityRow = Pick<DbRow<'project_tasks'>, 'id' | 'project_id' | 'title' | 'created_by' | 'assignee_user_id' | 'created_at' | 'updated_at'>;
+type ProjectTimeActivityRow = Pick<DbRow<'project_time_entries'>, 'id' | 'project_id' | 'user_id' | 'hours' | 'entry_date' | 'created_at'>;
+type ProjectFileActivityRow = Pick<DbRow<'project_files'>, 'id' | 'project_id' | 'created_by' | 'created_at' | 'file_name' | 'title' | 'version_no'>;
 type InvoiceRow = Pick<
   DbRow<'invoices'>,
   'id' | 'invoice_no' | 'status' | 'currency' | 'issue_date' | 'due_date' | 'subtotal' | 'vat_total' | 'total' | 'created_at' | 'attachment_path' | 'order_id' | 'project_id'
 >;
 type ActivityItem = {
+  actorUserId?: string | null;
   id: string;
   at: string;
   text: string;
   source: 'system' | 'user';
 };
-type ProjectTab = 'overview' | 'planning' | 'updates' | 'economy' | 'attachments' | 'members' | 'logs';
+type ProjectTab = 'overview' | 'planning' | 'tasks' | 'time' | 'updates' | 'economy' | 'attachments' | 'members' | 'logs';
 type ProjectMilestone = {
   id: string;
   title: string;
@@ -66,6 +74,8 @@ type OrderStatus = (typeof orderStatuses)[number];
 const projectTabs: Array<{ id: ProjectTab; label: string }> = [
   { id: 'overview', label: 'Översikt' },
   { id: 'planning', label: 'Tidsplan' },
+  { id: 'tasks', label: 'Uppgifter' },
+  { id: 'time', label: 'Tid' },
   { id: 'updates', label: 'Uppdateringar' },
   { id: 'economy', label: 'Ekonomi' },
   { id: 'attachments', label: 'Bilagor' },
@@ -414,6 +424,65 @@ export default function ProjectDetailsPage() {
   });
 
   const projectMembersQuery = useProjectMembers(companyId);
+  const projectUpdatesActivityQuery = useQuery<ProjectUpdateActivityRow[]>({
+    queryKey: ['project-updates-activity', companyId, projectId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('project_updates')
+        .select('id,project_id,created_by,created_at,parent_id')
+        .eq('company_id', companyId)
+        .eq('project_id', projectId)
+        .returns<ProjectUpdateActivityRow[]>();
+
+      if (error) throw error;
+      return data ?? [];
+    }
+  });
+
+  const projectTasksActivityQuery = useQuery<ProjectTaskActivityRow[]>({
+    queryKey: ['project-task-activity', companyId, projectId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('project_tasks')
+        .select('id,project_id,title,created_by,assignee_user_id,created_at,updated_at')
+        .eq('company_id', companyId)
+        .eq('project_id', projectId)
+        .returns<ProjectTaskActivityRow[]>();
+
+      if (error) throw error;
+      return data ?? [];
+    }
+  });
+
+  const projectTimeActivityQuery = useQuery<ProjectTimeActivityRow[]>({
+    queryKey: ['project-time-activity', companyId, projectId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('project_time_entries')
+        .select('id,project_id,user_id,hours,entry_date,created_at')
+        .eq('company_id', companyId)
+        .eq('project_id', projectId)
+        .returns<ProjectTimeActivityRow[]>();
+
+      if (error) throw error;
+      return data ?? [];
+    }
+  });
+
+  const projectFilesActivityQuery = useQuery<ProjectFileActivityRow[]>({
+    queryKey: ['project-files-activity', companyId, projectId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('project_files')
+        .select('id,project_id,created_by,created_at,file_name,title,version_no')
+        .eq('company_id', companyId)
+        .eq('project_id', projectId)
+        .returns<ProjectFileActivityRow[]>();
+
+      if (error) throw error;
+      return data ?? [];
+    }
+  });
 
   useEffect(() => {
     if (!projectQuery.data) return;
@@ -648,12 +717,14 @@ export default function ProjectDetailsPage() {
         id: `project-created-${projectQuery.data.id}`,
         at: projectQuery.data.created_at,
         text: 'Projekt skapat',
+        actorUserId: null,
         source: 'system'
       });
       items.push({
         id: `project-updated-${projectQuery.data.id}`,
         at: projectQuery.data.updated_at,
         text: 'Projekt senast uppdaterat',
+        actorUserId: null,
         source: 'system'
       });
     }
@@ -663,6 +734,7 @@ export default function ProjectDetailsPage() {
         id: `order-created-${orderQuery.data.id}`,
         at: orderQuery.data.created_at,
         text: `Order skapad (${orderStatusEtikett(orderQuery.data.status)})`,
+        actorUserId: null,
         source: 'system'
       });
     }
@@ -672,6 +744,7 @@ export default function ProjectDetailsPage() {
         id: `line-created-${line.id}`,
         at: line.created_at,
         text: `Orderrad skapad: ${line.title}`,
+        actorUserId: null,
         source: 'system'
       });
     }
@@ -681,12 +754,86 @@ export default function ProjectDetailsPage() {
         id: `invoice-${invoice.id}`,
         at: invoice.created_at,
         text: `Faktura ${invoice.invoice_no} skapad`,
+        actorUserId: null,
         source: 'system'
       });
     }
 
+    for (const update of projectUpdatesActivityQuery.data ?? []) {
+      items.push({
+        id: `project-update-${update.id}`,
+        at: update.created_at,
+        text: update.parent_id ? 'Svar i uppdateringstråd' : 'Ny projektuppdatering',
+        actorUserId: update.created_by,
+        source: 'user'
+      });
+    }
+
+    for (const task of projectTasksActivityQuery.data ?? []) {
+      items.push({
+        id: `project-task-created-${task.id}`,
+        at: task.created_at,
+        text: `Uppgift skapad: ${task.title}`,
+        actorUserId: task.created_by,
+        source: 'user'
+      });
+
+      if (new Date(task.updated_at).getTime() > new Date(task.created_at).getTime() + 1000) {
+        items.push({
+          id: `project-task-updated-${task.id}`,
+          at: task.updated_at,
+          text: `Uppgift uppdaterad: ${task.title}`,
+          actorUserId: task.assignee_user_id ?? task.created_by,
+          source: 'user'
+        });
+      }
+    }
+
+    for (const entry of projectTimeActivityQuery.data ?? []) {
+      items.push({
+        id: `project-time-${entry.id}`,
+        at: entry.created_at,
+        text: `Tid rapporterad: ${Number(entry.hours).toFixed(1)} h (${new Date(entry.entry_date).toLocaleDateString('sv-SE')})`,
+        actorUserId: entry.user_id,
+        source: 'user'
+      });
+    }
+
+    for (const assignment of projectMembersQuery.data?.assignments ?? []) {
+      if (assignment.project_id !== projectId) continue;
+      items.push({
+        id: `project-member-${assignment.id}`,
+        at: assignment.created_at,
+        text: `Medlem tilldelad: ${assignment.member?.email ?? assignment.user_id}`,
+        actorUserId: assignment.created_by ?? assignment.user_id,
+        source: 'user'
+      });
+    }
+
+    for (const file of projectFilesActivityQuery.data ?? []) {
+      items.push({
+        id: `project-file-${file.id}`,
+        at: file.created_at,
+        text: file.version_no > 1 ? `Ny filversion: ${file.title ?? file.file_name}` : `Projektfil uppladdad: ${file.title ?? file.file_name}`,
+        actorUserId: file.created_by,
+        source: 'user'
+      });
+    }
+
     return items.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
-  }, [localActivity, orderQuery.data, projectQuery.data, linesQuery.data, invoicesQuery.data]);
+  }, [
+    invoicesQuery.data,
+    linesQuery.data,
+    localActivity,
+    orderQuery.data,
+    projectFilesActivityQuery.data,
+    projectId,
+    projectMembersQuery.data?.assignments,
+    projectQuery.data,
+    projectTasksActivityQuery.data,
+    projectTimeActivityQuery.data,
+    projectUpdatesActivityQuery.data
+  ]);
 
   const invoiceSourceCounts = useMemo(() => {
     const counts = new Map<string, number>();
@@ -737,6 +884,13 @@ export default function ProjectDetailsPage() {
       return haystack.includes(query);
     });
   }, [availableMembers, memberRoleFilter, memberSearch]);
+  const memberLabelByUserId = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const member of availableMembers) {
+      map.set(member.user_id, member.email ?? member.handle ?? member.user_id);
+    }
+    return map;
+  }, [availableMembers]);
   const nextMilestone = useMemo(
     () =>
       sortProjectMilestones(draftMilestones)
@@ -819,13 +973,13 @@ export default function ProjectDetailsPage() {
   const isProjectMetaBusy = saveProjectMutation.isPending;
   const latestInvoice = invoicesQuery.data?.[0] ?? null;
   const latestActivityItem = activity[0] ?? null;
+  const latestActivityActorLabel = latestActivityItem?.actorUserId ? memberLabelByUserId.get(latestActivityItem.actorUserId) ?? 'Intern användare' : null;
   const projectStatusLabel = projectColumnTitle(draftStatus || project.status, statusColumns);
-  const invoiceAttachments = (invoicesQuery.data ?? []).filter((invoice) => Boolean(invoice.attachment_path));
   const projectLogs = activity
     .map((item) => ({
       id: item.id,
       title: item.source === 'user' ? 'Aktivitetshistorik' : 'Systemhändelse',
-      detail: item.text,
+      detail: item.actorUserId ? `${item.text} • av ${memberLabelByUserId.get(item.actorUserId) ?? 'Intern användare'}` : item.text,
       at: item.at
     }))
     .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
@@ -893,7 +1047,11 @@ export default function ProjectDetailsPage() {
                   icon={FolderKanban}
                   label="Senaste aktivitet"
                   value={latestActivityItem ? latestActivityItem.text : 'Ingen aktivitet ännu'}
-                  helper={latestActivityItem ? new Date(latestActivityItem.at).toLocaleString('sv-SE') : 'projektet väntar på första aktivitet'}
+                  helper={
+                    latestActivityItem
+                      ? `${new Date(latestActivityItem.at).toLocaleString('sv-SE')}${latestActivityActorLabel ? ` • ${latestActivityActorLabel}` : ''}`
+                      : 'projektet väntar på första aktivitet'
+                  }
                 />
               </div>
 
@@ -1143,6 +1301,18 @@ export default function ProjectDetailsPage() {
         </div>
       )}
 
+      {activeTab === 'tasks' && (
+        <div {...swipeHandlers}>
+          <ProjectTasksPanel companyId={companyId} projectId={projectId} role={role} members={assignedMembers} milestones={orderedMilestones} />
+        </div>
+      )}
+
+      {activeTab === 'time' && (
+        <div {...swipeHandlers}>
+          <ProjectTimePanel companyId={companyId} projectId={projectId} role={role} members={assignedMembers} orderId={orderId} />
+        </div>
+      )}
+
       {activeTab === 'economy' && (
         <div className="space-y-4" {...swipeHandlers}>
           <ProjectFinancePanel companyId={companyId} projectId={projectId} role={role} isLocked={isEconomyLocked || isEconomyBusy} />
@@ -1323,71 +1493,8 @@ export default function ProjectDetailsPage() {
 
       {activeTab === 'attachments' && (
         <Card {...swipeHandlers}>
-          <CardContent className="space-y-4">
-            <div className="grid gap-3 md:grid-cols-3">
-              <div className="rounded-lg border p-3">
-                <p className="text-sm text-foreground/70">Bilagor på fakturor</p>
-                <p className="mt-1 font-medium">{invoiceAttachments.length}</p>
-              </div>
-              <div className="rounded-lg border p-3">
-                <p className="text-sm text-foreground/70">Fakturor med underlag</p>
-                <p className="mt-1 font-medium">{new Set(invoiceAttachments.map((invoice) => invoice.id)).size}</p>
-              </div>
-              <div className="rounded-lg border p-3">
-                <p className="text-sm text-foreground/70">Senaste faktura</p>
-                <p className="mt-1 font-medium">{latestInvoice?.invoice_no ?? 'Ingen ännu'}</p>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              <Button variant="outline" onClick={() => setActiveTab('economy')}>
-                Gå till ekonomi
-              </Button>
-              {latestInvoice ? (
-                <Button asChild variant="outline">
-                  <Link href={`/invoices/${latestInvoice.id}` as Route}>Öppna senaste faktura</Link>
-                </Button>
-              ) : null}
-              {orderId ? (
-                <Button asChild variant="ghost">
-                  <Link href={`/orders/${orderId}` as Route}>Öppna order</Link>
-                </Button>
-              ) : null}
-            </div>
-
-            {invoiceAttachments.length === 0 ? (
-              <p className="text-sm text-foreground/70">
-                Inga bilagor hittades på projektets fakturor ännu. Lägg underlag på fakturan tills vidare.
-              </p>
-            ) : (
-              <div className="space-y-3">
-                {invoiceAttachments.map((invoice) => (
-                  <div key={invoice.id} className="rounded-lg border p-3">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <Paperclip className="h-4 w-4 text-foreground/55" />
-                          <p className="font-medium">{invoice.invoice_no}</p>
-                        </div>
-                        <p className="mt-1 text-sm text-foreground/70">
-                          {fakturaStatusEtikett(invoice.status)} • {Number(invoice.total).toFixed(2)} {invoice.currency}
-                        </p>
-                        <p className="mt-1 text-xs text-foreground/55">
-                          {invoice.due_date ? `Förfallo ${new Date(invoice.due_date).toLocaleDateString('sv-SE')}` : 'Förfallodatum saknas'}
-                        </p>
-                      </div>
-                      <Button asChild size="sm" variant="outline">
-                        <Link href={`/invoices/${invoice.id}`}>Öppna faktura</Link>
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <div className="rounded-lg border border-dashed p-3 text-sm text-foreground/70">
-              Bilagor lagras just nu via projektets fakturor. Om du behöver fler underlag för projektet, öppna rätt faktura från listan ovan och lägg bilagan där.
-            </div>
+          <CardContent className="pt-4">
+            <ProjectFilesPanel companyId={companyId} projectId={projectId} role={role} members={availableMembers} />
           </CardContent>
         </Card>
       )}

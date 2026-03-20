@@ -54,7 +54,7 @@ function renderRichText(content: string | null) {
     blocks.push(
       <ul key={key} className="list-disc space-y-1 pl-5">
         {bulletBuffer.map((line, index) => (
-          <li key={`${key}-${index}`}>{line}</li>
+          <li key={`${key}-${index}`}>{renderTextWithMentions(line)}</li>
         ))}
       </ul>
     );
@@ -79,13 +79,29 @@ function renderRichText(content: string | null) {
 
     blocks.push(
       <p key={`line-${index}`} className="whitespace-pre-wrap leading-relaxed">
-        {line}
+        {renderTextWithMentions(line)}
       </p>
     );
   });
 
   flushBullets('bullets-final');
   return blocks;
+}
+
+function renderTextWithMentions(text: string) {
+  const parts = text.split(/(@[A-Za-z0-9._%+-]+(?:@[A-Za-z0-9.-]+\.[A-Za-z]{2,})?)/g);
+  return parts.map((part, index) =>
+    part.startsWith('@') ? (
+      <span
+        key={`${part}-${index}`}
+        className="rounded-md bg-primary/10 px-1 py-0.5 font-medium text-primary"
+      >
+        {part}
+      </span>
+    ) : (
+      <Fragment key={`${part}-${index}`}>{part}</Fragment>
+    )
+  );
 }
 
 function buildChildrenMap(updates: ProjectUpdateRow[]) {
@@ -487,11 +503,21 @@ export default function ProjectUpdatesPanel({
     const match = content.match(/@([A-Za-z0-9._%+-]*)$/);
     const query = match?.[1]?.toLowerCase();
     if (!query) return [];
-    return (directoryQuery.data ?? [])
+    return [...(directoryQuery.data ?? [])]
       .filter((member) => {
         const email = member.email?.toLowerCase() ?? '';
         const handle = member.handle?.toLowerCase() ?? '';
         return email.includes(query) || handle.includes(query);
+      })
+      .sort((a, b) => {
+        const aHandle = a.handle?.toLowerCase() ?? '';
+        const bHandle = b.handle?.toLowerCase() ?? '';
+        const aEmail = a.email?.toLowerCase() ?? '';
+        const bEmail = b.email?.toLowerCase() ?? '';
+        const aStarts = aHandle.startsWith(query) || aEmail.startsWith(query);
+        const bStarts = bHandle.startsWith(query) || bEmail.startsWith(query);
+        if (aStarts !== bStarts) return aStarts ? -1 : 1;
+        return (a.handle ?? a.email ?? '').localeCompare(b.handle ?? b.email ?? '', 'sv');
       })
       .slice(0, 5);
   }
@@ -652,7 +678,7 @@ export default function ProjectUpdatesPanel({
                       <button
                         key={member.id}
                         type="button"
-                        className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm transition hover:bg-muted"
+                        className="flex w-full items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left text-sm transition hover:bg-muted"
                         onClick={() =>
                           setReplyComposerValue(update.id, {
                             ...replyComposer,
@@ -660,8 +686,20 @@ export default function ProjectUpdatesPanel({
                           })
                         }
                       >
-                        <span>{member.handle ? `@${member.handle}` : member.email}</span>
-                        <span className="text-xs text-foreground/55">{member.email}</span>
+                        <div className="flex min-w-0 items-center gap-2">
+                          <ProfileBadge
+                            label={member.email ?? member.user_id}
+                            color={member.color}
+                            avatarUrl={member.avatar_url}
+                            emoji={member.emoji}
+                            className="h-6 w-6 shrink-0"
+                            textClassName="text-[10px] font-semibold text-white"
+                          />
+                          <div className="min-w-0">
+                            <p className="truncate">{member.handle ? `@${member.handle}` : member.email}</p>
+                            <p className="truncate text-xs text-foreground/55">{member.email}</p>
+                          </div>
+                        </div>
                       </button>
                     ))}
                   </div>
@@ -876,7 +914,7 @@ export default function ProjectUpdatesPanel({
                   <button
                     key={member.id}
                     type="button"
-                    className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm transition hover:bg-muted"
+                    className="flex w-full items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left text-sm transition hover:bg-muted"
                     onClick={() =>
                       setRootComposer((prev) => ({
                         ...prev,
@@ -884,8 +922,20 @@ export default function ProjectUpdatesPanel({
                       }))
                     }
                   >
-                    <span>{member.handle ? `@${member.handle}` : member.email}</span>
-                    <span className="text-xs text-foreground/55">{member.email}</span>
+                    <div className="flex min-w-0 items-center gap-2">
+                      <ProfileBadge
+                        label={member.email ?? member.user_id}
+                        color={member.color}
+                        avatarUrl={member.avatar_url}
+                        emoji={member.emoji}
+                        className="h-6 w-6 shrink-0"
+                        textClassName="text-[10px] font-semibold text-white"
+                      />
+                      <div className="min-w-0">
+                        <p className="truncate">{member.handle ? `@${member.handle}` : member.email}</p>
+                        <p className="truncate text-xs text-foreground/55">{member.email}</p>
+                      </div>
+                    </div>
                   </button>
                 ))}
               </div>

@@ -17,13 +17,30 @@ import { createClient } from '@/lib/supabase/client';
 import type { TableRow as DbRow } from '@/lib/supabase/database.types';
 
 type NotificationRow = DbRow<'project_update_notifications'>;
-type ProjectRow = Pick<DbRow<'projects'>, 'id' | 'title' | 'end_date' | 'status'>;
+type ProjectRow = Pick<DbRow<'projects'>, 'id' | 'title' | 'end_date' | 'status' | 'created_at'>;
+type AutomationSettingsRow = DbRow<'project_automation_settings'>;
+type ProjectUpdateRow = Pick<DbRow<'project_updates'>, 'project_id' | 'created_at'>;
+type InvoiceSourceRow = Pick<DbRow<'invoice_sources'>, 'project_id'>;
 type MenuNotificationItem =
   | { id: string; kind: 'mention' | 'reply'; title: string; subtitle: string; href: Route; createdAt: string; read: boolean; markReadId?: string }
-  | { id: string; kind: 'deadline_overdue'; title: string; subtitle: string; href: Route; createdAt: string; read: boolean };
+  | { id: string; kind: 'deadline_overdue' | 'deadline_soon' | 'stale_project' | 'done_without_invoice' | 'watched_status'; title: string; subtitle: string; href: Route; createdAt: string; read: boolean };
 
 function todayIso() {
   return new Date().toLocaleDateString('sv-CA');
+}
+
+const DEFAULT_AUTOMATION_SETTINGS = {
+  watched_statuses: [] as string[],
+  remind_days_before_end: 3,
+  stale_days_without_update: 7,
+  remind_done_without_invoice: true
+};
+
+function addDays(dateString: string, days: number) {
+  const date = new Date(`${dateString}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return null;
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
 }
 
 export default function NotificationMenu({
@@ -95,6 +112,24 @@ export default function NotificationMenu({
     }
   });
 
+  const automationSettingsQuery = useQuery<AutomationSettingsRow | null>({
+    queryKey: ['project-automation-settings', companyId],
+    staleTime: 5 * 60_000,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
+    refetchInterval: false,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('project_automation_settings')
+        .select('company_id,created_at,updated_at,watched_statuses,remind_days_before_end,stale_days_without_update,remind_done_without_invoice')
+        .eq('company_id', companyId)
+        .maybeSingle<AutomationSettingsRow>();
+
+      if (error) throw error;
+      return data;
+    }
+  });
+
   const planningProjectsQuery = useQuery<ProjectRow[]>({
     queryKey: ['deadline-notification-projects', companyId],
     staleTime: 5 * 60_000,
@@ -104,11 +139,45 @@ export default function NotificationMenu({
     queryFn: async () => {
       const { data, error } = await supabase
         .from('projects')
-        .select('id,title,end_date,status')
+        .select('id,title,end_date,status,created_at')
         .eq('company_id', companyId)
-        .not('end_date', 'is', null)
-        .neq('status', 'done')
         .returns<ProjectRow[]>();
+
+      if (error) throw error;
+      return data ?? [];
+    }
+  });
+
+  const planningProjectUpdatesQuery = useQuery<ProjectUpdateRow[]>({
+    queryKey: ['planning-project-updates', companyId],
+    staleTime: 5 * 60_000,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
+    refetchInterval: false,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('project_updates')
+        .select('project_id,created_at')
+        .eq('company_id', companyId)
+        .returns<ProjectUpdateRow[]>();
+
+      if (error) throw error;
+      return data ?? [];
+    }
+  });
+
+  const invoiceSourcesQuery = useQuery<InvoiceSourceRow[]>({
+    queryKey: ['notification-invoice-sources', companyId],
+    staleTime: 5 * 60_000,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
+    refetchInterval: false,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('invoice_sources')
+        .select('project_id')
+        .eq('company_id', companyId)
+        .returns<InvoiceSourceRow[]>();
 
       if (error) throw error;
       return data ?? [];
@@ -145,23 +214,104 @@ export default function NotificationMenu({
 
   const notifications = notificationsQuery.data ?? [];
   const projectsById = new Map((projectsQuery.data ?? []).map((project) => [project.id, project]));
+  const automationSettings = automationSettingsQuery.data ?? {
+    ...DEFAULT_AUTOMATION_SETTINGS,
+    company_id: companyId,
+    created_at: '',
+    updated_at: ''
+  };
+  const latestUpdateByProjectId = useMemo(() => {
+    const next = new Map<string, string>();
+    for (const update of planningProjectUpdatesQuery.data ?? []) {
+      const current = next.get(update.project_id);
+      if (!current || new Date(update.created_at).getTime() > new Date(current).getTime()) {
+        next.set(update.project_id, update.created_at);
+      }
+    }
+    return next;
+  }, [planningProjectUpdatesQuery.data]);
+  const invoicedProjectIds = useMemo(
+    () => new Set((invoiceSourcesQuery.data ?? []).map((item) => item.project_id)),
+    [invoiceSourcesQuery.data]
+  );
   const planningNotifications = useMemo(() => {
     const today = todayIso();
-    return (planningProjectsQuery.data ?? [])
-      .filter((project) => Boolean(project.end_date) && project.end_date! < today)
-      .map((project) => {
-        const id = `deadline:${project.id}:${project.end_date}`;
-        return {
+    const remindUntil = addDays(today, automationSettings.remind_days_before_end ?? DEFAULT_AUTOMATION_SETTINGS.remind_days_before_end);
+    const staleThreshold = addDays(today, -(automationSettings.stale_days_without_update ?? DEFAULT_AUTOMATION_SETTINGS.stale_days_without_update));
+
+    return (planningProjectsQuery.data ?? []).flatMap((project) => {
+      const items: MenuNotificationItem[] = [];
+
+      if (project.end_date && project.status !== 'done' && project.end_date < today) {
+        const id = `deadline-overdue:${project.id}:${project.end_date}`;
+        items.push({
           id,
-          kind: 'deadline_overdue' as const,
+          kind: 'deadline_overdue',
           title: 'Projekt har passerat slutdatum',
-          subtitle: `${project.title} • slutdatum ${new Date(project.end_date!).toLocaleDateString('sv-SE')}`,
-          href: `/projects/${project.id}?tab=overview` as Route,
-          createdAt: project.end_date!,
+          subtitle: `${project.title} • slutdatum ${new Date(project.end_date).toLocaleDateString('sv-SE')}`,
+          href: `/projects/${project.id}?tab=planning` as Route,
+          createdAt: project.end_date,
           read: dismissedPlanningIds.includes(id)
-        };
-      });
-  }, [dismissedPlanningIds, planningProjectsQuery.data]);
+        });
+      }
+
+      if (project.end_date && project.status !== 'done' && remindUntil && project.end_date >= today && project.end_date <= remindUntil) {
+        const id = `deadline-soon:${project.id}:${project.end_date}`;
+        items.push({
+          id,
+          kind: 'deadline_soon',
+          title: 'Slutdatum närmar sig',
+          subtitle: `${project.title} • slutdatum ${new Date(project.end_date).toLocaleDateString('sv-SE')}`,
+          href: `/projects/${project.id}?tab=planning` as Route,
+          createdAt: project.end_date,
+          read: dismissedPlanningIds.includes(id)
+        });
+      }
+
+      if ((automationSettings.watched_statuses ?? []).includes(project.status)) {
+        const id = `watched-status:${project.id}:${project.status}`;
+        items.push({
+          id,
+          kind: 'watched_status',
+          title: 'Projekt i bevakad kolumn',
+          subtitle: `${project.title} • ${project.status}`,
+          href: `/projects/${project.id}` as Route,
+          createdAt: project.created_at,
+          read: dismissedPlanningIds.includes(id)
+        });
+      }
+
+      const lastUpdate = latestUpdateByProjectId.get(project.id);
+      const staleFrom = lastUpdate ?? project.created_at;
+      if (project.status !== 'done' && staleThreshold && staleFrom.slice(0, 10) <= staleThreshold) {
+        const id = `stale-project:${project.id}:${staleThreshold}`;
+        items.push({
+          id,
+          kind: 'stale_project',
+          title: 'Projekt saknar ny uppdatering',
+          subtitle: `${project.title} • ingen ny projektuppdatering på ${automationSettings.stale_days_without_update} dagar`,
+          href: `/projects/${project.id}?tab=updates` as Route,
+          createdAt: staleFrom,
+          read: dismissedPlanningIds.includes(id)
+        });
+      }
+
+      if (automationSettings.remind_done_without_invoice && project.status === 'done' && !invoicedProjectIds.has(project.id)) {
+        const id = `done-without-invoice:${project.id}`;
+        items.push({
+          id,
+          kind: 'done_without_invoice',
+          title: 'Klart projekt saknar faktura',
+          subtitle: `${project.title} • följ upp fakturering`,
+          href: `/projects/${project.id}?tab=economy` as Route,
+          createdAt: project.created_at,
+          read: dismissedPlanningIds.includes(id)
+        });
+      }
+
+      return items;
+    });
+  }, [automationSettings, companyId, dismissedPlanningIds, invoicedProjectIds, latestUpdateByProjectId, planningProjectsQuery.data]);
   const projectNotifications = notifications.map((notification) => {
     const project = projectsById.get(notification.project_id);
     return {
@@ -181,7 +331,14 @@ export default function NotificationMenu({
   const unreadCount = menuNotifications.filter((item) => !item.read).length;
 
   async function refreshNotifications() {
-    await Promise.all([notificationsQuery.refetch(), projectsQuery.refetch(), planningProjectsQuery.refetch()]);
+    await Promise.all([
+      notificationsQuery.refetch(),
+      projectsQuery.refetch(),
+      planningProjectsQuery.refetch(),
+      planningProjectUpdatesQuery.refetch(),
+      invoiceSourcesQuery.refetch(),
+      automationSettingsQuery.refetch()
+    ]);
   }
 
   return (
@@ -235,7 +392,7 @@ export default function NotificationMenu({
                   onClick={() => {
                     if (notification.kind === 'deadline_overdue') {
                       persistDismissed(Array.from(new Set([...dismissedPlanningIds, notification.id])));
-                    } else if (!notification.read && notification.markReadId) {
+                    } else if (!notification.read && 'markReadId' in notification && notification.markReadId) {
                       markReadMutation.mutate(notification.markReadId);
                     }
                   }}

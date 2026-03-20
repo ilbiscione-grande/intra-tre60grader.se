@@ -15,7 +15,7 @@ import ProfileBadge from '@/components/common/ProfileBadge';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import type { Project } from '@/lib/types';
-import type { ProjectMemberVisual } from '@/features/projects/projectQueries';
+import type { ProjectActivitySummary, ProjectMemberVisual } from '@/features/projects/projectQueries';
 
 function fallbackLabel(status: string) {
   const map: Record<string, string> = {
@@ -51,13 +51,15 @@ export default function ProjectCard({
   actions,
   statusLabel,
   members = [],
-  availableMembers = []
+  availableMembers = [],
+  activitySummary
 }: {
   project: Project;
   actions?: React.ReactNode;
   statusLabel?: string;
   members?: ProjectMemberVisual[];
   availableMembers?: ProjectMemberVisual[];
+  activitySummary?: ProjectActivitySummary & { actorLabel?: string | null };
 }) {
   const { role } = useAppContext();
   const queryClient = useQueryClient();
@@ -189,6 +191,14 @@ export default function ProjectCard({
               </div>
             ) : null}
           </div>
+          {activitySummary ? (
+            <div className="mt-3 rounded-lg bg-muted/40 px-2.5 py-2 text-[11px] text-foreground/65">
+              <p className="truncate font-medium text-foreground/75">
+                Senast uppdaterat av {activitySummary.actorLabel ?? 'intern användare'}
+              </p>
+              <p className="truncate">{activitySummary.text}</p>
+            </div>
+          ) : null}
         </div>
         {actions ? <div className="relative z-20">{actions}</div> : null}
         {members.length > 0 ? (

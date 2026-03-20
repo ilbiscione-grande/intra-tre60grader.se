@@ -13,6 +13,30 @@ export type ProjectCreatePayload = {
   order_total?: number;
   source?: string;
   member_ids?: string[];
+  milestones?: Array<{
+    id: string;
+    title: string;
+    date: string;
+    completed: boolean;
+  }> | null;
+  task_templates?: Array<{
+    id: string;
+    title: string;
+    description?: string | null;
+    status?: 'todo' | 'in_progress' | 'done';
+    priority?: 'low' | 'normal' | 'high';
+    assignee_user_id?: string | null;
+    milestone_id?: string | null;
+    offset_days?: number | null;
+    subtasks?: Array<{ id: string; title: string; done: boolean }>;
+  }> | null;
+  order_line_templates?: Array<{
+    id: string;
+    title: string;
+    qty?: number;
+    unit_price?: number;
+    vat_rate?: number;
+  }> | null;
   start_date?: string | null;
   end_date?: string | null;
   customer_id?: string | null;

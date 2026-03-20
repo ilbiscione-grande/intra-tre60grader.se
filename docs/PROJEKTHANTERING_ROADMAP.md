@@ -26,71 +26,71 @@ Status:
 - [x] A6. Visa nästa delmål och enkel planeringsstatus i projektdetalj och projektkort
 
 ## Etapp B - Uppgifter och arbetsfördelning
-- [ ] B1. Inför riktiga uppgifter/tasks per projekt
-- [ ] B2. Låt uppgift ha ansvarig medlem
-- [ ] B3. Låt uppgift ha deadline och prioritet
-- [ ] B4. Lägg till checklista/subtasks på uppgift
-- [ ] B5. Knyt uppgifter till delmål när det är relevant
-- [ ] B6. Visa uppgifter både som lista och i enkel board-vy
-- [ ] B7. Visa “mina uppgifter” för inloggad användare
+- [x] B1. Inför riktiga uppgifter/tasks per projekt
+- [x] B2. Låt uppgift ha ansvarig medlem
+- [x] B3. Låt uppgift ha deadline och prioritet
+- [x] B4. Lägg till checklista/subtasks på uppgift
+- [x] B5. Knyt uppgifter till delmål när det är relevant
+- [x] B6. Visa uppgifter både som lista och i enkel board-vy
+- [x] B7. Visa “mina uppgifter” för inloggad användare
 
 ## Etapp C - Tidsrapportering
-- [ ] C1. Lägg till tidsposter per projekt
-- [ ] C2. Låt tidspost kunna kopplas till uppgift
-- [ ] C3. Låt tidspost kunna kopplas till order eller fakturerbart arbete
-- [ ] C4. Visa timmar per medlem och projekt
-- [ ] C5. Visa fakturerbar tid kontra intern tid
-- [ ] C6. Lägg till enkel veckovy eller dagsvy för tidrapportering
+- [x] C1. Lägg till tidsposter per projekt
+- [x] C2. Låt tidspost kunna kopplas till uppgift
+- [x] C3. Låt tidspost kunna kopplas till order eller fakturerbart arbete
+- [x] C4. Visa timmar per medlem och projekt
+- [x] C5. Visa fakturerbar tid kontra intern tid
+- [x] C6. Lägg till enkel veckovy eller dagsvy för tidrapportering
 
 ## Etapp D - Projektbudget och uppföljning
-- [ ] D1. Definiera projektbudget för timmar, kostnad och intäkt
-- [ ] D2. Visa utfall mot budget i projektdetalj
-- [ ] D3. Visa prognos och marginal på projektnivå
-- [ ] D4. Flagga projekt som riskerar att gå över budget
-- [ ] D5. Visa projekt som saknar budget men har aktivitet
-- [ ] D6. Visa KPI:er för projektledningsöversikt
+- [x] D1. Definiera projektbudget för timmar, kostnad och intäkt
+- [x] D2. Visa utfall mot budget i projektdetalj
+- [x] D3. Visa prognos och marginal på projektnivå
+- [x] D4. Flagga projekt som riskerar att gå över budget
+- [x] D5. Visa projekt som saknar budget men har aktivitet
+- [x] D6. Visa KPI:er för projektledningsöversikt
 
 ## Etapp E - Filer och leveranser
-- [ ] E1. Bygg en riktig projektfil-yta, separat från fakturabilagor och uppdateringsbilagor
-- [ ] E2. Stöd mappar eller kategorier som t.ex. brief, avtal, leverans, underlag
-- [ ] E3. Visa filhistorik och uppladdad av
-- [ ] E4. Visa preview för bilder och dokument där det är rimligt
-- [ ] E5. Lägg till versionshantering för utvalda filer
+- [x] E1. Bygg en riktig projektfil-yta, separat från fakturabilagor och uppdateringsbilagor
+- [x] E2. Stöd mappar eller kategorier som t.ex. brief, avtal, leverans, underlag
+- [x] E3. Visa filhistorik och uppladdad av
+- [x] E4. Visa preview för bilder och dokument där det är rimligt
+- [x] E5. Lägg till versionshantering för utvalda filer
 
 ## Etapp F - Kommunikation och historik
 - [x] F1. Projektuppdateringar som trådar
 - [x] F2. Svar på uppdateringar
 - [x] F3. Notiser för svar och omnämnanden
-- [ ] F4. Lägg till riktiga @-omnämnanden med bättre förslag och markering
-- [ ] F5. Lägg till aktivitetshistorik även för tasks, tidsrapportering och medlemsändringar
-- [ ] F6. Visa “senast uppdaterat av” tydligare i centrala vyer
+- [x] F4. Lägg till riktiga @-omnämnanden med bättre förslag och markering
+- [x] F5. Lägg till aktivitetshistorik även för tasks, tidsrapportering och medlemsändringar
+- [x] F6. Visa “senast uppdaterat av” tydligare i centrala vyer
 
 ## Etapp G - Projektmallar och återanvändning
-- [ ] G1. Skapa projektmallar
-- [ ] G2. Låt mall innehålla kolumnstart, standarddelmål och standardmedlemmar
-- [ ] G3. Låt mall innehålla standarduppgifter/checklistor
-- [ ] G4. Låt mall innehålla standardorderrader där det passar
-- [ ] G5. Låt admin hantera mallar centralt
+- [x] G1. Skapa projektmallar
+- [x] G2. Låt mall innehålla kolumnstart, standarddelmål och standardmedlemmar
+- [x] G3. Låt mall innehålla standarduppgifter/checklistor
+- [x] G4. Låt mall innehålla standardorderrader där det passar
+- [x] G5. Låt admin hantera mallar centralt
 
 ## Etapp H - Automatisering och regler
-- [ ] H1. Lägg till regler som triggar när projekt går till viss kolumn
-- [ ] H2. Lägg till påminnelse när slutdatum närmar sig
-- [ ] H3. Lägg till påminnelse när projekt saknar uppdatering senaste X dagar
-- [ ] H4. Lägg till påminnelse när projekt är klart men ännu inte fakturerat
-- [ ] H5. Lägg till enkel automation för standardflöden utan att göra systemet svåröverskådligt
+- [x] H1. Lägg till regler som triggar när projekt går till viss kolumn
+- [x] H2. Lägg till påminnelse när slutdatum närmar sig 
+- [x] H3. Lägg till påminnelse när projekt saknar uppdatering senaste X dagar
+- [x] H4. Lägg till påminnelse när projekt är klart men ännu inte fakturerat
+- [x] H5. Lägg till enkel automation för standardflöden utan att göra systemet svåröverskådligt
 
 ## Etapp I - Dashboard och ledningsvy
-- [ ] I1. Visa aktiva projekt, försenade projekt och projekt utan ansvarig
-- [ ] I2. Visa projekt utan uppdatering senaste X dagar
-- [ ] I3. Visa projekt som är klara men ej fakturerade
-- [ ] I4. Visa budgetavvikelse och riskprojekt
-- [ ] I5. Visa teambelastning per medlem
+- [x] I1. Visa aktiva projekt, försenade projekt och projekt utan ansvarig
+- [x] I2. Visa projekt utan uppdatering senaste X dagar
+- [x] I3. Visa projekt som är klara men ej fakturerade
+- [x] I4. Visa budgetavvikelse och riskprojekt
+- [x] I5. Visa teambelastning per medlem
 
 ## Etapp J - Mobil arbetsyta
-- [ ] J1. Gör tasks fullt användbara i mobil
-- [ ] J2. Gör tidrapportering fullt användbar i mobil
-- [ ] J3. Gör projektfiler och previews fullt användbara i mobil
-- [ ] J4. Säkerställ att alla viktiga projektåtgärder går att göra utan desktop
+- [x] J1. Gör tasks fullt användbara i mobil
+- [x] J2. Gör tidrapportering fullt användbar i mobil
+- [x] J3. Gör projektfiler och previews fullt användbara i mobil
+- [x] J4. Säkerställ att alla viktiga projektåtgärder går att göra utan desktop
 
 ## Etapp K - Kundportal (separat modul)
 - [ ] K1. Definiera vilka projektdata som får exponeras externt via `portal.tre60grader.se`

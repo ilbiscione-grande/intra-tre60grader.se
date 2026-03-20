@@ -17,6 +17,7 @@ type ProjectFinancePlanRow = {
   company_id: string;
   project_id: string;
   cost_center: string | null;
+  budget_hours: number | null;
   budget_revenue: number | null;
   budget_cost: number | null;
   note: string | null;
@@ -47,6 +48,11 @@ type ProjectFinanceSummary = {
   cost_center: string | null;
   budget: { revenue: number; cost: number; margin: number };
   actual: { revenue: number; cost: number; margin: number; margin_pct: number | null };
+};
+
+type ProjectTimeHoursRow = {
+  hours: number;
+  is_billable: boolean;
 };
 
 const DEFAULT_COST_CENTER_OPTIONS = [
@@ -87,6 +93,7 @@ export default function ProjectFinancePanel({
   const queryClient = useQueryClient();
 
   const [costCenter, setCostCenter] = useState('');
+  const [budgetHours, setBudgetHours] = useState('0');
   const [budgetRevenue, setBudgetRevenue] = useState('0');
   const [budgetCost, setBudgetCost] = useState('0');
 
@@ -101,7 +108,7 @@ export default function ProjectFinancePanel({
     queryFn: async () => {
       const { data, error } = await db
         .from('project_finance_plans')
-        .select('id,company_id,project_id,cost_center,budget_revenue,budget_cost,note,updated_at')
+        .select('id,company_id,project_id,cost_center,budget_hours,budget_revenue,budget_cost,note,updated_at')
         .eq('company_id', companyId)
         .eq('project_id', projectId)
         .maybeSingle();
@@ -156,6 +163,20 @@ export default function ProjectFinancePanel({
     }
   });
 
+  const timeHoursQuery = useQuery<ProjectTimeHoursRow[]>({
+    queryKey: ['project-finance-time-hours', companyId, projectId],
+    enabled: canRead,
+    queryFn: async () => {
+      const { data, error } = await db
+        .from('project_time_entries')
+        .select('hours,is_billable')
+        .eq('company_id', companyId)
+        .eq('project_id', projectId);
+      if (error) throw error;
+      return (data as ProjectTimeHoursRow[] | null) ?? [];
+    }
+  });
+
   const createCostCenterMutation = useMutation({
     mutationFn: async (rawName: string) => {
       if (!canWrite) throw new Error('Projektet är låst för ekonomiska ändringar');
@@ -194,6 +215,7 @@ export default function ProjectFinancePanel({
         company_id: companyId,
         project_id: projectId,
         cost_center: costCenter.trim() || null,
+        budget_hours: Math.max(0, toNumber(budgetHours, 0)),
         budget_revenue: Math.max(0, toNumber(budgetRevenue, 0)),
         budget_cost: Math.max(0, toNumber(budgetCost, 0))
       };
@@ -261,11 +283,57 @@ export default function ProjectFinancePanel({
   useEffect(() => {
     if (!plan) return;
     setCostCenter(plan.cost_center ?? '');
+    setBudgetHours(String(plan.budget_hours ?? 0));
     setBudgetRevenue(String(plan.budget_revenue ?? 0));
     setBudgetCost(String(plan.budget_cost ?? 0));
-  }, [plan?.id, plan?.cost_center, plan?.budget_revenue, plan?.budget_cost]);
+  }, [plan?.id, plan?.cost_center, plan?.budget_hours, plan?.budget_revenue, plan?.budget_cost]);
 
   const mergedCostCenterOptions = [...new Set([...(companyCostCentersQuery.data ?? []).map((row) => row.name), ...DEFAULT_COST_CENTER_OPTIONS, ...(costCenter ? [costCenter] : [])])];
+  const actualHours = useMemo(
+    () => (timeHoursQuery.data ?? []).reduce((sum, entry) => sum + Number(entry.hours ?? 0), 0),
+    [timeHoursQuery.data]
+  );
+  const actualBillableHours = useMemo(
+    () => (timeHoursQuery.data ?? []).reduce((sum, entry) => sum + (entry.is_billable ? Number(entry.hours ?? 0) : 0), 0),
+    [timeHoursQuery.data]
+  );
+  const actualInternalHours = useMemo(
+    () => (timeHoursQuery.data ?? []).reduce((sum, entry) => sum + (!entry.is_billable ? Number(entry.hours ?? 0) : 0), 0),
+    [timeHoursQuery.data]
+  );
+  const budgetHoursNumber = Number(plan?.budget_hours ?? toNumber(budgetHours, 0));
+  const budgetRevenueNumber = Number(summary?.budget?.revenue ?? plan?.budget_revenue ?? 0);
+  const budgetCostNumber = Number(summary?.budget?.cost ?? plan?.budget_cost ?? 0);
+  const actualRevenue = Number(summary?.actual?.revenue ?? 0);
+  const actualCost = Number(summary?.actual?.cost ?? 0);
+  const hoursRatio = budgetHoursNumber > 0 ? actualHours / budgetHoursNumber : 0;
+  const revenueRatio = budgetRevenueNumber > 0 ? actualRevenue / budgetRevenueNumber : 0;
+  const costRatio = budgetCostNumber > 0 ? actualCost / budgetCostNumber : 0;
+  const projectionFactor = Math.max(1, hoursRatio, revenueRatio, costRatio);
+  const forecastRevenue = Math.max(actualRevenue, budgetRevenueNumber * projectionFactor);
+  const forecastCost = Math.max(actualCost, budgetCostNumber * projectionFactor);
+  const forecastMargin = forecastRevenue - forecastCost;
+  const hasBudget = budgetHoursNumber > 0 || budgetRevenueNumber > 0 || budgetCostNumber > 0;
+  const hasActivity = actualHours > 0 || actualRevenue > 0 || actualCost > 0;
+  const budgetGap = {
+    hours: actualHours - budgetHoursNumber,
+    revenue: actualRevenue - budgetRevenueNumber,
+    cost: actualCost - budgetCostNumber
+  };
+  const financeAlerts = [
+    !hasBudget && hasActivity
+      ? { id: 'no-budget', tone: 'warning', text: 'Projektet har aktivitet men saknar budget.' }
+      : null,
+    budgetHoursNumber > 0 && actualHours > budgetHoursNumber
+      ? { id: 'hours-overrun', tone: 'danger', text: 'Projektet har passerat budgeterade timmar.' }
+      : null,
+    budgetCostNumber > 0 && actualCost > budgetCostNumber
+      ? { id: 'cost-overrun', tone: 'danger', text: 'Projektkostnaden har passerat budget.' }
+      : null,
+    forecastCost > budgetCostNumber && budgetCostNumber > 0
+      ? { id: 'forecast-overrun', tone: 'warning', text: 'Prognosen pekar på kostnadsöverskridande.' }
+      : null
+  ].filter(Boolean) as Array<{ id: string; tone: 'warning' | 'danger'; text: string }>;
 
   async function handleCostCenterSelect(value: string) {
     if (value === ADD_COST_CENTER_VALUE) {
@@ -305,7 +373,7 @@ export default function ProjectFinancePanel({
       <CardContent className="space-y-4">
         {isLocked && <p className="text-sm text-amber-700">Projektet är fakturerat och ekonomiska ändringar är låsta.</p>}
 
-        <div className="grid gap-3 md:grid-cols-3">
+        <div className="grid gap-3 md:grid-cols-4">
           <label className="space-y-1">
             <span className="text-sm">Kostnadsställe</span>
             <Select value={costCenter || 'none'} onValueChange={handleCostCenterSelect} disabled={!canWrite}>
@@ -322,6 +390,10 @@ export default function ProjectFinancePanel({
                 {canWrite && <SelectItem value={ADD_COST_CENTER_VALUE}>+ Lägg till nytt...</SelectItem>}
               </SelectContent>
             </Select>
+          </label>
+          <label className="space-y-1">
+            <span className="text-sm">Budget timmar</span>
+            <Input value={budgetHours} onChange={(e) => setBudgetHours(e.target.value)} type="number" min="0" step="0.25" disabled={!canWrite} />
           </label>
           <label className="space-y-1">
             <span className="text-sm">Budget intäkt</span>
@@ -342,10 +414,68 @@ export default function ProjectFinancePanel({
         )}
 
         <div className="grid gap-2 md:grid-cols-4">
-          <Badge>Utfall intäkt: {Number(summary?.actual?.revenue ?? 0).toFixed(2)} kr</Badge>
-          <Badge>Utfall kostnad: {Number(summary?.actual?.cost ?? 0).toFixed(2)} kr</Badge>
+          <Badge>Budget timmar: {budgetHoursNumber.toFixed(2)} h</Badge>
+          <Badge>Utfall timmar: {actualHours.toFixed(2)} h</Badge>
+          <Badge>Utfall intäkt: {actualRevenue.toFixed(2)} kr</Badge>
+          <Badge>Utfall kostnad: {actualCost.toFixed(2)} kr</Badge>
+        </div>
+
+        <div className="grid gap-2 md:grid-cols-4">
           <Badge>Utfall marginal: {Number(summary?.actual?.margin ?? 0).toFixed(2)} kr</Badge>
           <Badge>Marginal %: {summary?.actual?.margin_pct == null ? '-' : `${Number(summary.actual.margin_pct).toFixed(1)}%`}</Badge>
+          <Badge>Fakturerbar tid: {actualBillableHours.toFixed(2)} h</Badge>
+          <Badge>Intern tid: {actualInternalHours.toFixed(2)} h</Badge>
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-3">
+          <div className="rounded-lg border p-3">
+            <p className="text-sm text-foreground/70">Prognos intäkt</p>
+            <p className="mt-1 font-medium">{forecastRevenue.toFixed(2)} kr</p>
+          </div>
+          <div className="rounded-lg border p-3">
+            <p className="text-sm text-foreground/70">Prognos kostnad</p>
+            <p className="mt-1 font-medium">{forecastCost.toFixed(2)} kr</p>
+          </div>
+          <div className="rounded-lg border p-3">
+            <p className="text-sm text-foreground/70">Prognos marginal</p>
+            <p className="mt-1 font-medium">{forecastMargin.toFixed(2)} kr</p>
+          </div>
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-3">
+          <div className="rounded-lg border p-3">
+            <p className="text-sm text-foreground/70">Avvikelse timmar</p>
+            <p className="mt-1 font-medium">{budgetGap.hours >= 0 ? '+' : ''}{budgetGap.hours.toFixed(2)} h</p>
+          </div>
+          <div className="rounded-lg border p-3">
+            <p className="text-sm text-foreground/70">Avvikelse intäkt</p>
+            <p className="mt-1 font-medium">{budgetGap.revenue >= 0 ? '+' : ''}{budgetGap.revenue.toFixed(2)} kr</p>
+          </div>
+          <div className="rounded-lg border p-3">
+            <p className="text-sm text-foreground/70">Avvikelse kostnad</p>
+            <p className="mt-1 font-medium">{budgetGap.cost >= 0 ? '+' : ''}{budgetGap.cost.toFixed(2)} kr</p>
+          </div>
+        </div>
+
+        {financeAlerts.length > 0 ? (
+          <div className="space-y-2">
+            {financeAlerts.map((alert) => (
+              <div
+                key={alert.id}
+                className={`rounded-lg border px-3 py-2 text-sm ${
+                  alert.tone === 'danger'
+                    ? 'border-rose-200 bg-rose-50 text-rose-900 dark:border-rose-500/25 dark:bg-rose-500/10 dark:text-rose-100'
+                    : 'border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-100'
+                }`}
+              >
+                {alert.text}
+              </div>
+            ))}
+          </div>
+        ) : null}
+
+        <div className="rounded-lg border border-dashed p-3 text-sm text-foreground/70">
+          Prognosen använder nuvarande utfall och timmar för att uppskatta slutläge. Om projektet redan ligger över budget eller timmar skalar prognosen upp därefter.
         </div>
 
         <div className="rounded-lg border p-3">

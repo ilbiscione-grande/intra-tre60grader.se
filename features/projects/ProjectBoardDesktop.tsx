@@ -28,7 +28,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import ProjectCard from '@/features/projects/ProjectCard';
-import { useMoveProject, useProjectColumns, useProjectMembers, useProjects } from '@/features/projects/projectQueries';
+import { useMoveProject, useProjectActivitySummaries, useProjectColumns, useProjectMembers, useProjects } from '@/features/projects/projectQueries';
 import { createClient } from '@/lib/supabase/client';
 import type { Project } from '@/lib/types';
 
@@ -287,6 +287,7 @@ export default function ProjectBoardDesktop({ companyId }: { companyId: string }
   const projectsQuery = useProjects(companyId);
   const columnsQuery = useProjectColumns(companyId);
   const projectMembersQuery = useProjectMembers(companyId);
+  const activitySummariesQuery = useProjectActivitySummaries(companyId);
   const moveMutation = useMoveProject(companyId);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
@@ -302,6 +303,17 @@ export default function ProjectBoardDesktop({ companyId }: { companyId: string }
     }
     return next;
   }, [projectMembersQuery.data?.assignments]);
+  const activitySummaryByProjectId = useMemo(() => {
+    const next = new Map<string, NonNullable<React.ComponentProps<typeof ProjectCard>['activitySummary']>>();
+    for (const item of activitySummariesQuery.data ?? []) {
+      const actor = item.actor_user_id ? availableMembers.find((member) => member.user_id === item.actor_user_id) ?? null : null;
+      next.set(item.project_id, {
+        ...item,
+        actorLabel: actor?.email ?? actor?.handle ?? null
+      });
+    }
+    return next;
+  }, [activitySummariesQuery.data, availableMembers]);
   const statuses = useMemo(() => columns.map((c) => c.key), [columns]);
   const titleByStatus = useMemo(() => new Map(columns.map((c) => [c.key, c.title])), [columns]);
 
@@ -648,6 +660,7 @@ export default function ProjectBoardDesktop({ companyId }: { companyId: string }
                             statusLabel={titleByStatus.get(project.status) ?? project.status}
                             members={membersByProjectId.get(project.id) ?? []}
                             availableMembers={availableMembers}
+                            activitySummary={activitySummaryByProjectId.get(project.id)}
                           />
                         </SortableCardItem>
                       ))}

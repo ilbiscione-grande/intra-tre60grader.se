@@ -7,11 +7,13 @@ import { enqueueAction, getQueueCounts, processQueue } from '@/features/offline/
 import { useOfflineStore } from '@/features/offline/offlineStore';
 import { createProjectWithOrder, moveProject, setProjectStatus } from '@/lib/rpc';
 import { resolveCustomerForPayload, type ProjectCreatePayload } from '@/features/projects/customerResolver';
+import type { TableRow as DbRow } from '@/lib/supabase/database.types';
 import type { Project, ProjectColumn, ProjectStatus, Role } from '@/lib/types';
 
 const projectKey = (companyId: string) => ['projects', companyId] as const;
 const projectColumnsKey = (companyId: string) => ['project-columns', companyId] as const;
 const companyMemberDirectoryKey = (companyId: string) => ['company-member-directory', companyId] as const;
+const projectTemplatesKey = (companyId: string) => ['project-templates', companyId] as const;
 
 export type CompanyMemberDirectoryEntry = {
   id: string;
@@ -44,6 +46,25 @@ export type ProjectMembersPayload = {
   availableMembers: ProjectMemberVisual[];
   assignments: ProjectMemberAssignment[];
 };
+
+export type ProjectActivitySummary = {
+  project_id: string;
+  at: string;
+  actor_user_id: string | null;
+  text: string;
+};
+
+export type ProjectTemplate = Pick<
+  DbRow<'project_templates'>,
+  'id' | 'company_id' | 'name' | 'description' | 'start_status' | 'member_user_ids' | 'milestones' | 'task_templates' | 'order_line_templates' | 'created_at' | 'updated_at'
+>;
+
+function addDays(baseDate: string, days: number) {
+  const date = new Date(`${baseDate}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return null;
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
+}
 
 export function useProjectColumns(companyId: string) {
   return useQuery<ProjectColumn[]>({
@@ -113,12 +134,141 @@ export function useProjectMembers(companyId: string) {
   });
 }
 
+export function useProjectTemplates(companyId: string) {
+  return useQuery<ProjectTemplate[]>({
+    queryKey: projectTemplatesKey(companyId),
+    staleTime: 1000 * 60 * 5,
+    queryFn: async () => {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from('project_templates')
+        .select('id,company_id,name,description,start_status,member_user_ids,milestones,task_templates,order_line_templates,created_at,updated_at')
+        .eq('company_id', companyId)
+        .order('name', { ascending: true });
+
+      if (error) throw error;
+      return (data ?? []) as ProjectTemplate[];
+    }
+  });
+}
+
+export function useProjectActivitySummaries(companyId: string) {
+  return useQuery<ProjectActivitySummary[]>({
+    queryKey: ['project-activity-summaries', companyId],
+    staleTime: 60_000,
+    queryFn: async () => {
+      const supabase = createClient();
+
+      const [updatesResult, tasksResult, timeEntriesResult, membersResult, filesResult] = await Promise.all([
+        supabase
+          .from('project_updates')
+          .select('project_id,created_by,created_at,parent_id')
+          .eq('company_id', companyId)
+          .returns<Array<Pick<DbRow<'project_updates'>, 'project_id' | 'created_by' | 'created_at' | 'parent_id'>>>(),
+        supabase
+          .from('project_tasks')
+          .select('project_id,created_by,assignee_user_id,title,created_at,updated_at')
+          .eq('company_id', companyId)
+          .returns<Array<Pick<DbRow<'project_tasks'>, 'project_id' | 'created_by' | 'assignee_user_id' | 'title' | 'created_at' | 'updated_at'>>>(),
+        supabase
+          .from('project_time_entries')
+          .select('project_id,user_id,hours,entry_date,created_at')
+          .eq('company_id', companyId)
+          .returns<Array<Pick<DbRow<'project_time_entries'>, 'project_id' | 'user_id' | 'hours' | 'entry_date' | 'created_at'>>>(),
+        supabase
+          .from('project_members')
+          .select('project_id,user_id,created_by,created_at')
+          .eq('company_id', companyId)
+          .returns<Array<Pick<DbRow<'project_members'>, 'project_id' | 'user_id' | 'created_by' | 'created_at'>>>(),
+        supabase
+          .from('project_files')
+          .select('project_id,created_by,created_at,file_name,title,version_no')
+          .eq('company_id', companyId)
+          .returns<Array<Pick<DbRow<'project_files'>, 'project_id' | 'created_by' | 'created_at' | 'file_name' | 'title' | 'version_no'>>>()
+      ]);
+
+      if (updatesResult.error) throw updatesResult.error;
+      if (tasksResult.error) throw tasksResult.error;
+      if (timeEntriesResult.error) throw timeEntriesResult.error;
+      if (membersResult.error) throw membersResult.error;
+      if (filesResult.error) throw filesResult.error;
+
+      const events: ProjectActivitySummary[] = [];
+
+      for (const update of updatesResult.data ?? []) {
+        events.push({
+          project_id: update.project_id,
+          at: update.created_at,
+          actor_user_id: update.created_by,
+          text: update.parent_id ? 'Svar i uppdateringstråd' : 'Ny projektuppdatering'
+        });
+      }
+
+      for (const task of tasksResult.data ?? []) {
+        events.push({
+          project_id: task.project_id,
+          at: task.created_at,
+          actor_user_id: task.created_by,
+          text: `Ny uppgift: ${task.title}`
+        });
+
+        if (new Date(task.updated_at).getTime() > new Date(task.created_at).getTime() + 1000) {
+          events.push({
+            project_id: task.project_id,
+            at: task.updated_at,
+            actor_user_id: task.assignee_user_id ?? task.created_by,
+            text: `Uppgift uppdaterad: ${task.title}`
+          });
+        }
+      }
+
+      for (const entry of timeEntriesResult.data ?? []) {
+        events.push({
+          project_id: entry.project_id,
+          at: entry.created_at,
+          actor_user_id: entry.user_id,
+          text: `Tid rapporterad: ${Number(entry.hours).toFixed(1)} h`
+        });
+      }
+
+      for (const member of membersResult.data ?? []) {
+        events.push({
+          project_id: member.project_id,
+          at: member.created_at,
+          actor_user_id: member.created_by ?? member.user_id,
+          text: 'Projektmedlem tilldelad'
+        });
+      }
+
+      for (const file of filesResult.data ?? []) {
+        events.push({
+          project_id: file.project_id,
+          at: file.created_at,
+          actor_user_id: file.created_by,
+          text: file.version_no > 1 ? `Ny filversion: ${file.title ?? file.file_name}` : `Fil uppladdad: ${file.title ?? file.file_name}`
+        });
+      }
+
+      const latestByProject = new Map<string, ProjectActivitySummary>();
+      for (const event of events) {
+        const current = latestByProject.get(event.project_id);
+        if (!current || new Date(event.at).getTime() > new Date(current.at).getTime()) {
+          latestByProject.set(event.project_id, event);
+        }
+      }
+
+      return Array.from(latestByProject.values());
+    }
+  });
+}
+
 export function useCreateProject(companyId: string) {
   const queryClient = useQueryClient();
   const setCounts = useOfflineStore((s) => s.setCounts);
 
   return useMutation({
     mutationFn: async (payload: ProjectCreatePayload) => {
+      const supabase = createClient();
       const basePayload: ProjectCreatePayload & { company_id: string } = {
         ...payload,
         company_id: companyId
@@ -136,7 +286,11 @@ export function useCreateProject(companyId: string) {
       }
 
       const resolved = await resolveCustomerForPayload(companyId, basePayload);
-      const result = (await createProjectWithOrder(resolved)) as { project_id?: string } | null;
+      const result = (await createProjectWithOrder(resolved)) as { project_id?: string; order_id?: string } | null;
+      const {
+        data: { user }
+      } = await supabase.auth.getUser();
+      const actorUserId = user?.id ?? null;
 
       if (result?.project_id && (payload.member_ids?.length ?? 0) > 0) {
         const res = await fetch('/api/project-members', {
@@ -155,15 +309,60 @@ export function useCreateProject(companyId: string) {
         }
       }
 
+      if (result?.project_id && (payload.task_templates?.length ?? 0) > 0) {
+        const taskRows = (payload.task_templates ?? []).map((task) => ({
+          company_id: companyId,
+          project_id: result.project_id as string,
+          title: task.title,
+          description: task.description?.trim() || null,
+          status: task.status ?? 'todo',
+          priority: task.priority ?? 'normal',
+          due_date: typeof task.offset_days === 'number' && payload.start_date ? addDays(payload.start_date, task.offset_days) : null,
+          assignee_user_id: task.assignee_user_id ?? null,
+          milestone_id: task.milestone_id ?? null,
+          subtasks: (task.subtasks ?? []).map((subtask) => ({
+            id: subtask.id,
+            title: subtask.title,
+            done: Boolean(subtask.done)
+          })),
+          created_by: actorUserId
+        }));
+
+        const { error } = await supabase.from('project_tasks').insert(taskRows);
+        if (error) throw new Error(`Projekt skapades men malluppgifter kunde inte läggas till: ${error.message}`);
+      }
+
+      if (result?.order_id && (payload.order_line_templates?.length ?? 0) > 0) {
+        const orderLineRows = (payload.order_line_templates ?? []).map((line) => {
+          const qty = Number.isFinite(line.qty) ? Number(line.qty) : 1;
+          const unitPrice = Number.isFinite(line.unit_price) ? Number(line.unit_price) : 0;
+          const vatRate = Number.isFinite(line.vat_rate) ? Number(line.vat_rate) : 25;
+          return {
+            company_id: companyId,
+            order_id: result.order_id as string,
+            title: line.title,
+            qty,
+            unit_price: unitPrice,
+            vat_rate: vatRate,
+            total: Math.round(qty * unitPrice * 100) / 100
+          };
+        });
+
+        const { error } = await supabase.from('order_lines').insert(orderLineRows);
+        if (error) throw new Error(`Projekt skapades men mallorderrader kunde inte läggas till: ${error.message}`);
+      }
+
       await processQueue(companyId);
       setCounts(await getQueueCounts());
       toast.success('Projekt skapat');
+      return result;
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: projectKey(companyId) });
       await queryClient.invalidateQueries({ queryKey: projectColumnsKey(companyId) });
       await queryClient.invalidateQueries({ queryKey: ['customers', companyId] });
       await queryClient.invalidateQueries({ queryKey: ['project-members', companyId] });
+      await queryClient.invalidateQueries({ queryKey: projectTemplatesKey(companyId) });
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : 'Kunde inte skapa projekt');

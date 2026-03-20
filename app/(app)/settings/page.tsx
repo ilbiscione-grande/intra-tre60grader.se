@@ -22,6 +22,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { periodCloseChecklist } from '@/lib/rpc';
 import { createClient } from '@/lib/supabase/client';
 import BackupRetentionCard from '@/components/settings/BackupRetentionCard';
+import ProjectTemplatesCard from '@/components/settings/ProjectTemplatesCard';
+import ProjectAutomationCard from '@/components/settings/ProjectAutomationCard';
 import {
   DEFAULT_PROFILE_BADGE_COLOR,
   PROFILE_BADGE_COLORS,
@@ -489,6 +491,8 @@ export default function SettingsPage() {
 
       <RoleGate role={role} allow={['admin']} fallback={null}>
         <BackupRetentionCard companyId={companyId} isAdmin={role === 'admin'} canWrite={role === 'admin'} />
+        <ProjectTemplatesCard companyId={companyId} />
+        <ProjectAutomationCard companyId={companyId} />
 
         <Card>
           <CardHeader>

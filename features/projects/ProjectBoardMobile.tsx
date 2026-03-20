@@ -24,7 +24,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import ProjectCard from '@/features/projects/ProjectCard';
-import { useMoveProject, useProjectColumns, useProjectMembers, useProjects } from '@/features/projects/projectQueries';
+import { useMoveProject, useProjectActivitySummaries, useProjectColumns, useProjectMembers, useProjects } from '@/features/projects/projectQueries';
 import { createClient } from '@/lib/supabase/client';
 import type { Project } from '@/lib/types';
 import { useAutoScrollActiveTab } from '@/lib/ui/useAutoScrollActiveTab';
@@ -87,12 +87,14 @@ function SortableProjectCard({
   statusLabel,
   members,
   availableMembers,
+  activitySummary,
   onOpenMoveMenu
 }: {
   project: Project;
   statusLabel: string;
   members: React.ComponentProps<typeof ProjectCard>['members'];
   availableMembers: React.ComponentProps<typeof ProjectCard>['availableMembers'];
+  activitySummary?: React.ComponentProps<typeof ProjectCard>['activitySummary'];
   onOpenMoveMenu: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -117,6 +119,7 @@ function SortableProjectCard({
         statusLabel={statusLabel}
         members={members}
         availableMembers={availableMembers}
+        activitySummary={activitySummary}
         actions={
           <Button
             type="button"
@@ -204,6 +207,7 @@ export default function ProjectBoardMobile({ companyId }: { companyId: string })
   const projectsQuery = useProjects(companyId);
   const columnsQuery = useProjectColumns(companyId);
   const projectMembersQuery = useProjectMembers(companyId);
+  const activitySummariesQuery = useProjectActivitySummaries(companyId);
   const moveMutation = useMoveProject(companyId);
   const availableMembers = projectMembersQuery.data?.availableMembers ?? [];
   const membersByProjectId = useMemo(() => {
@@ -216,6 +220,17 @@ export default function ProjectBoardMobile({ companyId }: { companyId: string })
     }
     return next;
   }, [projectMembersQuery.data?.assignments]);
+  const activitySummaryByProjectId = useMemo(() => {
+    const next = new Map<string, NonNullable<React.ComponentProps<typeof ProjectCard>['activitySummary']>>();
+    for (const item of activitySummariesQuery.data ?? []) {
+      const actor = item.actor_user_id ? availableMembers.find((member) => member.user_id === item.actor_user_id) ?? null : null;
+      next.set(item.project_id, {
+        ...item,
+        actorLabel: actor?.email ?? actor?.handle ?? null
+      });
+    }
+    return next;
+  }, [activitySummariesQuery.data, availableMembers]);
 
   const columns = columnsQuery.data ?? [];
   const projects = projectsQuery.data ?? [];
@@ -678,6 +693,7 @@ export default function ProjectBoardMobile({ companyId }: { companyId: string })
                         statusLabel={titleByStatus.get(project.status) ?? project.status}
                         members={membersByProjectId.get(project.id) ?? []}
                         availableMembers={availableMembers}
+                        activitySummary={activitySummaryByProjectId.get(project.id)}
                         onOpenMoveMenu={() => setSelected(project)}
                       />
                     ))}
@@ -699,6 +715,7 @@ export default function ProjectBoardMobile({ companyId }: { companyId: string })
                 statusLabel={titleByStatus.get(activeProject.status) ?? activeProject.status}
                 members={membersByProjectId.get(activeProject.id) ?? []}
                 availableMembers={availableMembers}
+                activitySummary={activitySummaryByProjectId.get(activeProject.id)}
               />
             </div>
           ) : null}
