@@ -45,6 +45,13 @@ function toIsoDate(value?: string | null) {
   return date.toISOString().slice(0, 10);
 }
 
+function formatSafeDate(value?: string | null) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleDateString('sv-SE');
+}
+
 function normalizeProjectMilestones(value: Json | null | undefined): ProjectMilestone[] {
   if (!Array.isArray(value)) return [];
 
@@ -198,7 +205,7 @@ export default function ProjectLeadershipDashboard({ companyId }: { companyId: s
       .map((project) => ({
         id: project.id,
         title: project.title,
-        helper: project.end_date ? `Slutdatum ${new Date(project.end_date).toLocaleDateString('sv-SE')}` : 'Försenat delmål',
+        helper: formatSafeDate(project.end_date) ? `Slutdatum ${formatSafeDate(project.end_date)}` : 'Försenat delmål',
         href: `/projects/${project.id}?tab=planning` as Route
       }));
 
