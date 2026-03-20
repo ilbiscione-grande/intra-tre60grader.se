@@ -106,9 +106,9 @@ function SortableProjectCard({
     <div
       ref={setNodeRef}
       style={{
-        transform: CSS.Transform.toString(transform),
-        transition,
-        opacity: isDragging ? 0.85 : 1,
+        transform: isDragging ? undefined : CSS.Transform.toString(transform),
+        transition: isDragging ? undefined : transition,
+        opacity: isDragging ? 0 : 1,
         zIndex: isDragging ? 20 : 1
       }}
       className={isDragging ? 'project-card-dragging touch-none' : 'project-card-idle touch-pan-y'}
