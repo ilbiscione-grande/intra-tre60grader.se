@@ -205,6 +205,7 @@ export default function ProjectBoardMobileSimple({ companyId }: { companyId: str
   const [renameColumnTitle, setRenameColumnTitle] = useState('');
   const activeStatusRef = useRef('');
   const activeIndexRef = useRef(0);
+  const swipeStartRef = useRef<{ x: number; y: number } | null>(null);
   const edgeStepRef = useRef<{ side: 'left' | 'right' | null; enteredAt: number; lastStepAt: number }>({
     side: null,
     enteredAt: 0,
@@ -310,18 +311,23 @@ export default function ProjectBoardMobileSimple({ companyId }: { companyId: str
   }
 
   function handleDragMove(event: DragMoveEvent) {
-    const translated = event.active.rect.current.translated;
-    if (!translated || columns.length <= 1 || !activeId) return;
+    if (columns.length <= 1 || !activeId) return;
 
-    const centerX = translated.left + translated.width / 2;
-    const viewportWidth = window.innerWidth;
-    const edgeThreshold = 44;
+    const deltaX = event.delta.x;
+    const deltaY = Math.abs(event.delta.y);
+    const horizontalTrigger = 86;
     const cooldownMs = 1350;
     const dwellMs = 260;
     const now = Date.now();
     const currentIndex = activeIndexRef.current;
+    const horizontalIntent = Math.abs(deltaX) > deltaY + 24;
 
-    if (centerX >= viewportWidth - edgeThreshold && currentIndex < columns.length - 1) {
+    if (!horizontalIntent) {
+      edgeStepRef.current = { ...edgeStepRef.current, side: null, enteredAt: 0 };
+      return;
+    }
+
+    if (deltaX >= horizontalTrigger && currentIndex < columns.length - 1) {
       if (edgeStepRef.current.side !== 'right') {
         edgeStepRef.current = { ...edgeStepRef.current, side: 'right', enteredAt: now };
         return;
@@ -336,7 +342,7 @@ export default function ProjectBoardMobileSimple({ companyId }: { companyId: str
       return;
     }
 
-    if (centerX <= edgeThreshold && currentIndex > 0) {
+    if (deltaX <= -horizontalTrigger && currentIndex > 0) {
       if (edgeStepRef.current.side !== 'left') {
         edgeStepRef.current = { ...edgeStepRef.current, side: 'left', enteredAt: now };
         return;
@@ -352,6 +358,42 @@ export default function ProjectBoardMobileSimple({ companyId }: { companyId: str
     }
 
     edgeStepRef.current = { ...edgeStepRef.current, side: null, enteredAt: 0 };
+  }
+
+  function goToPreviousColumn() {
+    if (activeIndexRef.current <= 0) return;
+    switchColumn(columns[Math.max(0, activeIndexRef.current - 1)]?.key ?? activeStatusRef.current);
+  }
+
+  function goToNextColumn() {
+    if (activeIndexRef.current >= columns.length - 1) return;
+    switchColumn(columns[Math.min(columns.length - 1, activeIndexRef.current + 1)]?.key ?? activeStatusRef.current);
+  }
+
+  function handleColumnTouchStart(event: React.TouchEvent<HTMLDivElement>) {
+    if (activeId) return;
+    const touch = event.touches[0];
+    if (!touch) return;
+    swipeStartRef.current = { x: touch.clientX, y: touch.clientY };
+  }
+
+  function handleColumnTouchEnd(event: React.TouchEvent<HTMLDivElement>) {
+    if (activeId) return;
+    const start = swipeStartRef.current;
+    swipeStartRef.current = null;
+    const touch = event.changedTouches[0];
+    if (!start || !touch) return;
+
+    const deltaX = touch.clientX - start.x;
+    const deltaY = Math.abs(touch.clientY - start.y);
+
+    if (Math.abs(deltaX) < 54 || Math.abs(deltaX) < deltaY + 18) return;
+
+    if (deltaX < 0) {
+      goToNextColumn();
+    } else {
+      goToPreviousColumn();
+    }
   }
 
   function handleDragOver(event: DragOverEvent) {
@@ -502,10 +544,10 @@ export default function ProjectBoardMobileSimple({ companyId }: { companyId: str
           <Button type="button" variant="outline" size="icon" className="h-9 w-9" onClick={() => setColumnSheetOpen(true)} aria-label="Kolumninställningar">
             <Ellipsis className="h-4 w-4" />
           </Button>
-          <Button type="button" variant="outline" size="icon" className="h-9 w-9" disabled={activeIndex <= 0} onClick={() => switchColumn(columns[Math.max(0, activeIndex - 1)]?.key ?? activeStatus)} aria-label="Föregående kolumn">
+          <Button type="button" variant="outline" size="icon" className="h-9 w-9" disabled={activeIndex <= 0} onClick={goToPreviousColumn} aria-label="Föregående kolumn">
             <ChevronLeft className="h-4 w-4" />
           </Button>
-          <Button type="button" variant="outline" size="icon" className="h-9 w-9" disabled={activeIndex >= columns.length - 1} onClick={() => switchColumn(columns[Math.min(columns.length - 1, activeIndex + 1)]?.key ?? activeStatus)} aria-label="Nästa kolumn">
+          <Button type="button" variant="outline" size="icon" className="h-9 w-9" disabled={activeIndex >= columns.length - 1} onClick={goToNextColumn} aria-label="Nästa kolumn">
             <ChevronRight className="h-4 w-4" />
           </Button>
         </div>
@@ -535,31 +577,33 @@ export default function ProjectBoardMobileSimple({ companyId }: { companyId: str
         onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
       >
-        <ActiveMobileColumn
-          status={activeStatus}
-          title={activeColumn?.title ?? activeStatus}
-          count={activeList.length}
-          isLocked={lockedStatus === activeStatus}
-          index={activeIndex}
-          total={columns.length}
-        >
-          <SortableContext items={activeList.map((project) => project.id)} strategy={verticalListSortingStrategy}>
-            <div className="space-y-3">
-              {activeList.map((project) => (
-                <SortableProjectCard
-                  key={project.id}
-                  project={project}
-                  statusLabel={titleByStatus.get(project.status) ?? project.status}
-                  members={membersByProjectId.get(project.id) ?? []}
-                  availableMembers={availableMembers}
-                  activitySummary={activitySummaryByProjectId.get(project.id)}
-                  onOpenMoveMenu={() => setSelected(project)}
-                />
-              ))}
-              {activeList.length === 0 ? <p className="rounded-2xl bg-muted/60 p-4 text-sm text-foreground/70">Inga projekt i kolumnen.</p> : null}
-            </div>
-          </SortableContext>
-        </ActiveMobileColumn>
+        <div onTouchStart={handleColumnTouchStart} onTouchEnd={handleColumnTouchEnd}>
+          <ActiveMobileColumn
+            status={activeStatus}
+            title={activeColumn?.title ?? activeStatus}
+            count={activeList.length}
+            isLocked={lockedStatus === activeStatus}
+            index={activeIndex}
+            total={columns.length}
+          >
+            <SortableContext items={activeList.map((project) => project.id)} strategy={verticalListSortingStrategy}>
+              <div className="space-y-3">
+                {activeList.map((project) => (
+                  <SortableProjectCard
+                    key={project.id}
+                    project={project}
+                    statusLabel={titleByStatus.get(project.status) ?? project.status}
+                    members={membersByProjectId.get(project.id) ?? []}
+                    availableMembers={availableMembers}
+                    activitySummary={activitySummaryByProjectId.get(project.id)}
+                    onOpenMoveMenu={() => setSelected(project)}
+                  />
+                ))}
+                {activeList.length === 0 ? <p className="rounded-2xl bg-muted/60 p-4 text-sm text-foreground/70">Inga projekt i kolumnen.</p> : null}
+              </div>
+            </SortableContext>
+          </ActiveMobileColumn>
+        </div>
 
         <DragOverlay>
           {activeProject ? (
