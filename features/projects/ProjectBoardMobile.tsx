@@ -1,5 +1,9 @@
 'use client';
 
+export { default } from '@/features/projects/ProjectBoardMobileSimple';
+
+/*
+
 import {
   closestCorners,
   DndContext,
@@ -1024,3 +1028,4 @@ export default function ProjectBoardMobile({ companyId }: { companyId: string })
     </div>
   );
 }
+*/
