@@ -12,6 +12,7 @@ export type ProjectCreatePayload = {
   status: string;
   order_total?: number;
   source?: string;
+  member_ids?: string[];
   customer_id?: string | null;
   customer_name?: string | null;
 };

@@ -24,7 +24,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import ProjectCard from '@/features/projects/ProjectCard';
-import { useMoveProject, useProjectColumns, useProjects } from '@/features/projects/projectQueries';
+import { useMoveProject, useProjectColumns, useProjectMembers, useProjects } from '@/features/projects/projectQueries';
 import { createClient } from '@/lib/supabase/client';
 import type { Project } from '@/lib/types';
 import { useAutoScrollActiveTab } from '@/lib/ui/useAutoScrollActiveTab';
@@ -85,10 +85,14 @@ function findContainer(projectId: string, board: BoardState) {
 function SortableProjectCard({
   project,
   statusLabel,
+  members,
+  availableMembers,
   onOpenMoveMenu
 }: {
   project: Project;
   statusLabel: string;
+  members: React.ComponentProps<typeof ProjectCard>['members'];
+  availableMembers: React.ComponentProps<typeof ProjectCard>['availableMembers'];
   onOpenMoveMenu: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -111,6 +115,8 @@ function SortableProjectCard({
       <ProjectCard
         project={project}
         statusLabel={statusLabel}
+        members={members}
+        availableMembers={availableMembers}
         actions={
           <Button
             type="button"
@@ -197,7 +203,19 @@ export default function ProjectBoardMobile({ companyId }: { companyId: string })
 
   const projectsQuery = useProjects(companyId);
   const columnsQuery = useProjectColumns(companyId);
+  const projectMembersQuery = useProjectMembers(companyId);
   const moveMutation = useMoveProject(companyId);
+  const availableMembers = projectMembersQuery.data?.availableMembers ?? [];
+  const membersByProjectId = useMemo(() => {
+    const next = new Map<string, NonNullable<React.ComponentProps<typeof ProjectCard>['members']>>();
+    for (const assignment of projectMembersQuery.data?.assignments ?? []) {
+      if (!assignment.member) continue;
+      const current = next.get(assignment.project_id) ?? [];
+      current.push(assignment.member);
+      next.set(assignment.project_id, current);
+    }
+    return next;
+  }, [projectMembersQuery.data?.assignments]);
 
   const columns = columnsQuery.data ?? [];
   const projects = projectsQuery.data ?? [];
@@ -658,6 +676,8 @@ export default function ProjectBoardMobile({ companyId }: { companyId: string })
                         key={project.id}
                         project={project}
                         statusLabel={titleByStatus.get(project.status) ?? project.status}
+                        members={membersByProjectId.get(project.id) ?? []}
+                        availableMembers={availableMembers}
                         onOpenMoveMenu={() => setSelected(project)}
                       />
                     ))}
@@ -677,6 +697,8 @@ export default function ProjectBoardMobile({ companyId }: { companyId: string })
               <ProjectCard
                 project={activeProject}
                 statusLabel={titleByStatus.get(activeProject.status) ?? activeProject.status}
+                members={membersByProjectId.get(activeProject.id) ?? []}
+                availableMembers={availableMembers}
               />
             </div>
           ) : null}

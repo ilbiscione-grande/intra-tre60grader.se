@@ -4,7 +4,7 @@ import Link from 'next/link';
 import type { Route } from 'next';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { CircleUserRound } from 'lucide-react';
+import ProfileBadge from '@/components/common/ProfileBadge';
 import { useAppContext } from '@/components/providers/AppContext';
 import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useMfaStatus } from '@/features/security/mfa';
 import { isMfaReminderDismissed } from '@/features/security/mfaReminder';
+import { useOwnProfileBadge } from '@/features/profile/profileBadge';
 import { toast } from 'sonner';
 import type { Role } from '@/lib/types';
 
@@ -44,6 +45,7 @@ export default function UserMenu({ userEmail, compact = false }: { userEmail?: s
   const { companyId, companies, authRole } = useAppContext();
   const router = useRouter();
   const mfaStatusQuery = useMfaStatus(true);
+  const profileBadgeQuery = useOwnProfileBadge(companyId);
   const [mfaDismissed, setMfaDismissed] = useState(false);
 
   useEffect(() => {
@@ -79,8 +81,16 @@ export default function UserMenu({ userEmail, compact = false }: { userEmail?: s
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="secondary" size={compact ? 'icon' : 'sm'} className={compact ? 'h-10 w-10 rounded-full' : 'gap-2 rounded-full pl-2 pr-3'}>
-          <span className="relative inline-flex h-7 w-7 items-center justify-center rounded-full bg-primary/12 text-primary">
-            <CircleUserRound className="h-4 w-4" />
+          <span className="relative">
+            <ProfileBadge
+              label={userEmail ?? 'Profil'}
+              color={profileBadgeQuery.data?.color}
+              avatarUrl={profileBadgeQuery.data?.avatarUrl}
+              emoji={profileBadgeQuery.data?.emoji}
+              className="h-7 w-7"
+              textClassName="text-xs font-semibold text-white"
+              fallbackIcon
+            />
             {showMfaIndicator ? (
               <span className="absolute -right-1 -top-1 inline-flex h-2.5 w-2.5 rounded-full bg-amber-500" />
             ) : null}

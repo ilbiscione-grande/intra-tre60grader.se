@@ -5,6 +5,7 @@ import { Camera, Edit3, FileText, ImagePlus, Paperclip, Reply, Send, Trash2, Typ
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import ActionSheet from '@/components/common/ActionSheet';
+import ProfileBadge from '@/components/common/ProfileBadge';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -22,15 +23,10 @@ import {
   removeProjectUpdateAttachments,
   uploadProjectUpdateAttachment
 } from './projectUpdateStorage';
+import type { ProjectMemberVisual } from '@/features/projects/projectQueries';
 
 type ProjectUpdateRow = DbRow<'project_updates'>;
 type ProjectUpdateAttachmentRow = DbRow<'project_update_attachments'>;
-type SystemActivityItem = {
-  id: string;
-  at: string;
-  text: string;
-  source: 'system' | 'user';
-};
 
 type ComposerState = {
   content: string;
@@ -41,8 +37,9 @@ function emptyComposer(): ComposerState {
   return { content: '', files: [] };
 }
 
-function authorLabel(update: ProjectUpdateRow, currentUserId: string | null) {
+function authorLabel(update: ProjectUpdateRow, currentUserId: string | null, author?: ProjectMemberVisual | null) {
   if (update.created_by && currentUserId && update.created_by === currentUserId) return 'Du';
+  if (author?.email) return author.email;
   if (update.parent_id) return 'Svar';
   return 'Intern användare';
 }
@@ -158,14 +155,12 @@ export default function ProjectUpdatesPanel({
   projectId,
   isActive,
   onOpenUpdates,
-  systemActivity,
   highlightUpdateId
 }: {
   companyId: string;
   projectId: string;
   isActive: boolean;
   onOpenUpdates: () => void;
-  systemActivity: SystemActivityItem[];
   highlightUpdateId?: string | null;
 }) {
   const supabase = useMemo(() => createClient(), []);
@@ -250,15 +245,9 @@ export default function ProjectUpdatesPanel({
         throw new Error(body?.error ?? 'Kunde inte läsa medlemskatalog');
       }
       const body = (await res.json()) as {
-        members: Array<{
-          id: string;
-          user_id: string;
-          role: string;
-          email: string | null;
-          handle: string | null;
-        }>;
+        availableMembers: ProjectMemberVisual[];
       };
-      return body.members ?? [];
+      return body.availableMembers ?? [];
     }
   });
 
@@ -455,6 +444,13 @@ export default function ProjectUpdatesPanel({
 
   const updates = updatesQuery.data ?? [];
   const attachments = attachmentsQuery.data ?? [];
+  const memberByUserId = useMemo(() => {
+    const map = new Map<string, ProjectMemberVisual>();
+    for (const member of directoryQuery.data ?? []) {
+      map.set(member.user_id, member);
+    }
+    return map;
+  }, [directoryQuery.data]);
   const childrenMap = useMemo(() => buildChildrenMap(updates), [updates]);
   const attachmentMap = useMemo(() => buildAttachmentMap(updates, attachments), [attachments, updates]);
   const rootUpdates = childrenMap.get(null) ?? [];
@@ -540,6 +536,7 @@ export default function ProjectUpdatesPanel({
       ...attachment,
       signedUrl: attachmentUrlsQuery.data?.[attachment.path]
     }));
+    const author = update.created_by ? memberByUserId.get(update.created_by) ?? null : null;
 
     return (
       <div key={update.id} className={`space-y-3 ${indentClass}`}>
@@ -551,7 +548,15 @@ export default function ProjectUpdatesPanel({
         >
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              <Badge className="bg-muted/70">{authorLabel(update, currentUserQuery.data?.id ?? null)}</Badge>
+              <ProfileBadge
+                label={author?.email ?? update.created_by ?? 'Intern användare'}
+                color={author?.color}
+                avatarUrl={author?.avatar_url}
+                emoji={author?.emoji}
+                className="h-7 w-7 shrink-0"
+                textClassName="text-[11px] font-semibold text-white"
+              />
+              <Badge className="bg-muted/70">{authorLabel(update, currentUserQuery.data?.id ?? null, author)}</Badge>
               {update.parent_id ? <Badge className="bg-secondary/80">Svar</Badge> : <Badge>Uppdatering</Badge>}
               {isEdited ? <Badge className="bg-muted/70">Redigerad</Badge> : null}
               {mentionsCurrentUser ? <Badge className="bg-primary/15 text-primary">Nämner dig</Badge> : null}
@@ -730,21 +735,6 @@ export default function ProjectUpdatesPanel({
             ) : null}
 
             <div className="space-y-3">{rootUpdates.map((update) => renderThread(update))}</div>
-
-            {systemActivity.length > 0 ? (
-              <div className="space-y-3 border-t border-border/70 pt-4">
-                <p className="text-sm font-medium text-foreground/80">Systemhändelser</p>
-                {systemActivity.slice(0, 8).map((item) => (
-                  <div key={item.id} className="rounded-lg border border-dashed p-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-sm font-medium">{item.text}</p>
-                      <Badge className="bg-secondary/80">{item.source}</Badge>
-                    </div>
-                    <p className="mt-1 text-xs text-foreground/55">{new Date(item.at).toLocaleString('sv-SE')}</p>
-                  </div>
-                ))}
-              </div>
-            ) : null}
           </CardContent>
         </Card>
       ) : null}

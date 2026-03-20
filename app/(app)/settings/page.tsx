@@ -6,6 +6,7 @@ import type { Route } from 'next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import RoleGate from '@/components/common/RoleGate';
+import ProfileBadge from '@/components/common/ProfileBadge';
 import MfaSettingsCard from '@/components/security/MfaSettingsCard';
 import { useAppContext } from '@/components/providers/AppContext';
 import {
@@ -21,6 +22,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { periodCloseChecklist } from '@/lib/rpc';
 import { createClient } from '@/lib/supabase/client';
 import BackupRetentionCard from '@/components/settings/BackupRetentionCard';
+import {
+  DEFAULT_PROFILE_BADGE_COLOR,
+  PROFILE_BADGE_COLORS,
+  PROFILE_BADGE_EMOJIS,
+  PROFILE_BADGE_PREFERENCE_KEY,
+  useOwnProfileBadge
+} from '@/features/profile/profileBadge';
+import { removeProfileAvatar, uploadProfileAvatar } from '@/features/profile/profileAvatarStorage';
 
 function toErrorMessage(error: unknown, fallback: string) {
   if (error instanceof Error) return error.message;
@@ -80,7 +89,24 @@ export default function SettingsPage() {
   const [periodLockDate, setPeriodLockDate] = useState('');
   const [closePeriodStart, setClosePeriodStart] = useState(new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10));
   const [closePeriodEnd, setClosePeriodEnd] = useState(new Date().toISOString().slice(0, 10));
+  const [profileColor, setProfileColor] = useState(DEFAULT_PROFILE_BADGE_COLOR);
+  const [profileEmoji, setProfileEmoji] = useState<string | null>(null);
+  const [profileFile, setProfileFile] = useState<File | null>(null);
+  const [removeAvatarOnSave, setRemoveAvatarOnSave] = useState(false);
   const isProduction = process.env.NODE_ENV === 'production';
+  const ownProfileBadgeQuery = useOwnProfileBadge(companyId);
+
+  const currentUserQuery = useQuery({
+    queryKey: ['settings-user', companyId],
+    queryFn: async () => {
+      const {
+        data: { user },
+        error
+      } = await supabase.auth.getUser();
+      if (error) throw error;
+      return user;
+    }
+  });
 
   useEffect(() => {
     const value = window.localStorage.getItem(SIDEBAR_KEY);
@@ -125,6 +151,12 @@ export default function SettingsPage() {
     setCompanyDraft(companyQuery.data);
     setPeriodLockDate(companyQuery.data.locked_until ?? '');
   }, [companyQuery.data]);
+
+  useEffect(() => {
+    if (!ownProfileBadgeQuery.data) return;
+    setProfileColor(ownProfileBadgeQuery.data.color || DEFAULT_PROFILE_BADGE_COLOR);
+    setProfileEmoji(ownProfileBadgeQuery.data.emoji ?? null);
+  }, [ownProfileBadgeQuery.data]);
 
   const saveCompanyMutation = useMutation({
     mutationFn: async () => {
@@ -201,6 +233,58 @@ export default function SettingsPage() {
       toast.error(toErrorMessage(error, 'Kunde inte uppdatera periodlås'));
     }
   });
+
+  const saveProfileBadgeMutation = useMutation({
+    mutationFn: async () => {
+      const user = currentUserQuery.data;
+      if (!user?.id) throw new Error('Användare saknas');
+
+      let avatarPath = removeAvatarOnSave ? null : ownProfileBadgeQuery.data?.avatarPath ?? null;
+
+      if (profileFile) {
+        const nextPath = await uploadProfileAvatar(companyId, user.id, profileFile);
+        if (avatarPath && avatarPath !== nextPath) {
+          await removeProfileAvatar(avatarPath);
+        }
+        avatarPath = nextPath;
+      } else if (removeAvatarOnSave && ownProfileBadgeQuery.data?.avatarPath) {
+        await removeProfileAvatar(ownProfileBadgeQuery.data.avatarPath);
+      }
+
+      const { error } = await supabase.from('user_company_preferences').upsert(
+        {
+          company_id: companyId,
+          user_id: user.id,
+          preference_key: PROFILE_BADGE_PREFERENCE_KEY,
+          preference_value: {
+            color: profileColor,
+            avatar_path: avatarPath,
+            emoji: profileEmoji
+          }
+        },
+        {
+          onConflict: 'company_id,user_id,preference_key'
+        }
+      );
+
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      setProfileFile(null);
+      setRemoveAvatarOnSave(false);
+      await queryClient.invalidateQueries({ queryKey: ['own-profile-badge', companyId] });
+      toast.success('Profilutseende sparat');
+    },
+    onError: (error) => {
+      toast.error(toErrorMessage(error, 'Kunde inte spara profilutseende'));
+    }
+  });
+
+  const avatarPreview = useMemo(() => {
+    if (profileFile) return URL.createObjectURL(profileFile);
+    if (removeAvatarOnSave) return null;
+    return ownProfileBadgeQuery.data?.avatarUrl ?? null;
+  }, [ownProfileBadgeQuery.data?.avatarUrl, profileFile, removeAvatarOnSave]);
 
   const securityAlerts = useMemo(() => {
     const events = securityEventsQuery.data ?? [];
@@ -309,6 +393,95 @@ export default function SettingsPage() {
           <Button asChild variant="outline">
             <Link href={'/settings/security' as Route}>Öppna säkerhet</Link>
           </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Profilutseende</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center gap-4">
+            <ProfileBadge
+              label={currentUserQuery.data?.email}
+              color={avatarPreview ? undefined : profileColor}
+              avatarUrl={avatarPreview}
+              emoji={avatarPreview ? null : profileEmoji}
+              className="h-16 w-16"
+              textClassName="text-lg font-semibold text-white"
+            />
+            <div className="space-y-1">
+              <p className="text-sm font-medium">Välj färg eller profilbild</p>
+              <p className="text-sm text-foreground/70">Färgen används som fallback när profilbild saknas. Du kan också välja en emoji-avatar.</p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            {PROFILE_BADGE_COLORS.map((color) => (
+              <button
+                key={color}
+                type="button"
+                aria-label={`Välj färg ${color}`}
+                onClick={() => setProfileColor(color)}
+                className={`h-9 w-9 rounded-full ring-offset-2 transition ${profileColor === color ? 'ring-2 ring-primary ring-offset-background' : 'ring-1 ring-border'}`}
+                style={{ backgroundColor: color }}
+              />
+            ))}
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-sm font-medium">Emoji-profil</p>
+            <div className="flex flex-wrap gap-2">
+              {PROFILE_BADGE_EMOJIS.map((emoji) => (
+                <button
+                  key={emoji}
+                  type="button"
+                  aria-label={`Välj emoji ${emoji}`}
+                  onClick={() => setProfileEmoji(emoji)}
+                  className={`inline-flex h-10 w-10 items-center justify-center rounded-full border text-lg transition ${
+                    profileEmoji === emoji ? 'border-primary bg-primary/10' : 'border-border bg-muted/20'
+                  }`}
+                >
+                  {emoji}
+                </button>
+              ))}
+              <Button type="button" variant="outline" onClick={() => setProfileEmoji(null)}>
+                Ingen emoji
+              </Button>
+            </div>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-[1fr_auto_auto] md:items-end">
+            <label className="space-y-1">
+              <span className="text-sm">Profilbild</span>
+              <Input
+                type="file"
+                accept="image/*"
+                onChange={(event) => {
+                  setProfileFile(event.target.files?.[0] ?? null);
+                  if (event.target.files?.[0]) setRemoveAvatarOnSave(false);
+                }}
+              />
+            </label>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={!ownProfileBadgeQuery.data?.avatarPath && !profileFile}
+              onClick={() => {
+                setProfileFile(null);
+                setRemoveAvatarOnSave(true);
+              }}
+            >
+              Ta bort bild
+            </Button>
+            <Button
+              type="button"
+              onClick={() => saveProfileBadgeMutation.mutate()}
+              disabled={saveProfileBadgeMutation.isPending || currentUserQuery.isLoading}
+            >
+              {saveProfileBadgeMutation.isPending ? 'Sparar...' : 'Spara profil'}
+            </Button>
+          </div>
         </CardContent>
       </Card>
 

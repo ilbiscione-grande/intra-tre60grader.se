@@ -28,7 +28,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import ProjectCard from '@/features/projects/ProjectCard';
-import { useMoveProject, useProjectColumns, useProjects } from '@/features/projects/projectQueries';
+import { useMoveProject, useProjectColumns, useProjectMembers, useProjects } from '@/features/projects/projectQueries';
 import { createClient } from '@/lib/supabase/client';
 import type { Project } from '@/lib/types';
 
@@ -286,10 +286,22 @@ export default function ProjectBoardDesktop({ companyId }: { companyId: string }
   const queryClient = useQueryClient();
   const projectsQuery = useProjects(companyId);
   const columnsQuery = useProjectColumns(companyId);
+  const projectMembersQuery = useProjectMembers(companyId);
   const moveMutation = useMoveProject(companyId);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
   const columns = columnsQuery.data ?? [];
+  const availableMembers = projectMembersQuery.data?.availableMembers ?? [];
+  const membersByProjectId = useMemo(() => {
+    const next = new Map<string, NonNullable<React.ComponentProps<typeof ProjectCard>['members']>>();
+    for (const assignment of projectMembersQuery.data?.assignments ?? []) {
+      if (!assignment.member) continue;
+      const current = next.get(assignment.project_id) ?? [];
+      current.push(assignment.member);
+      next.set(assignment.project_id, current);
+    }
+    return next;
+  }, [projectMembersQuery.data?.assignments]);
   const statuses = useMemo(() => columns.map((c) => c.key), [columns]);
   const titleByStatus = useMemo(() => new Map(columns.map((c) => [c.key, c.title])), [columns]);
 
@@ -631,7 +643,12 @@ export default function ProjectBoardDesktop({ companyId }: { companyId: string }
                     <div className="min-h-24 space-y-3">
                       {list.map((project) => (
                         <SortableCardItem key={project.id} id={project.id}>
-                          <ProjectCard project={project} statusLabel={titleByStatus.get(project.status) ?? project.status} />
+                          <ProjectCard
+                            project={project}
+                            statusLabel={titleByStatus.get(project.status) ?? project.status}
+                            members={membersByProjectId.get(project.id) ?? []}
+                            availableMembers={availableMembers}
+                          />
                         </SortableCardItem>
                       ))}
                     </div>

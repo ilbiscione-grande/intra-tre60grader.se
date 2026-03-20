@@ -6,8 +6,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import ActionSheet from '@/components/common/ActionSheet';
+import ProfileBadge from '@/components/common/ProfileBadge';
 import { createClient } from '@/lib/supabase/client';
-import { useCreateProject, useProjectColumns } from '@/features/projects/projectQueries';
+import { useCreateProject, useProjectColumns, useProjectMembers, type ProjectMemberVisual } from '@/features/projects/projectQueries';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -20,6 +21,7 @@ type CreateProjectFormData = {
   customerSelect?: string;
   newCustomerName?: string;
   orderTotal: number;
+  memberIds: string[];
 };
 
 type CustomerItem = { id: string; name: string };
@@ -34,7 +36,8 @@ function buildSchema() {
       status: z.string().min(1, 'Status krävs'),
       customerSelect: z.string().optional(),
       newCustomerName: z.string().optional(),
-      orderTotal: z.coerce.number().min(0)
+      orderTotal: z.coerce.number().min(0),
+      memberIds: z.array(z.string()).default([])
     })
     .superRefine((value, ctx) => {
       if (value.customerSelect === NEW_CUSTOMER_VALUE && !(value.newCustomerName ?? '').trim()) {
@@ -52,15 +55,18 @@ function ProjectForm({
   isPending,
   customers,
   columns,
-  initialStatus
+  initialStatus,
+  availableMembers
 }: {
   onSubmit: (data: CreateProjectFormData) => Promise<void>;
   isPending: boolean;
   customers: CustomerItem[];
   columns: ColumnItem[];
   initialStatus: string;
+  availableMembers: ProjectMemberVisual[];
 }) {
   const schema = useMemo(() => buildSchema(), []);
+  const [memberRoleFilter, setMemberRoleFilter] = useState<'all' | ProjectMemberVisual['role']>('all');
 
   const form = useForm<CreateProjectFormData>({
     resolver: zodResolver(schema),
@@ -69,11 +75,17 @@ function ProjectForm({
       status: initialStatus,
       customerSelect: '',
       newCustomerName: '',
-      orderTotal: 0
+      orderTotal: 0,
+      memberIds: []
     }
   });
 
   const selectedCustomer = form.watch('customerSelect');
+  const selectedMemberIds = form.watch('memberIds');
+  const filteredMembers = useMemo(() => {
+    if (memberRoleFilter === 'all') return availableMembers;
+    return availableMembers.filter((member) => member.role === memberRoleFilter);
+  }, [availableMembers, memberRoleFilter]);
 
   useEffect(() => {
     if (initialStatus && !form.getValues('status')) {
@@ -91,7 +103,8 @@ function ProjectForm({
           status: initialStatus,
           customerSelect: '',
           newCustomerName: '',
-          orderTotal: 0
+          orderTotal: 0,
+          memberIds: []
         });
       })}
     >
@@ -149,6 +162,78 @@ function ProjectForm({
         <Input type="number" {...form.register('orderTotal')} />
       </div>
 
+      <div className="space-y-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm">Tilldela medlemmar</p>
+          <div className="flex flex-wrap gap-2">
+            {(['all', 'member', 'finance', 'admin', 'auditor'] as const).map((filter) => (
+              <button
+                key={filter}
+                type="button"
+                onClick={() => setMemberRoleFilter(filter)}
+                className={`rounded-full border px-2.5 py-1 text-xs font-medium transition ${
+                  memberRoleFilter === filter ? 'border-primary bg-primary/10 text-foreground' : 'border-border text-foreground/65'
+                }`}
+              >
+                {filter === 'all' ? 'Alla' : filter}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => form.setValue('memberIds', filteredMembers.map((member) => member.user_id))}
+          >
+            Markera alla
+          </Button>
+          <Button type="button" variant="ghost" size="sm" onClick={() => form.setValue('memberIds', [])}>
+            Rensa
+          </Button>
+        </div>
+        <div className="grid max-h-56 gap-2 overflow-y-auto rounded-lg border p-2">
+          {availableMembers.length === 0 ? <p className="text-sm text-foreground/65">Inga medlemmar hittades.</p> : null}
+          {filteredMembers.map((member) => {
+            const isSelected = selectedMemberIds.includes(member.user_id);
+            return (
+              <button
+                key={member.id}
+                type="button"
+                className={`flex items-center justify-between gap-3 rounded-lg border p-2 text-left transition ${
+                  isSelected ? 'border-primary bg-primary/5' : 'border-border'
+                }`}
+                onClick={() =>
+                  form.setValue(
+                    'memberIds',
+                    isSelected
+                      ? selectedMemberIds.filter((id) => id !== member.user_id)
+                      : [...selectedMemberIds, member.user_id]
+                  )
+                }
+              >
+                <div className="flex min-w-0 items-center gap-3">
+                  <ProfileBadge
+                    label={member.email ?? member.user_id}
+                    color={member.color}
+                    avatarUrl={member.avatar_url}
+                    emoji={member.emoji}
+                    className="h-8 w-8 shrink-0"
+                    textClassName="text-xs font-semibold text-white"
+                  />
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">{member.email ?? member.user_id}</p>
+                    <p className="text-xs text-foreground/55">{member.role}</p>
+                  </div>
+                </div>
+                <span className="text-xs font-medium text-foreground/70">{isSelected ? 'Vald' : 'Lägg till'}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       <Button className="w-full" type="submit" disabled={isPending || columns.length === 0}>
         {isPending ? 'Skapar...' : 'Skapa projekt'}
       </Button>
@@ -160,6 +245,7 @@ export default function CreateProjectEntry({ companyId, mode }: { companyId: str
   const [open, setOpen] = useState(false);
   const createMutation = useCreateProject(companyId);
   const columnsQuery = useProjectColumns(companyId);
+  const projectMembersQuery = useProjectMembers(companyId);
 
   const customersQuery = useQuery<CustomerItem[]>({
     queryKey: ['customers', companyId],
@@ -190,6 +276,7 @@ export default function CreateProjectEntry({ companyId, mode }: { companyId: str
       customer_id: customerId,
       customer_name: customerName,
       order_total: data.orderTotal,
+      member_ids: data.memberIds,
       source: 'ui'
     });
 
@@ -212,6 +299,7 @@ export default function CreateProjectEntry({ companyId, mode }: { companyId: str
               customers={customers}
               columns={columns}
               initialStatus={initialStatus}
+              availableMembers={projectMembersQuery.data?.availableMembers ?? []}
             />
           </ActionSheet>
         </CardContent>
@@ -236,6 +324,7 @@ export default function CreateProjectEntry({ companyId, mode }: { companyId: str
             customers={customers}
             columns={columns}
             initialStatus={initialStatus}
+            availableMembers={projectMembersQuery.data?.availableMembers ?? []}
           />
         </DialogContent>
       </Dialog>

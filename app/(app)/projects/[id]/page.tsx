@@ -7,6 +7,7 @@ import { useParams, useSearchParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, ArrowUpRight, CalendarDays, CircleDollarSign, FolderKanban, Paperclip, ReceiptText, Users } from 'lucide-react';
 import { toast } from 'sonner';
+import ProfileBadge from '@/components/common/ProfileBadge';
 import RoleGate from '@/components/common/RoleGate';
 import { useAppContext } from '@/components/providers/AppContext';
 import { Badge } from '@/components/ui/badge';
@@ -23,7 +24,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { createInvoiceFromOrder } from '@/lib/rpc';
-import { useProjectColumns } from '@/features/projects/projectQueries';
+import { useProjectColumns, useProjectMembers, type ProjectMemberVisual } from '@/features/projects/projectQueries';
 import ProjectFinancePanel from '@/features/projects/ProjectFinancePanel';
 import ProjectUpdatesPanel from '@/features/projects/ProjectUpdatesPanel';
 import { createClient } from '@/lib/supabase/client';
@@ -46,15 +47,6 @@ type InvoiceRow = Pick<
   DbRow<'invoices'>,
   'id' | 'invoice_no' | 'status' | 'currency' | 'issue_date' | 'due_date' | 'subtotal' | 'vat_total' | 'total' | 'created_at' | 'attachment_path' | 'order_id' | 'project_id'
 >;
-type MemberView = {
-  id: string;
-  company_id: string;
-  user_id: string;
-  role: Role;
-  created_at: string;
-  email: string | null;
-};
-
 type ActivityItem = {
   id: string;
   at: string;
@@ -195,6 +187,8 @@ export default function ProjectDetailsPage() {
   const [pendingOrderStatus, setPendingOrderStatus] = useState<OrderStatus | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<OrderLineRow | null>(null);
   const [activeTab, setActiveTab] = useState<ProjectTab>('overview');
+  const [memberSearch, setMemberSearch] = useState('');
+  const [memberRoleFilter, setMemberRoleFilter] = useState<'all' | Role>('all');
   const swipeHandlers = useSwipeTabs({
     tabs: projectTabs.map((tab) => tab.id),
     activeTab,
@@ -357,19 +351,7 @@ export default function ProjectDetailsPage() {
     }
   });
 
-  const membersQuery = useQuery<MemberView[]>({
-    queryKey: ['project-company-members', companyId],
-    enabled: role === 'admin',
-    queryFn: async () => {
-      const res = await fetch(`/api/admin/members?companyId=${companyId}`);
-      if (!res.ok) {
-        const body = await res.json().catch(() => null);
-        throw new Error(body?.error ?? 'Kunde inte läsa medlemmar');
-      }
-      const body = (await res.json()) as { members: MemberView[] };
-      return body.members ?? [];
-    }
-  });
+  const projectMembersQuery = useProjectMembers(companyId);
 
   useEffect(() => {
     if (!projectQuery.data) return;
@@ -643,6 +625,28 @@ export default function ProjectDetailsPage() {
     return counts;
   }, [invoiceSourceCountsQuery.data]);
 
+  const saveProjectMembersMutation = useMutation({
+    mutationFn: async (userIds: string[]) => {
+      const res = await fetch('/api/project-members', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ companyId, projectId, userIds })
+      });
+
+      const body = (await res.json().catch(() => null)) as { error?: string } | null;
+      if (!res.ok) {
+        throw new Error(body?.error ?? 'Kunde inte uppdatera projektmedlemmar');
+      }
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['project-members', companyId] });
+      toast.success('Projektmedlemmar uppdaterade');
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error, 'Kunde inte uppdatera projektmedlemmar'));
+    }
+  });
+
   if (projectQuery.isLoading) return <p>Laddar...</p>;
   if (!projectQuery.data) return <p>Projekt saknas.</p>;
 
@@ -659,37 +663,29 @@ export default function ProjectDetailsPage() {
   const latestActivityItem = activity[0] ?? null;
   const projectStatusLabel = projectColumnTitle(draftStatus || project.status, statusColumns);
   const invoiceAttachments = (invoicesQuery.data ?? []).filter((invoice) => Boolean(invoice.attachment_path));
-  const members = membersQuery.data ?? [];
-  const projectLogs = [
-    {
-      id: `project-created-${project.id}`,
-      title: 'Projekt registrerat',
-      detail: project.title,
-      at: project.created_at
-    },
-    {
-      id: `project-updated-${project.id}`,
-      title: 'Projekt uppdaterat',
-      detail: `Kolumn: ${projectColumnTitle(project.status, statusColumns)}`,
-      at: project.updated_at
-    },
-    ...(orderQuery.data
-      ? [
-          {
-            id: `project-order-${orderQuery.data.id}`,
-            title: 'Order kopplad',
-            detail: `${orderStatusEtikett(orderQuery.data.status)} • ${Number(orderQuery.data.total ?? 0).toFixed(2)} kr`,
-            at: orderQuery.data.created_at
-          }
-        ]
-      : []),
-    ...(invoicesQuery.data ?? []).map((invoice) => ({
-      id: `project-invoice-${invoice.id}`,
-      title: 'Faktura registrerad',
-      detail: `${invoice.invoice_no} • ${fakturaStatusEtikett(invoice.status)}`,
-      at: invoice.created_at
+  const availableMembers = projectMembersQuery.data?.availableMembers ?? [];
+  const assignedMembers = (projectMembersQuery.data?.assignments ?? [])
+    .filter((assignment) => assignment.project_id === projectId)
+    .map((assignment) => assignment.member)
+    .filter((member): member is ProjectMemberVisual => Boolean(member));
+  const assignedUserIds = new Set(assignedMembers.map((member) => member.user_id));
+  const filteredAvailableMembers = useMemo(() => {
+    const query = memberSearch.trim().toLowerCase();
+    const roleFiltered = memberRoleFilter === 'all' ? availableMembers : availableMembers.filter((member) => member.role === memberRoleFilter);
+    if (!query) return roleFiltered;
+    return roleFiltered.filter((member) => {
+      const haystack = [member.email, member.handle, roleLabel(member.role)].filter(Boolean).join(' ').toLowerCase();
+      return haystack.includes(query);
+    });
+  }, [availableMembers, memberRoleFilter, memberSearch]);
+  const projectLogs = activity
+    .map((item) => ({
+      id: item.id,
+      title: item.source === 'user' ? 'Aktivitetshistorik' : 'Systemhändelse',
+      detail: item.text,
+      at: item.at
     }))
-  ].sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
+    .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
 
   return (
     <section className="space-y-3 md:space-y-4">
@@ -829,6 +825,10 @@ export default function ProjectDetailsPage() {
                   {latestInvoice && (invoiceSourceCounts.get(latestInvoice.id) ?? 0) > 1 ? (
                     <p className="mt-1 text-xs text-primary">Minst en samlingsfaktura ingår</p>
                   ) : null}
+                </div>
+                <div className="rounded-lg border p-3">
+                  <p className="text-sm text-foreground/70">Tilldelade</p>
+                  <p className="mt-1 font-medium">{assignedMembers.length}</p>
                 </div>
                 <div className="rounded-lg border p-3">
                   <p className="text-sm text-foreground/70">Ordertotal</p>
@@ -1106,56 +1106,128 @@ export default function ProjectDetailsPage() {
             <div className="grid gap-3 md:grid-cols-3">
               <div className="rounded-lg border p-3">
                 <p className="text-sm text-foreground/70">Projektmodell</p>
-                <p className="mt-1 font-medium">Ärver bolagets team</p>
+                <p className="mt-1 font-medium">Tilldelade projektmedlemmar</p>
               </div>
               <div className="rounded-lg border p-3">
                 <p className="text-sm text-foreground/70">Tillgängliga medlemmar</p>
-                <p className="mt-1 font-medium">{role === 'admin' ? members.length : '-'}</p>
+                <p className="mt-1 font-medium">{availableMembers.length}</p>
               </div>
               <div className="rounded-lg border p-3">
-                <p className="text-sm text-foreground/70">Senaste aktivitet</p>
-                <p className="mt-1 font-medium">
-                  {latestActivityItem ? new Date(latestActivityItem.at).toLocaleDateString('sv-SE') : 'Ingen ännu'}
-                </p>
+                <p className="text-sm text-foreground/70">Tilldelade i projektet</p>
+                <p className="mt-1 font-medium">{assignedMembers.length}</p>
               </div>
             </div>
 
-            {role === 'admin' && members.length > 0 ? (
+            {assignedMembers.length > 0 ? (
               <div className="space-y-3">
-                {members.slice(0, 8).map((member) => (
+                {assignedMembers.map((member) => (
                   <div key={member.id} className="flex items-center justify-between gap-3 rounded-lg border p-3">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
-                        <Users className="h-4 w-4 text-foreground/55" />
+                        <ProfileBadge
+                          label={member.email ?? member.user_id}
+                          color={member.color}
+                          avatarUrl={member.avatar_url}
+                          emoji={member.emoji}
+                          className="h-8 w-8 shrink-0"
+                          textClassName="text-xs font-semibold text-white"
+                        />
                         <p className="truncate text-sm font-medium">{member.email ?? member.user_id}</p>
                       </div>
-                      <p className="mt-1 text-xs text-foreground/55">
-                        Tillagd {new Date(member.created_at).toLocaleDateString('sv-SE')}
-                      </p>
+                      <p className="mt-1 text-xs text-foreground/55">Tilldelad projektet</p>
                     </div>
                     <Badge>{roleLabel(member.role)}</Badge>
                   </div>
                 ))}
-                {members.length > 8 ? (
-                  <p className="text-xs text-foreground/55">Visar 8 av {members.length} tillgängliga bolagsmedlemmar.</p>
-                ) : null}
               </div>
             ) : (
-              <p className="text-sm text-foreground/70">
-                Projektet använder bolagets teammedlemmar. Öppna medlemmar för att se eller hantera teamet.
-              </p>
+              <p className="text-sm text-foreground/70">Inga medlemmar är tilldelade ännu.</p>
             )}
 
-            <div className="flex flex-wrap gap-2">
-              <Button asChild variant="outline">
-                <Link href="/team">Öppna medlemmar</Link>
-              </Button>
-              {orderId ? (
-                <Button asChild variant="ghost">
-                  <Link href={`/orders/${orderId}` as Route}>Öppna order</Link>
-                </Button>
-              ) : null}
-            </div>
+            {role !== 'auditor' ? (
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-sm font-medium text-foreground/80">Tilldela medlemmar</p>
+                  <div className="flex flex-wrap gap-2">
+                    {(['all', 'member', 'finance', 'admin', 'auditor'] as const).map((filter) => (
+                      <button
+                        key={filter}
+                        type="button"
+                        onClick={() => setMemberRoleFilter(filter)}
+                        className={`rounded-full border px-2.5 py-1 text-xs font-medium transition ${
+                          memberRoleFilter === filter ? 'border-primary bg-primary/10 text-foreground' : 'border-border text-foreground/65'
+                        }`}
+                      >
+                        {filter === 'all' ? 'Alla' : roleLabel(filter)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <Input
+                  placeholder="Sök på e-post, namn eller roll"
+                  value={memberSearch}
+                  onChange={(event) => setMemberSearch(event.target.value)}
+                />
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={saveProjectMembersMutation.isPending}
+                    onClick={() => saveProjectMembersMutation.mutate(filteredAvailableMembers.map((member) => member.user_id))}
+                  >
+                    Markera alla
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={saveProjectMembersMutation.isPending}
+                    onClick={() => saveProjectMembersMutation.mutate([])}
+                  >
+                    Rensa
+                  </Button>
+                </div>
+                <div className="grid gap-2 md:grid-cols-2">
+                  {filteredAvailableMembers.map((member) => {
+                    const isAssigned = assignedUserIds.has(member.user_id);
+                    return (
+                      <button
+                        key={member.id}
+                        type="button"
+                        className={`flex items-center justify-between gap-3 rounded-lg border p-3 text-left transition ${
+                          isAssigned ? 'border-primary bg-primary/5' : 'border-border'
+                        }`}
+                        disabled={saveProjectMembersMutation.isPending}
+                        onClick={() => {
+                          const next = new Set(assignedUserIds);
+                          if (isAssigned) next.delete(member.user_id);
+                          else next.add(member.user_id);
+                          saveProjectMembersMutation.mutate(Array.from(next));
+                        }}
+                      >
+                        <div className="flex min-w-0 items-center gap-3">
+                          <ProfileBadge
+                            label={member.email ?? member.user_id}
+                            color={member.color}
+                            avatarUrl={member.avatar_url}
+                            emoji={member.emoji}
+                            className="h-8 w-8 shrink-0"
+                            textClassName="text-xs font-semibold text-white"
+                          />
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium">{member.email ?? member.user_id}</p>
+                            <p className="text-xs text-foreground/55">{roleLabel(member.role)}</p>
+                          </div>
+                        </div>
+                        <Badge>{isAssigned ? 'Tilldelad' : 'Lägg till'}</Badge>
+                      </button>
+                    );
+                  })}
+                </div>
+                {filteredAvailableMembers.length === 0 ? <p className="text-sm text-foreground/65">Inga medlemmar matchar sökningen.</p> : null}
+              </div>
+            ) : null}
           </CardContent>
         </Card>
       )}
@@ -1186,7 +1258,7 @@ export default function ProjectDetailsPage() {
               </div>
             ) : null}
             <div className="space-y-3 pt-1">
-              <p className="text-sm font-medium text-foreground/80">Händelselogg</p>
+              <p className="text-sm font-medium text-foreground/80">Aktivitetshistorik / systemhändelser</p>
               {projectLogs.map((log) => (
                 <div key={log.id} className="rounded-lg border p-3 text-sm">
                   <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1212,7 +1284,6 @@ export default function ProjectDetailsPage() {
         projectId={projectId}
         isActive={activeTab === 'updates'}
         onOpenUpdates={() => setActiveTab('updates')}
-        systemActivity={activity}
         highlightUpdateId={searchParams.get('update')}
       />
 
