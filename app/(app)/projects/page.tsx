@@ -1,6 +1,7 @@
 'use client';
 
 import { useAppContext } from '@/components/providers/AppContext';
+import SectionErrorBoundary from '@/components/common/SectionErrorBoundary';
 import CreateProjectEntry from '@/features/projects/CreateProjectEntry';
 import ProjectBoardDesktop from '@/features/projects/ProjectBoardDesktop';
 import ProjectBoardMobile from '@/features/projects/ProjectBoardMobile';
@@ -15,20 +16,36 @@ export default function ProjectsPage() {
   if (mode === 'mobile') {
     return (
       <div className="space-y-4">
-        <ProjectOverviewKpis companyId={companyId} />
-        <ProjectLeadershipDashboard companyId={companyId} />
-        <CreateProjectEntry companyId={companyId} mode="mobile" />
-        <ProjectBoardMobile companyId={companyId} />
+        <SectionErrorBoundary title="Projektöversikt">
+          <ProjectOverviewKpis companyId={companyId} />
+        </SectionErrorBoundary>
+        <SectionErrorBoundary title="Ledningsvy">
+          <ProjectLeadershipDashboard companyId={companyId} />
+        </SectionErrorBoundary>
+        <SectionErrorBoundary title="Skapa projekt">
+          <CreateProjectEntry companyId={companyId} mode="mobile" />
+        </SectionErrorBoundary>
+        <SectionErrorBoundary title="Projektflöde">
+          <ProjectBoardMobile companyId={companyId} />
+        </SectionErrorBoundary>
       </div>
     );
   }
 
   return (
     <div className="space-y-4">
-      <ProjectOverviewKpis companyId={companyId} />
-      <ProjectLeadershipDashboard companyId={companyId} />
-      <CreateProjectEntry companyId={companyId} mode="desktop" />
-      <ProjectBoardDesktop companyId={companyId} />
+      <SectionErrorBoundary title="Projektöversikt">
+        <ProjectOverviewKpis companyId={companyId} />
+      </SectionErrorBoundary>
+      <SectionErrorBoundary title="Ledningsvy">
+        <ProjectLeadershipDashboard companyId={companyId} />
+      </SectionErrorBoundary>
+      <SectionErrorBoundary title="Skapa projekt">
+        <CreateProjectEntry companyId={companyId} mode="desktop" />
+      </SectionErrorBoundary>
+      <SectionErrorBoundary title="Projektflöde">
+        <ProjectBoardDesktop companyId={companyId} />
+      </SectionErrorBoundary>
     </div>
   );
 }
