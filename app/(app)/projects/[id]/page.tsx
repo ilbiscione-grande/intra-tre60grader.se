@@ -35,7 +35,7 @@ import { useSwipeTabs } from '@/lib/ui/useSwipeTabs';
 
 type ProjectRow = Pick<
   DbRow<'projects'>,
-  'id' | 'company_id' | 'title' | 'status' | 'position' | 'customer_id' | 'created_at' | 'updated_at'
+  'id' | 'company_id' | 'title' | 'status' | 'position' | 'customer_id' | 'start_date' | 'end_date' | 'milestones' | 'created_at' | 'updated_at'
 >;
 
 type CustomerRow = Pick<DbRow<'customers'>, 'id' | 'name'>;
@@ -54,6 +54,12 @@ type ActivityItem = {
   source: 'system' | 'user';
 };
 type ProjectTab = 'overview' | 'updates' | 'economy' | 'attachments' | 'members' | 'logs';
+type ProjectMilestone = {
+  id: string;
+  title: string;
+  date: string;
+  completed: boolean;
+};
 
 const orderStatuses = ['draft', 'sent', 'paid', 'cancelled', 'invoiced'] as const;
 type OrderStatus = (typeof orderStatuses)[number];
@@ -135,6 +141,57 @@ function projectColumnTitle(status: string, columns: Array<{ key: string; title:
   return columns.find((column) => column.key === status)?.title ?? status;
 }
 
+function normalizeProjectMilestones(value: Json | null | undefined): ProjectMilestone[] {
+  if (!Array.isArray(value)) return [];
+
+  return sortProjectMilestones(
+    value
+    .map((item, index) => {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) return null;
+      const record = item as Record<string, unknown>;
+      const title = typeof record.title === 'string' ? record.title.trim() : '';
+      const date = typeof record.date === 'string' ? record.date : '';
+      const completed = Boolean(record.completed);
+      const id = typeof record.id === 'string' && record.id.trim() ? record.id : `milestone-${index}`;
+
+      if (!title && !date) return null;
+      return { id, title, date, completed };
+    })
+    .filter((item): item is ProjectMilestone => Boolean(item))
+  );
+}
+
+function sortProjectMilestones(milestones: ProjectMilestone[]) {
+  return [...milestones].sort((a, b) => {
+    if (a.completed !== b.completed) return a.completed ? 1 : -1;
+    if (!a.date && !b.date) return a.title.localeCompare(b.title, 'sv');
+    if (!a.date) return 1;
+    if (!b.date) return -1;
+    const dateCompare = a.date.localeCompare(b.date);
+    if (dateCompare !== 0) return dateCompare;
+    return a.title.localeCompare(b.title, 'sv');
+  });
+}
+
+function serializeProjectMilestones(milestones: ProjectMilestone[]): Json {
+  return sortProjectMilestones(milestones)
+    .map((milestone) => ({
+      id: milestone.id,
+      title: milestone.title.trim(),
+      date: milestone.date,
+      completed: Boolean(milestone.completed)
+    }))
+    .filter((milestone) => milestone.title || milestone.date);
+}
+
+function formatProjectDate(value?: string | null) {
+  return value ? new Date(value).toLocaleDateString('sv-SE') : 'Ej satt';
+}
+
+function todayIsoDate() {
+  return new Date().toLocaleDateString('sv-CA');
+}
+
 function ProjectSummaryCard({
   icon: Icon,
   label,
@@ -173,6 +230,9 @@ export default function ProjectDetailsPage() {
   const [draftTitle, setDraftTitle] = useState('');
   const [draftStatus, setDraftStatus] = useState<ProjectStatus>('');
   const [draftCustomerId, setDraftCustomerId] = useState<string>('none');
+  const [draftStartDate, setDraftStartDate] = useState('');
+  const [draftEndDate, setDraftEndDate] = useState('');
+  const [draftMilestones, setDraftMilestones] = useState<ProjectMilestone[]>([]);
 
   const [lineTitle, setLineTitle] = useState('');
   const [lineQty, setLineQty] = useState('1');
@@ -215,7 +275,7 @@ export default function ProjectDetailsPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('projects')
-        .select('id,company_id,title,status,position,customer_id,created_at,updated_at')
+        .select('id,company_id,title,status,position,customer_id,start_date,end_date,milestones,created_at,updated_at')
         .eq('company_id', companyId)
         .eq('id', projectId)
         .maybeSingle<ProjectRow>();
@@ -358,7 +418,10 @@ export default function ProjectDetailsPage() {
     setDraftTitle(projectQuery.data.title);
     setDraftStatus(projectQuery.data.status as ProjectStatus);
     setDraftCustomerId(projectQuery.data.customer_id ?? 'none');
-  }, [projectQuery.data?.customer_id, projectQuery.data?.status, projectQuery.data?.title]);
+    setDraftStartDate(projectQuery.data.start_date ?? '');
+    setDraftEndDate(projectQuery.data.end_date ?? '');
+    setDraftMilestones(normalizeProjectMilestones(projectQuery.data.milestones));
+  }, [projectQuery.data?.customer_id, projectQuery.data?.end_date, projectQuery.data?.milestones, projectQuery.data?.start_date, projectQuery.data?.status, projectQuery.data?.title]);
 
   useEffect(() => {
     if (!draftStatus && statusColumns.length > 0) {
@@ -412,11 +475,17 @@ export default function ProjectDetailsPage() {
       if (!title) throw new Error('Titel krävs');
 
       if (!draftStatus) throw new Error('Kolumn krävs');
+      if (draftStartDate && draftEndDate && draftEndDate < draftStartDate) {
+        throw new Error('Slutdatum kan inte vara tidigare än startdatum');
+      }
 
       const payload: Partial<ProjectRow> = {
         title,
         status: draftStatus,
-        customer_id: draftCustomerId === 'none' ? null : draftCustomerId
+        customer_id: draftCustomerId === 'none' ? null : draftCustomerId,
+        start_date: draftStartDate || null,
+        end_date: draftEndDate || null,
+        milestones: serializeProjectMilestones(draftMilestones)
       };
 
       const { error } = await supabase
@@ -647,6 +716,81 @@ export default function ProjectDetailsPage() {
     }
   });
 
+  const availableMembers = projectMembersQuery.data?.availableMembers ?? [];
+  const assignedMembers = useMemo(
+    () =>
+      (projectMembersQuery.data?.assignments ?? [])
+        .filter((assignment) => assignment.project_id === projectId)
+        .map((assignment) => assignment.member)
+        .filter((member): member is ProjectMemberVisual => Boolean(member)),
+    [projectId, projectMembersQuery.data?.assignments]
+  );
+  const assignedUserIds = useMemo(() => new Set(assignedMembers.map((member) => member.user_id)), [assignedMembers]);
+  const filteredAvailableMembers = useMemo(() => {
+    const query = memberSearch.trim().toLowerCase();
+    const roleFiltered = memberRoleFilter === 'all' ? availableMembers : availableMembers.filter((member) => member.role === memberRoleFilter);
+    if (!query) return roleFiltered;
+    return roleFiltered.filter((member) => {
+      const haystack = [member.email, member.handle, roleLabel(member.role)].filter(Boolean).join(' ').toLowerCase();
+      return haystack.includes(query);
+    });
+  }, [availableMembers, memberRoleFilter, memberSearch]);
+  const nextMilestone = useMemo(
+    () =>
+      sortProjectMilestones(draftMilestones)
+        .filter((milestone) => !milestone.completed)
+        [0] ?? null,
+    [draftMilestones]
+  );
+  const orderedMilestones = useMemo(() => sortProjectMilestones(draftMilestones), [draftMilestones]);
+  const planningAlerts = useMemo(() => {
+    const today = todayIsoDate();
+    const alerts: Array<{ id: string; title: string; detail: string; tone: 'danger' | 'warning' | 'info' }> = [];
+    const overdueMilestones = draftMilestones.filter((milestone) => !milestone.completed && milestone.date && milestone.date < today);
+    const upcomingMilestones = draftMilestones.filter((milestone) => !milestone.completed && milestone.date && milestone.date >= today).sort((a, b) => a.date.localeCompare(b.date));
+
+    overdueMilestones.slice(0, 2).forEach((milestone) => {
+      alerts.push({
+        id: `overdue-${milestone.id}`,
+        title: 'Försenat delmål',
+        detail: `${milestone.title || 'Delmål'} skulle varit klart ${formatProjectDate(milestone.date)}`,
+        tone: 'danger'
+      });
+    });
+
+    if (projectQuery.data?.end_date) {
+      if (projectQuery.data.end_date < today) {
+        alerts.push({
+          id: 'end-date-overdue',
+          title: 'Projektet har passerat slutdatum',
+          detail: `Slutdatumet var ${formatProjectDate(projectQuery.data.end_date)}.`,
+          tone: 'danger'
+        });
+      } else {
+        const upcomingEnd = Math.ceil((new Date(projectQuery.data.end_date).getTime() - new Date(today).getTime()) / (1000 * 60 * 60 * 24));
+        if (upcomingEnd >= 0 && upcomingEnd <= 7) {
+          alerts.push({
+            id: 'end-date-soon',
+            title: 'Slutdatum närmar sig',
+            detail: `Projektet ska vara klart ${formatProjectDate(projectQuery.data.end_date)}.`,
+            tone: 'warning'
+          });
+        }
+      }
+    }
+
+    if (alerts.length === 0 && upcomingMilestones[0]) {
+      alerts.push({
+        id: `upcoming-${upcomingMilestones[0].id}`,
+        title: 'Nästa delmål',
+        detail: `${upcomingMilestones[0].title || 'Delmål'} • ${formatProjectDate(upcomingMilestones[0].date)}`,
+        tone: 'info'
+      });
+    }
+
+    return alerts;
+  }, [draftMilestones, projectQuery.data?.end_date]);
+
   if (projectQuery.isLoading) return <p>Laddar...</p>;
   if (!projectQuery.data) return <p>Projekt saknas.</p>;
 
@@ -663,21 +807,6 @@ export default function ProjectDetailsPage() {
   const latestActivityItem = activity[0] ?? null;
   const projectStatusLabel = projectColumnTitle(draftStatus || project.status, statusColumns);
   const invoiceAttachments = (invoicesQuery.data ?? []).filter((invoice) => Boolean(invoice.attachment_path));
-  const availableMembers = projectMembersQuery.data?.availableMembers ?? [];
-  const assignedMembers = (projectMembersQuery.data?.assignments ?? [])
-    .filter((assignment) => assignment.project_id === projectId)
-    .map((assignment) => assignment.member)
-    .filter((member): member is ProjectMemberVisual => Boolean(member));
-  const assignedUserIds = new Set(assignedMembers.map((member) => member.user_id));
-  const filteredAvailableMembers = useMemo(() => {
-    const query = memberSearch.trim().toLowerCase();
-    const roleFiltered = memberRoleFilter === 'all' ? availableMembers : availableMembers.filter((member) => member.role === memberRoleFilter);
-    if (!query) return roleFiltered;
-    return roleFiltered.filter((member) => {
-      const haystack = [member.email, member.handle, roleLabel(member.role)].filter(Boolean).join(' ').toLowerCase();
-      return haystack.includes(query);
-    });
-  }, [availableMembers, memberRoleFilter, memberSearch]);
   const projectLogs = activity
     .map((item) => ({
       id: item.id,
@@ -808,6 +937,105 @@ export default function ProjectDetailsPage() {
                     </SelectContent>
                   </Select>
                 </label>
+
+                <label className="space-y-1">
+                  <span className="text-sm">Startdatum</span>
+                  <Input type="date" value={draftStartDate} onChange={(event) => setDraftStartDate(event.target.value)} disabled={isEconomyLocked || isEconomyBusy} />
+                </label>
+
+                <label className="space-y-1">
+                  <span className="text-sm">Slutdatum</span>
+                  <Input type="date" value={draftEndDate} onChange={(event) => setDraftEndDate(event.target.value)} disabled={isEconomyLocked || isEconomyBusy} />
+                </label>
+              </div>
+
+              <div className="space-y-3 rounded-2xl border border-border/70 bg-muted/10 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-medium">Delmål</p>
+                    <p className="text-xs text-foreground/60">Planera nästa steg och viktiga hållpunkter för projektet.</p>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={isEconomyLocked || isEconomyBusy}
+                    onClick={() =>
+                      setDraftMilestones((prev) => [...prev, { id: crypto.randomUUID(), title: '', date: '', completed: false }])
+                    }
+                  >
+                    Lägg till delmål
+                  </Button>
+                </div>
+
+                {draftMilestones.length === 0 ? (
+                  <p className="text-sm text-foreground/65">Inga delmål ännu.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {orderedMilestones.map((milestone) => {
+                      const today = todayIsoDate();
+                      const isOverdue = !milestone.completed && Boolean(milestone.date) && milestone.date < today;
+                      const isUpcoming = !milestone.completed && Boolean(milestone.date) && milestone.date >= today;
+
+                      return (
+                      <div
+                        key={milestone.id}
+                        className={`grid gap-2 rounded-xl border p-3 md:grid-cols-[1fr_180px_auto_auto] ${
+                          milestone.completed
+                            ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-500/25 dark:bg-emerald-500/10'
+                            : isOverdue
+                              ? 'border-rose-200 bg-rose-50 dark:border-rose-500/25 dark:bg-rose-500/10'
+                              : isUpcoming
+                                ? 'border-amber-200 bg-amber-50 dark:border-amber-500/25 dark:bg-amber-500/10'
+                                : 'border-border/60 bg-background/60'
+                        }`}
+                      >
+                        <Input
+                          placeholder="Delmål, t.ex. Första utkast klart"
+                          value={milestone.title}
+                          disabled={isEconomyLocked || isEconomyBusy}
+                          onChange={(event) =>
+                            setDraftMilestones((prev) =>
+                              prev.map((item) => (item.id === milestone.id ? { ...item, title: event.target.value } : item))
+                            )
+                          }
+                        />
+                        <Input
+                          type="date"
+                          value={milestone.date}
+                          disabled={isEconomyLocked || isEconomyBusy}
+                          onChange={(event) =>
+                            setDraftMilestones((prev) =>
+                              prev.map((item) => (item.id === milestone.id ? { ...item, date: event.target.value } : item))
+                            )
+                          }
+                        />
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant={milestone.completed ? 'secondary' : 'outline'}
+                          disabled={isEconomyLocked || isEconomyBusy}
+                          onClick={() =>
+                            setDraftMilestones((prev) =>
+                              prev.map((item) => (item.id === milestone.id ? { ...item, completed: !item.completed } : item))
+                            )
+                          }
+                        >
+                          {milestone.completed ? 'Klart' : 'Markera klar'}
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          disabled={isEconomyLocked || isEconomyBusy}
+                          onClick={() => setDraftMilestones((prev) => prev.filter((item) => item.id !== milestone.id))}
+                        >
+                          Ta bort
+                        </Button>
+                      </div>
+                    )})}
+                  </div>
+                )}
               </div>
 
               <div className="grid gap-3 md:grid-cols-4">
@@ -833,6 +1061,19 @@ export default function ProjectDetailsPage() {
                 <div className="rounded-lg border p-3">
                   <p className="text-sm text-foreground/70">Ordertotal</p>
                   <p className="mt-1 font-medium">{Number(orderQuery.data?.total ?? 0).toFixed(2)} kr</p>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <p className="text-sm text-foreground/70">Startdatum</p>
+                  <p className="mt-1 font-medium">{formatProjectDate(draftStartDate)}</p>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <p className="text-sm text-foreground/70">Nästa delmål</p>
+                  <p className="mt-1 font-medium">{nextMilestone?.title || 'Inget satt'}</p>
+                  <p className="mt-1 text-xs text-foreground/55">{nextMilestone?.date ? formatProjectDate(nextMilestone.date) : 'Lägg till ett delmål'}</p>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <p className="text-sm text-foreground/70">Slutdatum</p>
+                  <p className="mt-1 font-medium">{formatProjectDate(draftEndDate)}</p>
                 </div>
               </div>
 
@@ -1278,6 +1519,28 @@ export default function ProjectDetailsPage() {
           </CardContent>
         </Card>
       )}
+
+      {activeTab === 'updates' && planningAlerts.length > 0 ? (
+        <Card>
+          <CardContent className="space-y-2">
+            {planningAlerts.map((alert) => (
+              <div
+                key={alert.id}
+                className={`rounded-xl border px-3 py-2 text-sm ${
+                  alert.tone === 'danger'
+                    ? 'border-rose-200 bg-rose-50 text-rose-900 dark:border-rose-500/25 dark:bg-rose-500/10 dark:text-rose-100'
+                    : alert.tone === 'warning'
+                      ? 'border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-100'
+                      : 'border-sky-200 bg-sky-50 text-sky-900 dark:border-sky-500/25 dark:bg-sky-500/10 dark:text-sky-100'
+                }`}
+              >
+                <p className="font-medium">{alert.title}</p>
+                <p className="mt-1 text-sm/5 opacity-90">{alert.detail}</p>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      ) : null}
 
       <ProjectUpdatesPanel
         companyId={companyId}

@@ -741,8 +741,11 @@ export type Database = {
           company_id: string
           created_at: string
           customer_id: string | null
+          end_date: string | null
           id: string
+          milestones: Json
           position: number
+          start_date: string | null
           status: string
           title: string
           updated_at: string
@@ -751,8 +754,11 @@ export type Database = {
           company_id: string
           created_at?: string
           customer_id?: string | null
+          end_date?: string | null
           id?: string
+          milestones?: Json
           position?: number
+          start_date?: string | null
           status?: string
           title: string
           updated_at?: string
@@ -761,8 +767,11 @@ export type Database = {
           company_id?: string
           created_at?: string
           customer_id?: string | null
+          end_date?: string | null
           id?: string
+          milestones?: Json
           position?: number
+          start_date?: string | null
           status?: string
           title?: string
           updated_at?: string
@@ -1467,7 +1476,6 @@ export const Constants = {
 export type TableRow<T extends keyof Database['public']['Tables']> = Database['public']['Tables'][T]['Row'];
 export type TableInsertRow<T extends keyof Database['public']['Tables']> = Database['public']['Tables'][T]['Insert'];
 export type TableUpdateRow<T extends keyof Database['public']['Tables']> = Database['public']['Tables'][T]['Update'];
-
 
 
 

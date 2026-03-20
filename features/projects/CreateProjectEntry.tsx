@@ -20,6 +20,8 @@ type CreateProjectFormData = {
   status: string;
   customerSelect?: string;
   newCustomerName?: string;
+  startDate?: string;
+  endDate?: string;
   orderTotal: number;
   memberIds: string[];
 };
@@ -36,6 +38,8 @@ function buildSchema() {
       status: z.string().min(1, 'Status krävs'),
       customerSelect: z.string().optional(),
       newCustomerName: z.string().optional(),
+      startDate: z.string().optional(),
+      endDate: z.string().optional(),
       orderTotal: z.coerce.number().min(0),
       memberIds: z.array(z.string()).default([])
     })
@@ -45,6 +49,14 @@ function buildSchema() {
           code: z.ZodIssueCode.custom,
           message: 'Ange namn på ny kund',
           path: ['newCustomerName']
+        });
+      }
+
+      if (value.startDate && value.endDate && value.endDate < value.startDate) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Slutdatum kan inte vara tidigare än startdatum',
+          path: ['endDate']
         });
       }
     });
@@ -75,6 +87,8 @@ function ProjectForm({
       status: initialStatus,
       customerSelect: '',
       newCustomerName: '',
+      startDate: '',
+      endDate: '',
       orderTotal: 0,
       memberIds: []
     }
@@ -103,6 +117,8 @@ function ProjectForm({
           status: initialStatus,
           customerSelect: '',
           newCustomerName: '',
+          startDate: '',
+          endDate: '',
           orderTotal: 0,
           memberIds: []
         });
@@ -160,6 +176,18 @@ function ProjectForm({
       <div className="space-y-1">
         <p className="text-sm">Ordertotal (valfritt)</p>
         <Input type="number" {...form.register('orderTotal')} />
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="space-y-1">
+          <p className="text-sm">Startdatum</p>
+          <Input type="date" {...form.register('startDate')} />
+        </div>
+        <div className="space-y-1">
+          <p className="text-sm">Slutdatum</p>
+          <Input type="date" {...form.register('endDate')} />
+          {form.formState.errors.endDate && <p className="text-xs text-danger">{form.formState.errors.endDate.message}</p>}
+        </div>
       </div>
 
       <div className="space-y-2">
@@ -275,6 +303,8 @@ export default function CreateProjectEntry({ companyId, mode }: { companyId: str
       status: data.status,
       customer_id: customerId,
       customer_name: customerName,
+      start_date: data.startDate?.trim() ? data.startDate : null,
+      end_date: data.endDate?.trim() ? data.endDate : null,
       order_total: data.orderTotal,
       member_ids: data.memberIds,
       source: 'ui'

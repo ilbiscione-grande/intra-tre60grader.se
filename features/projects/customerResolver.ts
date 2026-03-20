@@ -13,6 +13,8 @@ export type ProjectCreatePayload = {
   order_total?: number;
   source?: string;
   member_ids?: string[];
+  start_date?: string | null;
+  end_date?: string | null;
   customer_id?: string | null;
   customer_name?: string | null;
 };

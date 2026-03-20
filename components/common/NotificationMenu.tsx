@@ -4,6 +4,7 @@ import Link from 'next/link';
 import type { Route } from 'next';
 import { Bell, RefreshCw } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useMemo, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -16,7 +17,14 @@ import { createClient } from '@/lib/supabase/client';
 import type { TableRow as DbRow } from '@/lib/supabase/database.types';
 
 type NotificationRow = DbRow<'project_update_notifications'>;
-type ProjectRow = Pick<DbRow<'projects'>, 'id' | 'title'>;
+type ProjectRow = Pick<DbRow<'projects'>, 'id' | 'title' | 'end_date' | 'status'>;
+type MenuNotificationItem =
+  | { id: string; kind: 'mention' | 'reply'; title: string; subtitle: string; href: Route; createdAt: string; read: boolean; markReadId?: string }
+  | { id: string; kind: 'deadline_overdue'; title: string; subtitle: string; href: Route; createdAt: string; read: boolean };
+
+function todayIso() {
+  return new Date().toLocaleDateString('sv-CA');
+}
 
 export default function NotificationMenu({
   companyId,
@@ -27,6 +35,26 @@ export default function NotificationMenu({
 }) {
   const supabase = createClient();
   const queryClient = useQueryClient();
+  const [dismissedPlanningIds, setDismissedPlanningIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const raw = window.localStorage.getItem(`planning-notifications:${companyId}`);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        setDismissedPlanningIds(parsed.filter((value): value is string => typeof value === 'string'));
+      }
+    } catch {}
+  }, [companyId]);
+
+  function persistDismissed(next: string[]) {
+    setDismissedPlanningIds(next);
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(`planning-notifications:${companyId}`, JSON.stringify(next));
+    }
+  }
 
   const notificationsQuery = useQuery<NotificationRow[]>({
     queryKey: ['project-update-notifications', companyId],
@@ -67,6 +95,26 @@ export default function NotificationMenu({
     }
   });
 
+  const planningProjectsQuery = useQuery<ProjectRow[]>({
+    queryKey: ['deadline-notification-projects', companyId],
+    staleTime: 5 * 60_000,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
+    refetchInterval: false,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('projects')
+        .select('id,title,end_date,status')
+        .eq('company_id', companyId)
+        .not('end_date', 'is', null)
+        .neq('status', 'done')
+        .returns<ProjectRow[]>();
+
+      if (error) throw error;
+      return data ?? [];
+    }
+  });
+
   const markReadMutation = useMutation({
     mutationFn: async (notificationId: string) => {
       const { error } = await supabase
@@ -96,11 +144,44 @@ export default function NotificationMenu({
   });
 
   const notifications = notificationsQuery.data ?? [];
-  const unreadCount = notifications.filter((item) => !item.read_at).length;
   const projectsById = new Map((projectsQuery.data ?? []).map((project) => [project.id, project]));
+  const planningNotifications = useMemo(() => {
+    const today = todayIso();
+    return (planningProjectsQuery.data ?? [])
+      .filter((project) => Boolean(project.end_date) && project.end_date! < today)
+      .map((project) => {
+        const id = `deadline:${project.id}:${project.end_date}`;
+        return {
+          id,
+          kind: 'deadline_overdue' as const,
+          title: 'Projekt har passerat slutdatum',
+          subtitle: `${project.title} • slutdatum ${new Date(project.end_date!).toLocaleDateString('sv-SE')}`,
+          href: `/projects/${project.id}?tab=overview` as Route,
+          createdAt: project.end_date!,
+          read: dismissedPlanningIds.includes(id)
+        };
+      });
+  }, [dismissedPlanningIds, planningProjectsQuery.data]);
+  const projectNotifications = notifications.map((notification) => {
+    const project = projectsById.get(notification.project_id);
+    return {
+      id: notification.id,
+      kind: notification.kind === 'mention' ? 'mention' : 'reply',
+      title: notification.kind === 'mention' ? 'Du blev omnämnd' : 'Nytt svar',
+      subtitle: project?.title ?? 'Projekt',
+      href: `/projects/${notification.project_id}?tab=updates&update=${notification.project_update_id}` as Route,
+      createdAt: notification.created_at,
+      read: Boolean(notification.read_at),
+      markReadId: notification.id
+    } satisfies MenuNotificationItem;
+  });
+  const menuNotifications = [...planningNotifications, ...projectNotifications].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
+  const unreadCount = menuNotifications.filter((item) => !item.read).length;
 
   async function refreshNotifications() {
-    await Promise.all([notificationsQuery.refetch(), projectsQuery.refetch()]);
+    await Promise.all([notificationsQuery.refetch(), projectsQuery.refetch(), planningProjectsQuery.refetch()]);
   }
 
   return (
@@ -131,7 +212,10 @@ export default function NotificationMenu({
               <button
                 type="button"
                 className="text-xs text-foreground/60 transition hover:text-foreground"
-                onClick={() => markAllReadMutation.mutate()}
+                onClick={() => {
+                  markAllReadMutation.mutate();
+                  persistDismissed(Array.from(new Set([...dismissedPlanningIds, ...planningNotifications.map((item) => item.id)])));
+                }}
               >
                 Markera alla lästa
               </button>
@@ -139,36 +223,37 @@ export default function NotificationMenu({
           </div>
         </div>
 
-        {notifications.length === 0 ? (
+        {menuNotifications.length === 0 ? (
           <div className="px-2 py-3 text-sm text-foreground/65">Inga notiser ännu.</div>
         ) : (
-          notifications.map((notification) => {
-            const project = projectsById.get(notification.project_id);
-            const href = `/projects/${notification.project_id}?tab=updates&update=${notification.project_update_id}` as Route;
-
+          menuNotifications.map((notification) => {
             return (
               <DropdownMenuItem key={notification.id} asChild>
                 <Link
-                  href={href}
+                  href={notification.href}
                   className="block"
                   onClick={() => {
-                    if (!notification.read_at) {
-                      markReadMutation.mutate(notification.id);
+                    if (notification.kind === 'deadline_overdue') {
+                      persistDismissed(Array.from(new Set([...dismissedPlanningIds, notification.id])));
+                    } else if (!notification.read && notification.markReadId) {
+                      markReadMutation.mutate(notification.markReadId);
                     }
                   }}
                 >
                   <div className="flex w-full items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
-                        <p className="truncate text-sm font-medium">
-                          {notification.kind === 'mention' ? 'Du blev omnämnd' : 'Nytt svar'}
-                        </p>
-                        {!notification.read_at ? <Badge className="bg-primary/15 text-primary">Ny</Badge> : null}
+                        <p className="truncate text-sm font-medium">{notification.title}</p>
+                        {!notification.read ? (
+                          <Badge className={notification.kind === 'deadline_overdue' ? 'bg-amber-500/15 text-amber-700 dark:text-amber-200' : 'bg-primary/15 text-primary'}>
+                            Ny
+                          </Badge>
+                        ) : null}
                       </div>
-                      <p className="mt-1 truncate text-xs text-foreground/60">{project?.title ?? 'Projekt'}</p>
+                      <p className="mt-1 truncate text-xs text-foreground/60">{notification.subtitle}</p>
                     </div>
                     <p className="shrink-0 text-xs text-foreground/50">
-                      {new Date(notification.created_at).toLocaleDateString('sv-SE')}
+                      {new Date(notification.createdAt).toLocaleDateString('sv-SE')}
                     </p>
                   </div>
                 </Link>

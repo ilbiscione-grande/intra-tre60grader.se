@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Trash2 } from 'lucide-react';
+import { AlertTriangle, Trash2 } from 'lucide-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useAppContext } from '@/components/providers/AppContext';
@@ -27,6 +27,25 @@ function fallbackLabel(status: string) {
   return map[status] ?? status;
 }
 
+function normalizeMilestones(value: Project['milestones']) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) return null;
+      const record = item as Record<string, unknown>;
+      return {
+        title: typeof record.title === 'string' ? record.title.trim() : '',
+        date: typeof record.date === 'string' ? record.date : '',
+        completed: Boolean(record.completed)
+      };
+    })
+    .filter((item): item is { title: string; date: string; completed: boolean } => Boolean(item));
+}
+
+function todayIso() {
+  return new Date().toLocaleDateString('sv-CA');
+}
+
 export default function ProjectCard({
   project,
   actions,
@@ -45,6 +64,40 @@ export default function ProjectCard({
   const visibleMembers = members.slice(0, 3);
   const hiddenCount = Math.max(0, members.length - visibleMembers.length);
   const canManageMembers = role !== 'auditor';
+  const milestones = normalizeMilestones(project.milestones);
+  const completedMilestones = milestones.filter((milestone) => milestone.completed).length;
+  const totalMilestones = milestones.length;
+  const nextMilestone =
+    milestones
+      .filter((milestone) => !milestone.completed)
+      .sort((a, b) => {
+        if (!a.date && !b.date) return 0;
+        if (!a.date) return 1;
+        if (!b.date) return -1;
+        return a.date.localeCompare(b.date);
+      })[0] ?? null;
+  const today = todayIso();
+  const isMilestoneOverdue = Boolean(nextMilestone?.date && nextMilestone.date < today);
+  const isEndDateOverdue = Boolean(project.end_date && project.end_date < today);
+  const isEndDateSoon = Boolean(
+    project.end_date &&
+      project.end_date >= today &&
+      Math.ceil((new Date(project.end_date).getTime() - new Date(today).getTime()) / (1000 * 60 * 60 * 24)) <= 7
+  );
+  const progressPercent =
+    totalMilestones > 0 ? Math.max(6, Math.round((completedMilestones / totalMilestones) * 100)) : 0;
+  const planningLabel = isMilestoneOverdue || isEndDateOverdue
+    ? 'Över tid'
+    : nextMilestone?.title
+      ? `${nextMilestone.title}${nextMilestone.date ? ` • ${nextMilestone.date}` : ''}`
+      : project.end_date
+        ? `Slutdatum ${project.end_date}`
+        : 'Ingen tidsplan satt';
+  const planningTone = isMilestoneOverdue || isEndDateOverdue
+    ? 'bg-rose-100 text-rose-800 dark:bg-rose-500/15 dark:text-rose-200'
+    : isEndDateSoon || nextMilestone
+      ? 'bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-200'
+      : 'bg-muted text-foreground/70';
 
   const removeMemberMutation = useMutation({
     mutationFn: async (userId: string) => {
@@ -112,9 +165,30 @@ export default function ProjectCard({
         className="absolute inset-0 z-10 rounded-[inherit]"
       />
       <CardContent className="relative flex items-start justify-between gap-3 p-4">
-        <div className="min-w-0 pb-8">
+        <div className="min-w-0 pb-12">
           <h3 className="font-semibold group-hover:underline">{project.title}</h3>
           <Badge className="mt-2 w-fit uppercase tracking-wide">{statusLabel ?? fallbackLabel(project.status)}</Badge>
+          <div className="mt-3 max-w-full space-y-1">
+            <div className="flex items-center gap-2">
+              {isMilestoneOverdue || isEndDateOverdue ? (
+                <span
+                  className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-200"
+                  title="Projektet har ett försenat delmål eller passerat slutdatum"
+                >
+                  <AlertTriangle className="h-3.5 w-3.5" />
+                </span>
+              ) : null}
+              <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium ${planningTone}`}>{planningLabel}</span>
+              {totalMilestones > 0 ? (
+                <span className="text-[10px] text-foreground/55">{completedMilestones}/{totalMilestones} delmål</span>
+              ) : null}
+            </div>
+            {totalMilestones > 0 ? (
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${progressPercent}%` }} />
+              </div>
+            ) : null}
+          </div>
         </div>
         {actions ? <div className="relative z-20">{actions}</div> : null}
         {members.length > 0 ? (
