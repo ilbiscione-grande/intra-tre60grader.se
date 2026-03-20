@@ -20,9 +20,10 @@ export default function ProfileBadge({
   textClassName?: string;
   fallbackIcon?: boolean;
 }) {
-  const resolvedColor = color?.trim() ? color : DEFAULT_PROFILE_BADGE_COLOR;
-  const imageUrl = avatarUrl ?? undefined;
-  const emojiValue = emoji ?? undefined;
+  const safeLabel = typeof label === 'string' && label.trim() ? label : null;
+  const resolvedColor = typeof color === 'string' && color.trim() ? color : DEFAULT_PROFILE_BADGE_COLOR;
+  const imageUrl = typeof avatarUrl === 'string' && avatarUrl.trim() ? avatarUrl : undefined;
+  const emojiValue = typeof emoji === 'string' && emoji.trim() ? emoji : undefined;
   const showImage = Boolean(imageUrl);
   const showEmoji = Boolean(emojiValue);
 
@@ -30,18 +31,18 @@ export default function ProfileBadge({
     <span
       className={`inline-flex items-center justify-center overflow-hidden rounded-full bg-slate-500 text-white ${textClassName} ${className}`.trim()}
       style={{ backgroundColor: showImage ? undefined : resolvedColor }}
-      title={label ?? undefined}
+      title={safeLabel ?? undefined}
     >
       {showImage ? (
-        <img src={imageUrl} alt={label ?? 'Profil'} className="h-full w-full object-cover" />
+        <img src={imageUrl} alt={safeLabel ?? 'Profil'} className="h-full w-full object-cover" />
       ) : showEmoji ? (
         <span aria-hidden className="text-[0.95em] leading-none">
           {emojiValue}
         </span>
-      ) : fallbackIcon && !label ? (
+      ) : fallbackIcon && !safeLabel ? (
         <CircleUserRound className="h-4 w-4" />
       ) : (
-        buildUserInitials(label)
+        buildUserInitials(safeLabel)
       )}
     </span>
   );
