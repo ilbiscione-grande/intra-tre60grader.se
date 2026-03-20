@@ -8,6 +8,7 @@ import {
   type DragMoveEvent,
   type DragOverEvent,
   type DragStartEvent,
+  type Modifier,
   PointerSensor,
   useDroppable,
   useSensor,
@@ -31,6 +32,36 @@ import type { Project } from '@/lib/types';
 import { useAutoScrollActiveTab } from '@/lib/ui/useAutoScrollActiveTab';
 
 type BoardState = Record<string, Project[]>;
+
+function getActivatorClientPoint(event: Event | null | undefined) {
+  if (!event) return null;
+
+  if ('clientX' in event && 'clientY' in event) {
+    const pointerEvent = event as MouseEvent | PointerEvent;
+    return {
+      clientX: Number(pointerEvent.clientX),
+      clientY: Number(pointerEvent.clientY)
+    };
+  }
+
+  if ('touches' in event && (event as TouchEvent).touches.length > 0) {
+    const touchEvent = event as TouchEvent;
+    return {
+      clientX: Number(touchEvent.touches[0].clientX),
+      clientY: Number(touchEvent.touches[0].clientY)
+    };
+  }
+
+  if ('changedTouches' in event && (event as TouchEvent).changedTouches.length > 0) {
+    const touchEvent = event as TouchEvent;
+    return {
+      clientX: Number(touchEvent.changedTouches[0].clientX),
+      clientY: Number(touchEvent.changedTouches[0].clientY)
+    };
+  }
+
+  return null;
+}
 
 function toKeySeed(title: string) {
   return title
@@ -198,6 +229,12 @@ export default function ProjectBoardMobile({ companyId }: { companyId: string })
   const trackRef = useRef<HTMLDivElement | null>(null);
   const activeStatusRef = useRef<string>('');
   const activeIndexRef = useRef(0);
+  const dragOverlayMetricsRef = useRef({
+    width: 0,
+    height: 0,
+    offsetX: 0,
+    offsetY: 0
+  });
   const dragIntentRef = useRef<{
     startedAt: number;
     crossColumnUnlocked: boolean;
@@ -388,6 +425,19 @@ export default function ProjectBoardMobile({ companyId }: { companyId: string })
     () => (activeId ? projects.find((project) => project.id === activeId) ?? null : null),
     [activeId, projects]
   );
+  const overlayCursorAnchorModifier = useMemo<Modifier>(
+    () => ({ transform }) => {
+      const { width, height, offsetX, offsetY } = dragOverlayMetricsRef.current;
+      if (!width || !height) return transform;
+
+      return {
+        ...transform,
+        x: transform.x + offsetX - width / 2,
+        y: transform.y + offsetY - height / 2
+      };
+    },
+    []
+  );
 
   useEffect(() => {
     activeStatusRef.current = activeStatus;
@@ -467,6 +517,16 @@ export default function ProjectBoardMobile({ companyId }: { companyId: string })
       crossColumnUnlocked: false
     };
     edgeScrollRef.current = { side: null, lastStepAt: 0, startedAt: Date.now(), enteredEdgeAt: 0 };
+
+    const initialRect = event.active.rect.current.initial;
+    if (!initialRect) return;
+    const point = getActivatorClientPoint(event.activatorEvent as Event | null | undefined);
+    dragOverlayMetricsRef.current = {
+      width: initialRect.width,
+      height: initialRect.height,
+      offsetX: point ? Math.max(0, Math.min(initialRect.width, point.clientX - initialRect.left)) : initialRect.width / 2,
+      offsetY: point ? Math.max(0, Math.min(initialRect.height, point.clientY - initialRect.top)) : initialRect.height / 2
+    };
   }
 
   function handleDragMove(event: DragMoveEvent) {
@@ -616,6 +676,7 @@ export default function ProjectBoardMobile({ companyId }: { companyId: string })
     setActiveId(null);
     setLockedStatus(null);
     dragIntentRef.current = { startedAt: 0, crossColumnUnlocked: false };
+    dragOverlayMetricsRef.current = { width: 0, height: 0, offsetX: 0, offsetY: 0 };
     edgeScrollRef.current = { side: null, lastStepAt: 0, startedAt: 0, enteredEdgeAt: 0 };
 
     if (!overId) {
@@ -797,9 +858,14 @@ export default function ProjectBoardMobile({ companyId }: { companyId: string })
             );
           })}
         </div>
-        <DragOverlay>
+        <DragOverlay modifiers={[overlayCursorAnchorModifier]}>
           {activeProject ? (
-            <div className="w-[82vw] max-w-[340px] touch-none">
+            <div
+              className="touch-none"
+              style={{
+                width: dragOverlayMetricsRef.current.width || undefined
+              }}
+            >
               <ProjectCard
                 project={activeProject}
                 statusLabel={titleByStatus.get(activeProject.status) ?? activeProject.status}
