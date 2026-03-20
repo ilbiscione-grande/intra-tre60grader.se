@@ -198,9 +198,10 @@ export default function ProjectBoardMobile({ companyId }: { companyId: string })
   const trackRef = useRef<HTMLDivElement | null>(null);
   const activeStatusRef = useRef<string>('');
   const activeIndexRef = useRef(0);
-  const edgeScrollRef = useRef<{ side: 'left' | 'right' | null; lastStepAt: number }>({
+  const edgeScrollRef = useRef<{ side: 'left' | 'right' | null; lastStepAt: number; startedAt: number }>({
     side: null,
-    lastStepAt: 0
+    lastStepAt: 0,
+    startedAt: 0
   });
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
   const { containerRef: columnTabsRef, registerItem: registerColumnTab } = useAutoScrollActiveTab(activeStatus);
@@ -448,7 +449,7 @@ export default function ProjectBoardMobile({ companyId }: { companyId: string })
 
   function handleDragStart(event: DragStartEvent) {
     setActiveId(String(event.active.id));
-    edgeScrollRef.current = { side: null, lastStepAt: 0 };
+    edgeScrollRef.current = { side: null, lastStepAt: 0, startedAt: Date.now() };
   }
 
   function handleDragMove(event: DragMoveEvent) {
@@ -457,17 +458,26 @@ export default function ProjectBoardMobile({ companyId }: { companyId: string })
     if (!track || !translated) return;
 
     const rect = track.getBoundingClientRect();
-    const edgeThreshold = 56;
+    const edgeThreshold = 28;
+    const minLateralDelta = 52;
     const now = Date.now();
-    const cooldownMs = 1450;
+    const cooldownMs = 1700;
     const currentIndex = activeIndexRef.current;
+    const translatedCenterX = translated.left + translated.width / 2;
+    const dragAgeMs = now - edgeScrollRef.current.startedAt;
+    const deltaX = Math.abs(event.delta.x);
 
-    if (translated.right > rect.right - edgeThreshold) {
+    if (dragAgeMs < 220 || deltaX < minLateralDelta) {
+      edgeScrollRef.current = { ...edgeScrollRef.current, side: null };
+      return;
+    }
+
+    if (translatedCenterX > rect.right - edgeThreshold) {
       const canAdvance =
         edgeScrollRef.current.side !== 'right' || now - edgeScrollRef.current.lastStepAt >= cooldownMs;
 
       if (canAdvance) {
-        edgeScrollRef.current = { side: 'right', lastStepAt: now };
+        edgeScrollRef.current = { ...edgeScrollRef.current, side: 'right', lastStepAt: now };
         const nextIndex = Math.min(columns.length - 1, currentIndex + 1);
         const nextColumn = columns[nextIndex];
         if (nextColumn) {
@@ -478,12 +488,12 @@ export default function ProjectBoardMobile({ companyId }: { companyId: string })
       return;
     }
 
-    if (translated.left < rect.left + edgeThreshold) {
+    if (translatedCenterX < rect.left + edgeThreshold) {
       const canAdvance =
         edgeScrollRef.current.side !== 'left' || now - edgeScrollRef.current.lastStepAt >= cooldownMs;
 
       if (canAdvance) {
-        edgeScrollRef.current = { side: 'left', lastStepAt: now };
+        edgeScrollRef.current = { ...edgeScrollRef.current, side: 'left', lastStepAt: now };
         const nextIndex = Math.max(0, currentIndex - 1);
         const nextColumn = columns[nextIndex];
         if (nextColumn) {
@@ -494,7 +504,7 @@ export default function ProjectBoardMobile({ companyId }: { companyId: string })
       return;
     }
 
-    edgeScrollRef.current = { side: null, lastStepAt: edgeScrollRef.current.lastStepAt };
+    edgeScrollRef.current = { ...edgeScrollRef.current, side: null };
   }
 
   function handleDragOver(event: DragOverEvent) {
@@ -534,7 +544,7 @@ export default function ProjectBoardMobile({ companyId }: { companyId: string })
     const overId = event.over?.id ? String(event.over.id) : null;
     setActiveId(null);
     setLockedStatus(null);
-    edgeScrollRef.current = { side: null, lastStepAt: 0 };
+    edgeScrollRef.current = { side: null, lastStepAt: 0, startedAt: 0 };
 
     if (!overId) {
       setBoard(initialBoard);
@@ -717,7 +727,7 @@ export default function ProjectBoardMobile({ companyId }: { companyId: string })
         </div>
         <DragOverlay>
           {activeProject ? (
-            <div className="w-[82vw] max-w-[340px] rotate-[1.2deg] touch-none">
+            <div className="w-[82vw] max-w-[340px] touch-none">
               <ProjectCard
                 project={activeProject}
                 statusLabel={titleByStatus.get(activeProject.status) ?? activeProject.status}
