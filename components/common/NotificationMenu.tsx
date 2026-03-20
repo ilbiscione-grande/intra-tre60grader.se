@@ -43,6 +43,20 @@ function addDays(dateString: string, days: number) {
   return date.toISOString().slice(0, 10);
 }
 
+function toIsoDate(value?: string | null) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toISOString().slice(0, 10);
+}
+
+function formatSafeDate(value?: string | null) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleDateString('sv-SE');
+}
+
 export default function NotificationMenu({
   companyId,
   compact = false
@@ -248,7 +262,7 @@ export default function NotificationMenu({
           id,
           kind: 'deadline_overdue',
           title: 'Projekt har passerat slutdatum',
-          subtitle: `${project.title} • slutdatum ${new Date(project.end_date).toLocaleDateString('sv-SE')}`,
+          subtitle: `${project.title} • slutdatum ${formatSafeDate(project.end_date) ?? project.end_date}`,
           href: `/projects/${project.id}?tab=planning` as Route,
           createdAt: project.end_date,
           read: dismissedPlanningIds.includes(id)
@@ -261,7 +275,7 @@ export default function NotificationMenu({
           id,
           kind: 'deadline_soon',
           title: 'Slutdatum närmar sig',
-          subtitle: `${project.title} • slutdatum ${new Date(project.end_date).toLocaleDateString('sv-SE')}`,
+          subtitle: `${project.title} • slutdatum ${formatSafeDate(project.end_date) ?? project.end_date}`,
           href: `/projects/${project.id}?tab=planning` as Route,
           createdAt: project.end_date,
           read: dismissedPlanningIds.includes(id)
@@ -283,7 +297,8 @@ export default function NotificationMenu({
 
       const lastUpdate = latestUpdateByProjectId.get(project.id);
       const staleFrom = lastUpdate ?? project.created_at;
-      if (project.status !== 'done' && staleThreshold && staleFrom.slice(0, 10) <= staleThreshold) {
+      const staleFromDate = toIsoDate(staleFrom);
+      if (project.status !== 'done' && staleThreshold && staleFromDate && staleFromDate <= staleThreshold) {
         const id = `stale-project:${project.id}:${staleThreshold}`;
         items.push({
           id,
@@ -410,7 +425,7 @@ export default function NotificationMenu({
                       <p className="mt-1 truncate text-xs text-foreground/60">{notification.subtitle}</p>
                     </div>
                     <p className="shrink-0 text-xs text-foreground/50">
-                      {new Date(notification.createdAt).toLocaleDateString('sv-SE')}
+                      {formatSafeDate(notification.createdAt) ?? 'Okänt datum'}
                     </p>
                   </div>
                 </Link>
