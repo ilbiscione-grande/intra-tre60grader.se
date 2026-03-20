@@ -159,7 +159,10 @@ export default function ProjectCard({
               </div>
               <div className="space-y-1 px-1 pb-1">
                 {members.map((member) => (
-                  <div key={`menu-${member.id}`} className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5">
+                  <div
+                    key={`menu-${member.id}`}
+                    className="flex items-center justify-between gap-2 rounded-lg border border-border/50 bg-muted/25 px-2 py-1.5"
+                  >
                     <div className="flex min-w-0 items-center gap-2">
                       <ProfileBadge
                         label={member.email ?? member.user_id}
@@ -169,7 +172,7 @@ export default function ProjectCard({
                         className="h-6 w-6 shrink-0"
                         textClassName="text-[10px] font-semibold text-white"
                       />
-                      <span className="truncate text-xs">{member.email ?? member.handle ?? member.user_id}</span>
+                      <span className="truncate text-xs text-foreground">{member.email ?? member.handle ?? member.user_id}</span>
                     </div>
                     {canManageMembers ? (
                       <button
@@ -199,7 +202,7 @@ export default function ProjectCard({
                       <button
                         key={`add-${member.id}`}
                         type="button"
-                        className="flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left transition hover:bg-muted disabled:opacity-50"
+                        className="flex w-full items-center justify-between gap-2 rounded-lg border border-transparent px-2 py-1.5 text-left transition hover:border-border/50 hover:bg-muted disabled:opacity-50"
                         disabled={addMemberMutation.isPending}
                         onClick={(event) => {
                           event.preventDefault();
@@ -216,7 +219,7 @@ export default function ProjectCard({
                             className="h-6 w-6 shrink-0"
                             textClassName="text-[10px] font-semibold text-white"
                           />
-                          <span className="truncate text-xs">{member.email ?? member.handle ?? member.user_id}</span>
+                          <span className="truncate text-xs text-foreground">{member.email ?? member.handle ?? member.user_id}</span>
                         </div>
                         <span className="text-xs text-foreground/55">Lägg till</span>
                       </button>
