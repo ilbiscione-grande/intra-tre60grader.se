@@ -38,6 +38,13 @@ function daysAgoIso(days: number) {
   return date.toLocaleDateString('sv-CA');
 }
 
+function toIsoDate(value?: string | null) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toISOString().slice(0, 10);
+}
+
 function normalizeProjectMilestones(value: Json | null | undefined): ProjectMilestone[] {
   if (!Array.isArray(value)) return [];
 
@@ -197,8 +204,10 @@ export default function ProjectLeadershipDashboard({ companyId }: { companyId: s
 
     const staleProjects = projects
       .filter((project) => {
-        const latestActivity = latestActivityByProject.get(project.id)?.at ?? project.updated_at;
-        return latestActivity.slice(0, 10) <= staleCutoff;
+        const latestActivity = latestActivityByProject.get(project.id)?.at ?? project.updated_at ?? null;
+        const latestActivityDate = toIsoDate(latestActivity);
+        if (!latestActivityDate) return false;
+        return latestActivityDate <= staleCutoff;
       })
       .map((project) => ({
         id: project.id,
