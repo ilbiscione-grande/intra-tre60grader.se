@@ -144,7 +144,7 @@ export default function ProjectTasksPanel({
   const mode = useBreakpointMode();
 
   const currentUserQuery = useQuery<string | null>({
-    queryKey: ['current-user-id'],
+    queryKey: ['current-user-auth-id'],
     staleTime: 1000 * 60 * 30,
     queryFn: async () => {
       const {
@@ -193,7 +193,10 @@ export default function ProjectTasksPanel({
   const doneTasks = tasks.filter((task) => task.status === 'done');
   const overdueTasks = openTasks.filter((task) => task.due_date && task.due_date < todayIso());
   const myTasks = useMemo(
-    () => (currentUserQuery.data ? tasks.filter((task) => task.assignee_user_id === currentUserQuery.data && task.status !== 'done') : []),
+    () => {
+      const currentUserId = normalizeUserId(currentUserQuery.data);
+      return currentUserId ? tasks.filter((task) => task.assignee_user_id === currentUserId && task.status !== 'done') : [];
+    },
     [currentUserQuery.data, tasks]
   );
   const boardColumns = useMemo(
@@ -217,7 +220,7 @@ export default function ProjectTasksPanel({
       const nextTitle = title.trim();
       if (!nextTitle) throw new Error('Titel krävs');
 
-      let currentUserId = currentUserQuery.data;
+      let currentUserId = normalizeUserId(currentUserQuery.data);
       if (!currentUserId) {
         const {
           data: { user },

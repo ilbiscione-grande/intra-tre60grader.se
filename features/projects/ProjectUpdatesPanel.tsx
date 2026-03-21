@@ -198,7 +198,7 @@ export default function ProjectUpdatesPanel({
   const [rootComposerVisible, setRootComposerVisible] = useState(false);
 
   const currentUserQuery = useQuery({
-    queryKey: ['current-user-id'],
+    queryKey: ['current-user-identity'],
     queryFn: async () => {
       const { data, error } = await supabase.auth.getUser();
       if (error) throw error;

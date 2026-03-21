@@ -71,7 +71,7 @@ export default function ProjectFilesPanel({
   const mode = useBreakpointMode();
 
   const currentUserQuery = useQuery({
-    queryKey: ['current-user-id'],
+    queryKey: ['current-user-auth-id'],
     queryFn: async () => {
       const { data, error } = await supabase.auth.getUser();
       if (error) throw error;

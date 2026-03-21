@@ -58,7 +58,7 @@ export default function ProjectTimePanel({
   const mode = useBreakpointMode();
 
   const currentUserQuery = useQuery<string | null>({
-    queryKey: ['current-user-id'],
+    queryKey: ['current-user-auth-id'],
     staleTime: 1000 * 60 * 30,
     queryFn: async () => {
       const {
