@@ -99,6 +99,12 @@ function serializeTaskSubtasks(subtasks: ProjectTaskSubtask[]) {
     .filter((subtask) => subtask.title);
 }
 
+function message(error: unknown, fallback: string) {
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === 'object' && 'message' in error) return String((error as { message?: unknown }).message ?? fallback);
+  return fallback;
+}
+
 export default function ProjectTasksPanel({
   companyId,
   projectId,
@@ -190,7 +196,16 @@ export default function ProjectTasksPanel({
       const nextTitle = title.trim();
       if (!nextTitle) throw new Error('Titel krävs');
 
-      const currentUserId = currentUserQuery.data;
+      let currentUserId = currentUserQuery.data;
+      if (!currentUserId) {
+        const {
+          data: { user },
+          error: userError
+        } = await supabase.auth.getUser();
+        if (userError) throw userError;
+        currentUserId = user?.id ?? null;
+      }
+
       if (!currentUserId) throw new Error('Kunde inte identifiera användaren');
 
       const { error } = await supabase.from('project_tasks').insert({
@@ -222,7 +237,7 @@ export default function ProjectTasksPanel({
       toast.success('Uppgift skapad');
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : 'Kunde inte skapa uppgift');
+      toast.error(message(error, 'Kunde inte skapa uppgift'));
     }
   });
 
@@ -241,7 +256,7 @@ export default function ProjectTasksPanel({
       await queryClient.invalidateQueries({ queryKey: ['project-tasks', companyId, projectId] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : 'Kunde inte uppdatera uppgift');
+      toast.error(message(error, 'Kunde inte uppdatera uppgift'));
     }
   });
 
@@ -255,7 +270,7 @@ export default function ProjectTasksPanel({
       toast.success('Uppgift borttagen');
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : 'Kunde inte ta bort uppgift');
+      toast.error(message(error, 'Kunde inte ta bort uppgift'));
     }
   });
 
