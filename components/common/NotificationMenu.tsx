@@ -357,7 +357,7 @@ export default function NotificationMenu({
   }
 
   return (
-    <DropdownMenu>
+    <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
         <Button variant="secondary" size="icon" className="relative h-10 w-10 rounded-full" aria-label="Notiser">
           <Bell className="h-4 w-4" />
@@ -368,7 +368,7 @@ export default function NotificationMenu({
           ) : null}
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-[320px]">
+      <DropdownMenuContent align="end" side="bottom" sideOffset={8} collisionPadding={12} className="z-[1000] w-[320px]">
         <div className="flex items-center justify-between px-2 py-2">
           <p className="text-sm font-medium">Notiser</p>
           <div className="flex items-center gap-2">

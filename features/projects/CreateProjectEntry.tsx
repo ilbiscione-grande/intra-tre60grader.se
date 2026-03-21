@@ -5,6 +5,8 @@ import { useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
+import type { Route } from 'next';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import ActionSheet from '@/components/common/ActionSheet';
 import ProfileBadge from '@/components/common/ProfileBadge';
 import { getUserDisplayName } from '@/features/profile/profileBadge';
@@ -481,6 +483,9 @@ function ProjectForm({
 
 export default function CreateProjectEntry({ companyId, mode }: { companyId: string; mode: 'mobile' | 'desktop' }) {
   const [open, setOpen] = useState(false);
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const createMutation = useCreateProject(companyId);
   const columnsQuery = useProjectColumns(companyId);
   const projectMembersQuery = useProjectMembers(companyId);
@@ -505,6 +510,30 @@ export default function CreateProjectEntry({ companyId, mode }: { companyId: str
   const columns: ColumnItem[] = (columnsQuery.data ?? []).map((c) => ({ key: c.key, title: c.title }));
   const initialStatus = columns[0]?.key ?? '';
 
+  useEffect(() => {
+    if (pathname !== '/projects') return;
+    if (searchParams.get('create') === 'project') {
+      setOpen(true);
+    }
+  }, [pathname, searchParams]);
+
+  function updateCreateParam(nextOpen: boolean) {
+    const params = new URLSearchParams(searchParams.toString());
+    if (nextOpen) {
+      params.set('create', 'project');
+    } else {
+      params.delete('create');
+    }
+
+    const query = params.toString();
+    router.replace((query ? `${pathname}?${query}` : pathname) as Route, { scroll: false });
+  }
+
+  function setDialogOpen(nextOpen: boolean) {
+    setOpen(nextOpen);
+    updateCreateParam(nextOpen);
+  }
+
   async function submit(data: CreateProjectFormData) {
     const customerId = data.customerSelect && data.customerSelect !== NEW_CUSTOMER_VALUE ? data.customerSelect : null;
     const customerName = data.customerSelect === NEW_CUSTOMER_VALUE ? data.newCustomerName?.trim() ?? '' : null;
@@ -525,7 +554,7 @@ export default function CreateProjectEntry({ companyId, mode }: { companyId: str
       source: 'ui'
     });
 
-    setOpen(false);
+    setDialogOpen(false);
   }
 
   const customers = customersQuery.data ?? [];
@@ -534,10 +563,39 @@ export default function CreateProjectEntry({ companyId, mode }: { companyId: str
     return (
       <Card>
         <CardContent className="p-3">
-          <Button className="w-full" onClick={() => setOpen(true)}>
+          <Button className="w-full" onClick={() => setDialogOpen(true)}>
             Nytt projekt
           </Button>
-          <ActionSheet open={open} onClose={() => setOpen(false)} title="Snabbskapa projekt" description="Funkar online och offline">
+          <ActionSheet open={open} onClose={() => setDialogOpen(false)} title="Snabbskapa projekt" description="Funkar online och offline">
+            <div className="max-h-[72vh] overflow-y-auto pr-1">
+              <ProjectForm
+                onSubmit={submit}
+                isPending={createMutation.isPending}
+                customers={customers}
+                columns={columns}
+                initialStatus={initialStatus}
+                availableMembers={projectMembersQuery.data?.availableMembers ?? []}
+                templates={projectTemplatesQuery.data ?? []}
+              />
+            </div>
+          </ActionSheet>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="flex justify-end">
+      <Dialog open={open} onOpenChange={setDialogOpen}>
+        <DialogTrigger asChild>
+          <Button>Nytt projekt</Button>
+        </DialogTrigger>
+        <DialogContent className="max-h-[85vh] overflow-hidden">
+          <DialogHeader>
+            <DialogTitle>Skapa projekt</DialogTitle>
+            <DialogDescription>Skapar projekt och orderutkast via RPC.</DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[calc(85vh-6rem)] overflow-y-auto pr-1">
             <ProjectForm
               onSubmit={submit}
               isPending={createMutation.isPending}
@@ -547,32 +605,7 @@ export default function CreateProjectEntry({ companyId, mode }: { companyId: str
               availableMembers={projectMembersQuery.data?.availableMembers ?? []}
               templates={projectTemplatesQuery.data ?? []}
             />
-          </ActionSheet>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  return (
-    <div className="flex justify-end">
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogTrigger asChild>
-          <Button>Nytt projekt</Button>
-        </DialogTrigger>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Skapa projekt</DialogTitle>
-            <DialogDescription>Skapar projekt och orderutkast via RPC.</DialogDescription>
-          </DialogHeader>
-          <ProjectForm
-            onSubmit={submit}
-            isPending={createMutation.isPending}
-            customers={customers}
-            columns={columns}
-            initialStatus={initialStatus}
-            availableMembers={projectMembersQuery.data?.availableMembers ?? []}
-            templates={projectTemplatesQuery.data ?? []}
-          />
+          </div>
         </DialogContent>
       </Dialog>
     </div>

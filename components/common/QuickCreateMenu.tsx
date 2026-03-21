@@ -19,7 +19,7 @@ type QuickCreateItem = {
 
 const items: QuickCreateItem[] = [
   {
-    href: '/projects',
+    href: '/projects?create=project',
     label: 'Nytt projekt',
     visible: () => true,
     icon: FolderPlus
@@ -51,7 +51,7 @@ export default function QuickCreateMenu({
   const router = useRouter();
 
   return (
-    <DropdownMenu>
+    <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
         <Button
           variant="default"
@@ -63,7 +63,13 @@ export default function QuickCreateMenu({
           {!compact ? <span>Lägg till</span> : null}
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-[220px]">
+      <DropdownMenuContent
+        align="end"
+        side="bottom"
+        sideOffset={8}
+        collisionPadding={12}
+        className="z-[1000] w-[220px]"
+      >
         {visibleItems.length === 0 ? (
           <div className="px-2 py-3 text-sm text-foreground/65">Inga genvägar tillgängliga.</div>
         ) : null}
