@@ -74,7 +74,7 @@ export function useProjectColumns(companyId: string) {
       const supabase = createClient();
       const { data, error } = await supabase
         .from('project_columns')
-        .select('id,company_id,key,title,position,created_at')
+        .select('id,company_id,key,title,position,bg_color,created_at')
         .eq('company_id', companyId)
         .order('position', { ascending: true })
         .returns<ProjectColumn[]>();

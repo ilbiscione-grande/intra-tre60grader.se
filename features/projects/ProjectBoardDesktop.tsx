@@ -27,6 +27,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { PROJECT_COLUMN_COLOR_OPTIONS, getProjectColumnBackground } from '@/features/projects/columnColors';
 import { getUserDisplayName } from '@/features/profile/profileBadge';
 import ProjectCard from '@/features/projects/ProjectCard';
 import { useMoveProject, useProjectActivitySummaries, useProjectColumns, useProjectMembers, useProjects } from '@/features/projects/projectQueries';
@@ -110,8 +111,10 @@ function ColumnDropZone({
   title,
   count,
   children,
+  bgColor,
   onRename,
   onDelete,
+  onSetColor,
   canDelete,
   dragHandle
 }: {
@@ -119,15 +122,18 @@ function ColumnDropZone({
   title: string;
   count: number;
   children: React.ReactNode;
+  bgColor?: string | null;
   onRename: (status: string, title: string) => void;
   onDelete: (status: string) => void;
+  onSetColor: (status: string, color: string | null) => void;
   canDelete: boolean;
   dragHandle: React.ReactNode;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: columnId(status) });
+  const backgroundColor = getProjectColumnBackground(bgColor);
 
   return (
-    <Card ref={setNodeRef} className={`min-w-[260px] bg-muted/40 ${isOver ? 'ring-2 ring-primary/50' : ''}`}>
+    <Card ref={setNodeRef} className={`min-w-[260px] ${isOver ? 'ring-2 ring-primary/50' : ''}`} style={{ backgroundColor }}>
       <CardContent className="p-3">
         <div className="mb-3 flex items-center justify-between gap-2">
           <div className="min-w-0">
@@ -152,6 +158,13 @@ function ColumnDropZone({
                 >
                   Byt namn
                 </DropdownMenuItem>
+                <div className="my-1 h-px bg-border/70" />
+                {PROJECT_COLUMN_COLOR_OPTIONS.map((option) => (
+                  <DropdownMenuItem key={option.label} onClick={() => onSetColor(status, option.value || null)}>
+                    Bakgrund: {option.label}
+                  </DropdownMenuItem>
+                ))}
+                <div className="my-1 h-px bg-border/70" />
                 <DropdownMenuItem
                   disabled={!canDelete}
                   onClick={() => {
@@ -178,8 +191,10 @@ function SortableColumn({
   title,
   count,
   children,
+  bgColor,
   onRename,
   onDelete,
+  onSetColor,
   canDelete,
   reorderMode,
   onEnableReorder
@@ -188,8 +203,10 @@ function SortableColumn({
   title: string;
   count: number;
   children: React.ReactNode;
+  bgColor?: string | null;
   onRename: (status: string, title: string) => void;
   onDelete: (status: string) => void;
+  onSetColor: (status: string, color: string | null) => void;
   canDelete: boolean;
   reorderMode: boolean;
   onEnableReorder: () => void;
@@ -235,8 +252,10 @@ function SortableColumn({
         status={status}
         title={title}
         count={count}
+        bgColor={bgColor}
         onRename={onRename}
         onDelete={onDelete}
+        onSetColor={onSetColor}
         canDelete={canDelete}
         dragHandle={
           <Button
@@ -431,6 +450,26 @@ export default function ProjectBoardDesktop({ companyId }: { companyId: string }
     onError: (error) => toast.error(error instanceof Error ? error.message : 'Kunde inte uppdatera kolumn')
   });
 
+  const setColumnColorMutation = useMutation({
+    mutationFn: async ({ status, color }: { status: string; color: string | null }) => {
+      const column = columns.find((c) => c.key === status);
+      if (!column) throw new Error('Kolumn hittades inte');
+
+      const { error } = await supabase
+        .from('project_columns')
+        .update({ bg_color: color })
+        .eq('company_id', companyId)
+        .eq('id', column.id);
+
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['project-columns', companyId] });
+      toast.success('Kolumnfärg uppdaterad');
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'Kunde inte uppdatera kolumnfärg')
+  });
+
   const deleteColumnMutation = useMutation({
     mutationFn: async ({ status }: { status: string }) => {
       if (columns.length <= 1) throw new Error('Minst en kolumn måste finnas kvar');
@@ -620,7 +659,11 @@ export default function ProjectBoardDesktop({ companyId }: { companyId: string }
   }
 
   const columnBusy =
-    addColumnMutation.isPending || renameColumnMutation.isPending || deleteColumnMutation.isPending || reorderColumnsMutation.isPending;
+    addColumnMutation.isPending ||
+    renameColumnMutation.isPending ||
+    deleteColumnMutation.isPending ||
+    reorderColumnsMutation.isPending ||
+    setColumnColorMutation.isPending;
 
   return (
     <div className="space-y-2 overflow-x-auto">
@@ -648,8 +691,10 @@ export default function ProjectBoardDesktop({ companyId }: { companyId: string }
                   status={status}
                   title={titleByStatus.get(status) ?? status}
                   count={list.length}
+                  bgColor={columns.find((column) => column.key === status)?.bg_color}
                   onRename={(s, title) => renameColumnMutation.mutate({ status: s, title })}
                   onDelete={(s) => deleteColumnMutation.mutate({ status: s })}
+                  onSetColor={(s, color) => setColumnColorMutation.mutate({ status: s, color })}
                   canDelete={columns.length > 1}
                   reorderMode={columnReorderMode}
                   onEnableReorder={() => {

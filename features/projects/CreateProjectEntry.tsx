@@ -585,29 +585,27 @@ export default function CreateProjectEntry({ companyId, mode }: { companyId: str
   }
 
   return (
-    <div className="flex justify-end">
-      <Dialog open={open} onOpenChange={setDialogOpen}>
-        <DialogTrigger asChild>
-          <Button>Nytt projekt</Button>
-        </DialogTrigger>
-        <DialogContent className="max-h-[85vh] overflow-hidden">
-          <DialogHeader>
-            <DialogTitle>Skapa projekt</DialogTitle>
-            <DialogDescription>Skapar projekt och orderutkast via RPC.</DialogDescription>
-          </DialogHeader>
-          <div className="max-h-[calc(85vh-6rem)] overflow-y-auto pr-1">
-            <ProjectForm
-              onSubmit={submit}
-              isPending={createMutation.isPending}
-              customers={customers}
-              columns={columns}
-              initialStatus={initialStatus}
-              availableMembers={projectMembersQuery.data?.availableMembers ?? []}
-              templates={projectTemplatesQuery.data ?? []}
-            />
-          </div>
-        </DialogContent>
-      </Dialog>
-    </div>
+    <Dialog open={open} onOpenChange={setDialogOpen}>
+      <DialogTrigger asChild>
+        <Button>Nytt projekt</Button>
+      </DialogTrigger>
+      <DialogContent className="max-h-[85vh] overflow-hidden">
+        <DialogHeader>
+          <DialogTitle>Skapa projekt</DialogTitle>
+          <DialogDescription>Skapar projekt och orderutkast via RPC.</DialogDescription>
+        </DialogHeader>
+        <div className="max-h-[calc(85vh-6rem)] overflow-y-auto pr-1">
+          <ProjectForm
+            onSubmit={submit}
+            isPending={createMutation.isPending}
+            customers={customers}
+            columns={columns}
+            initialStatus={initialStatus}
+            availableMembers={projectMembersQuery.data?.availableMembers ?? []}
+            templates={projectTemplatesQuery.data ?? []}
+          />
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

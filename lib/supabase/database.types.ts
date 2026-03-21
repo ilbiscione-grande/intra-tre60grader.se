@@ -694,28 +694,31 @@ export type Database = {
           },
         ]
       }
-      project_columns: {
-        Row: {
-          company_id: string
-          created_at: string
-          id: string
-          key: string
-          position: number
-          title: string
-        }
-        Insert: {
-          company_id: string
-          created_at?: string
-          id?: string
-          key: string
-          position?: number
-          title: string
-        }
-        Update: {
-          company_id?: string
-          created_at?: string
-          id?: string
-          key?: string
+        project_columns: {
+          Row: {
+            bg_color: string | null
+            company_id: string
+            created_at: string
+            id: string
+            key: string
+            position: number
+            title: string
+          }
+          Insert: {
+            bg_color?: string | null
+            company_id: string
+            created_at?: string
+            id?: string
+            key: string
+            position?: number
+            title: string
+          }
+          Update: {
+            bg_color?: string | null
+            company_id?: string
+            created_at?: string
+            id?: string
+            key?: string
           position?: number
           title?: string
         }

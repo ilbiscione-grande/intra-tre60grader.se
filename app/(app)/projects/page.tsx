@@ -19,11 +19,9 @@ export default function ProjectsPage() {
   const [showSummary, setShowSummary] = useState(false);
 
   const summaryToggle = canSeeProjectSummary ? (
-    <div className="flex justify-end">
-      <Button variant={showSummary ? 'default' : 'outline'} size="sm" onClick={() => setShowSummary((current) => !current)}>
+    <Button variant={showSummary ? 'default' : 'outline'} size="sm" className="h-9 px-3 text-xs sm:text-sm" onClick={() => setShowSummary((current) => !current)}>
         {showSummary ? 'Dölj sammanfattning' : 'Visa sammanfattning'}
-      </Button>
-    </div>
+    </Button>
   ) : null;
 
   if (mode === 'mobile') {
@@ -52,7 +50,12 @@ export default function ProjectsPage() {
 
   return (
     <div className="space-y-4">
-      {summaryToggle}
+      <div className="flex items-center justify-end gap-2">
+        {summaryToggle}
+        <SectionErrorBoundary title="Skapa projekt">
+          <CreateProjectEntry companyId={companyId} mode="desktop" />
+        </SectionErrorBoundary>
+      </div>
       {canSeeProjectSummary && showSummary ? (
         <>
           <SectionErrorBoundary title="Projektöversikt">
@@ -63,9 +66,6 @@ export default function ProjectsPage() {
           </SectionErrorBoundary>
         </>
       ) : null}
-      <SectionErrorBoundary title="Skapa projekt">
-        <CreateProjectEntry companyId={companyId} mode="desktop" />
-      </SectionErrorBoundary>
       <SectionErrorBoundary title="Projektflöde">
         <ProjectBoardDesktop companyId={companyId} />
       </SectionErrorBoundary>

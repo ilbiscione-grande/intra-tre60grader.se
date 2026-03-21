@@ -23,6 +23,7 @@ import ActionSheet from '@/components/common/ActionSheet';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PROJECT_COLUMN_COLOR_OPTIONS, getProjectColumnBackground } from '@/features/projects/columnColors';
 import { getUserDisplayName } from '@/features/profile/profileBadge';
 import ProjectCard from '@/features/projects/ProjectCard';
 import { useMoveProject, useProjectActivitySummaries, useProjectColumns, useProjectMembers, useProjects } from '@/features/projects/projectQueries';
@@ -150,6 +151,7 @@ function ActiveMobileColumn({
   title,
   count,
   children,
+  bgColor,
   isLocked,
   index,
   total
@@ -158,11 +160,13 @@ function ActiveMobileColumn({
   title: string;
   count: number;
   children: React.ReactNode;
+  bgColor?: string | null;
   isLocked: boolean;
   index: number;
   total: number;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: columnId(status) });
+  const backgroundColor = getProjectColumnBackground(bgColor);
 
   return (
     <section
@@ -174,6 +178,7 @@ function ActiveMobileColumn({
             ? 'border-primary/45 bg-gradient-to-b from-card to-card/90 ring-2 ring-primary/15'
             : 'border-border/70 bg-gradient-to-b from-card to-card/90'
       }`}
+      style={{ backgroundColor }}
     >
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
@@ -201,6 +206,7 @@ export default function ProjectBoardMobileSimple({ companyId }: { companyId: str
   const [createColumnOpen, setCreateColumnOpen] = useState(false);
   const [renameColumnOpen, setRenameColumnOpen] = useState(false);
   const [deleteColumnOpen, setDeleteColumnOpen] = useState(false);
+  const [colorColumnOpen, setColorColumnOpen] = useState(false);
   const [newColumnTitle, setNewColumnTitle] = useState('');
   const [renameColumnTitle, setRenameColumnTitle] = useState('');
   const activeStatusRef = useRef('');
@@ -497,6 +503,25 @@ export default function ProjectBoardMobileSimple({ companyId }: { companyId: str
     onError: (error) => toast.error(error instanceof Error ? error.message : 'Kunde inte uppdatera kolumn')
   });
 
+  const setColumnColorMutation = useMutation({
+    mutationFn: async (color: string | null) => {
+      if (!activeColumn) throw new Error('Kolumn hittades inte');
+      const { error } = await supabase
+        .from('project_columns')
+        .update({ bg_color: color })
+        .eq('company_id', companyId)
+        .eq('id', activeColumn.id);
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      setColorColumnOpen(false);
+      setColumnSheetOpen(false);
+      await queryClient.invalidateQueries({ queryKey: ['project-columns', companyId] });
+      toast.success('Kolumnfärg uppdaterad');
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'Kunde inte uppdatera kolumnfärg')
+  });
+
   const deleteColumnMutation = useMutation({
     mutationFn: async () => {
       if (!activeColumn) throw new Error('Kolumn hittades inte');
@@ -582,6 +607,7 @@ export default function ProjectBoardMobileSimple({ companyId }: { companyId: str
             status={activeStatus}
             title={activeColumn?.title ?? activeStatus}
             count={activeList.length}
+            bgColor={activeColumn?.bg_color}
             isLocked={lockedStatus === activeStatus}
             index={activeIndex}
             total={columns.length}
@@ -646,6 +672,10 @@ export default function ProjectBoardMobileSimple({ companyId }: { companyId: str
             <Pencil className="mr-2 h-4 w-4" />
             Byt namn
           </Button>
+          <Button type="button" variant="outline" className="h-12 justify-start rounded-2xl" onClick={() => { setColumnSheetOpen(false); setColorColumnOpen(true); }}>
+            <div className="mr-2 h-4 w-4 rounded-full border" style={{ backgroundColor: getProjectColumnBackground(activeColumn?.bg_color) }} />
+            Ändra bakgrund
+          </Button>
           <Button type="button" variant="outline" className="h-12 justify-start rounded-2xl" onClick={() => { setColumnSheetOpen(false); setDeleteColumnOpen(true); }} disabled={columns.length <= 1}>
             <Trash2 className="mr-2 h-4 w-4" />
             Ta bort kolumn
@@ -668,6 +698,24 @@ export default function ProjectBoardMobileSimple({ companyId }: { companyId: str
           <Button type="button" className="w-full" onClick={() => renameColumnMutation.mutate()} disabled={renameColumnMutation.isPending}>
             {renameColumnMutation.isPending ? 'Sparar...' : 'Spara namn'}
           </Button>
+        </div>
+      </ActionSheet>
+
+      <ActionSheet open={colorColumnOpen} onClose={() => setColorColumnOpen(false)} title="Kolumnbakgrund" description="Välj en färg för den aktiva kolumnen.">
+        <div className="grid gap-2">
+          {PROJECT_COLUMN_COLOR_OPTIONS.map((option) => (
+            <Button
+              key={option.label}
+              type="button"
+              variant="outline"
+              className="h-12 justify-start rounded-2xl"
+              onClick={() => setColumnColorMutation.mutate(option.value || null)}
+              disabled={setColumnColorMutation.isPending}
+            >
+              <div className="mr-3 h-5 w-5 rounded-full border" style={{ backgroundColor: option.background }} />
+              {option.label}
+            </Button>
+          ))}
         </div>
       </ActionSheet>
 
