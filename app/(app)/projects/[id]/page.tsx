@@ -874,6 +874,7 @@ export default function ProjectDetailsPage() {
         .filter((member): member is ProjectMemberVisual => Boolean(member)),
     [projectId, projectMembersQuery.data?.assignments]
   );
+  const taskAssignableMembers = assignedMembers.length > 0 ? assignedMembers : availableMembers;
   const assignedUserIds = useMemo(() => new Set(assignedMembers.map((member) => member.user_id)), [assignedMembers]);
   const filteredAvailableMembers = useMemo(() => {
     const query = memberSearch.trim().toLowerCase();
@@ -1301,17 +1302,17 @@ export default function ProjectDetailsPage() {
         </div>
       )}
 
-      {activeTab === 'tasks' && (
-        <div {...swipeHandlers}>
-          <ProjectTasksPanel companyId={companyId} projectId={projectId} role={role} members={assignedMembers} milestones={orderedMilestones} />
-        </div>
-      )}
+        {activeTab === 'tasks' && (
+          <div {...swipeHandlers}>
+            <ProjectTasksPanel companyId={companyId} projectId={projectId} role={role} members={taskAssignableMembers} milestones={orderedMilestones} />
+          </div>
+        )}
 
-      {activeTab === 'time' && (
-        <div {...swipeHandlers}>
-          <ProjectTimePanel companyId={companyId} projectId={projectId} role={role} members={assignedMembers} orderId={orderId} />
-        </div>
-      )}
+        {activeTab === 'time' && (
+          <div {...swipeHandlers}>
+            <ProjectTimePanel companyId={companyId} projectId={projectId} role={role} members={taskAssignableMembers} orderId={orderId} />
+          </div>
+        )}
 
       {activeTab === 'economy' && (
         <div className="space-y-4" {...swipeHandlers}>

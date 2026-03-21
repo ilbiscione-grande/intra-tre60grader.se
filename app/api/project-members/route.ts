@@ -63,13 +63,13 @@ export async function GET(request: NextRequest) {
 
   const [{ data: assignments, error: assignmentError }, { data: members, error: membersError }, { data: preferences, error: prefError }] =
     await Promise.all([
-      actor.supabase
+      admin
         .from('project_members')
         .select('id,company_id,project_id,user_id,created_by,created_at')
         .eq('company_id', companyId)
         .order('created_at', { ascending: true })
         .returns<ProjectMemberRow[]>(),
-      actor.supabase
+      admin
         .from('company_members')
         .select('id,company_id,user_id,role,created_at')
         .eq('company_id', companyId)
