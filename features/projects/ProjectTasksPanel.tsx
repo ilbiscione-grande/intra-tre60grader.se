@@ -35,6 +35,16 @@ type ProjectMilestoneOption = {
 type TaskStatus = 'todo' | 'in_progress' | 'done';
 type TaskPriority = 'low' | 'normal' | 'high';
 
+function normalizeUserId(value: unknown): string | null {
+  if (typeof value === 'string' && value.trim()) return value;
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    const record = value as Record<string, unknown>;
+    if (typeof record.user_id === 'string' && record.user_id.trim()) return record.user_id;
+    if (typeof record.id === 'string' && record.id.trim()) return record.id;
+  }
+  return null;
+}
+
 function statusLabel(status: TaskStatus) {
   return (
     {
@@ -165,7 +175,18 @@ export default function ProjectTasksPanel({
     }
   });
 
-  const assigneeByUserId = useMemo(() => new Map(members.map((member) => [member.user_id, member])), [members]);
+  const normalizedMembers = useMemo(
+    () =>
+      members
+        .map((member) => {
+          const userId = normalizeUserId(member.user_id);
+          if (!userId) return null;
+          return { ...member, user_id: userId };
+        })
+        .filter((member): member is ProjectMemberVisual => Boolean(member)),
+    [members]
+  );
+  const assigneeByUserId = useMemo(() => new Map(normalizedMembers.map((member) => [member.user_id, member])), [normalizedMembers]);
   const milestoneById = useMemo(() => new Map(milestones.map((milestone) => [milestone.id, milestone])), [milestones]);
   const tasks = tasksQuery.data ?? [];
   const openTasks = tasks.filter((task) => task.status !== 'done');
@@ -216,7 +237,7 @@ export default function ProjectTasksPanel({
         status: 'todo',
         priority,
         due_date: dueDate || null,
-        assignee_user_id: assigneeUserId === 'none' ? null : assigneeUserId,
+        assignee_user_id: assigneeUserId === 'none' ? null : normalizeUserId(assigneeUserId),
         milestone_id: milestoneId === 'none' ? null : milestoneId,
         subtasks: serializeTaskSubtasks(subtasks),
         created_by: currentUserId
@@ -384,7 +405,7 @@ export default function ProjectTasksPanel({
                       <SelectTrigger><SelectValue placeholder="Välj medlem" /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="none">Ingen ansvarig ännu</SelectItem>
-                        {members.map((member) => (
+                        {normalizedMembers.map((member) => (
                           <SelectItem key={member.id} value={member.user_id}>
                             {getUserDisplayName({
                               displayName: member.display_name,
@@ -509,7 +530,7 @@ export default function ProjectTasksPanel({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">Ingen ansvarig ännu</SelectItem>
-                        {members.map((member) => (
+                        {normalizedMembers.map((member) => (
                           <SelectItem key={member.id} value={member.user_id}>
                             {getUserDisplayName({
                               displayName: member.display_name,
@@ -884,7 +905,7 @@ export default function ProjectTasksPanel({
                       onValueChange={(value) =>
                         updateTaskMutation.mutate({
                           taskId: task.id,
-                          patch: { assignee_user_id: value === 'none' ? null : value }
+                          patch: { assignee_user_id: value === 'none' ? null : normalizeUserId(value) }
                         })
                       }
                     >
@@ -893,7 +914,7 @@ export default function ProjectTasksPanel({
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="none">Ingen ansvarig</SelectItem>
-                        {members.map((member) => (
+                        {normalizedMembers.map((member) => (
                           <SelectItem key={member.id} value={member.user_id}>
                             {getUserDisplayName({
                               displayName: member.display_name,
