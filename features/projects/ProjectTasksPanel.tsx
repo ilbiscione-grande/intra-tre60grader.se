@@ -219,21 +219,24 @@ export default function ProjectTasksPanel({
     mutationFn: async () => {
       const nextTitle = title.trim();
       if (!nextTitle) throw new Error('Titel krävs');
-
-      const { error } = await supabase.from('project_tasks').insert({
-        company_id: companyId,
-        project_id: projectId,
-        title: nextTitle,
-        description: description.trim() || null,
-        status: 'todo',
-        priority,
-        due_date: dueDate || null,
-        assignee_user_id: assigneeUserId === 'none' ? null : normalizeUserId(assigneeUserId),
-        milestone_id: milestoneId === 'none' ? null : milestoneId,
-        subtasks: serializeTaskSubtasks(subtasks)
+      const res = await fetch('/api/project-tasks', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          companyId,
+          projectId,
+          title: nextTitle,
+          description: description.trim() || null,
+          priority,
+          dueDate: dueDate || null,
+          assigneeUserId: assigneeUserId === 'none' ? null : normalizeUserId(assigneeUserId),
+          milestoneId: milestoneId === 'none' ? null : milestoneId,
+          subtasks: serializeTaskSubtasks(subtasks)
+        })
       });
 
-      if (error) throw error;
+      const body = (await res.json().catch(() => null)) as { error?: string } | null;
+      if (!res.ok) throw new Error(body?.error ?? 'Kunde inte skapa uppgift');
     },
     onSuccess: async () => {
       setTitle('');
@@ -260,8 +263,13 @@ export default function ProjectTasksPanel({
       taskId: string;
       patch: Partial<Pick<ProjectTaskRow, 'status' | 'priority' | 'due_date' | 'assignee_user_id' | 'milestone_id' | 'subtasks'>>;
     }) => {
-      const { error } = await supabase.from('project_tasks').update(patch).eq('company_id', companyId).eq('id', taskId);
-      if (error) throw error;
+      const res = await fetch('/api/project-tasks', {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ companyId, taskId, patch })
+      });
+      const body = (await res.json().catch(() => null)) as { error?: string } | null;
+      if (!res.ok) throw new Error(body?.error ?? 'Kunde inte uppdatera uppgift');
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['project-tasks', companyId, projectId] });
@@ -273,8 +281,11 @@ export default function ProjectTasksPanel({
 
   const deleteTaskMutation = useMutation({
     mutationFn: async (taskId: string) => {
-      const { error } = await supabase.from('project_tasks').delete().eq('company_id', companyId).eq('id', taskId);
-      if (error) throw error;
+      const res = await fetch(`/api/project-tasks?companyId=${companyId}&taskId=${taskId}`, {
+        method: 'DELETE'
+      });
+      const body = (await res.json().catch(() => null)) as { error?: string } | null;
+      if (!res.ok) throw new Error(body?.error ?? 'Kunde inte ta bort uppgift');
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['project-tasks', companyId, projectId] });
