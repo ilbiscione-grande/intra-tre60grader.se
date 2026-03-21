@@ -220,18 +220,6 @@ export default function ProjectTasksPanel({
       const nextTitle = title.trim();
       if (!nextTitle) throw new Error('Titel krävs');
 
-      let currentUserId = normalizeUserId(currentUserQuery.data);
-      if (!currentUserId) {
-        const {
-          data: { user },
-          error: userError
-        } = await supabase.auth.getUser();
-        if (userError) throw userError;
-        currentUserId = user?.id ?? null;
-      }
-
-      if (!currentUserId) throw new Error('Kunde inte identifiera användaren');
-
       const { error } = await supabase.from('project_tasks').insert({
         company_id: companyId,
         project_id: projectId,
@@ -242,8 +230,7 @@ export default function ProjectTasksPanel({
         due_date: dueDate || null,
         assignee_user_id: assigneeUserId === 'none' ? null : normalizeUserId(assigneeUserId),
         milestone_id: milestoneId === 'none' ? null : milestoneId,
-        subtasks: serializeTaskSubtasks(subtasks),
-        created_by: currentUserId
+        subtasks: serializeTaskSubtasks(subtasks)
       });
 
       if (error) throw error;
