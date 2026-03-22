@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { BarChart3, ClipboardList, FileText, Filter, Wallet } from 'lucide-react';
 import { useAppContext } from '@/components/providers/AppContext';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -19,6 +20,7 @@ import BankReconciliationCard from '@/features/finance/BankReconciliationCard';
 type StatusFilter = 'all' | 'booked' | 'voided';
 type SourceFilter = 'all' | 'mobile' | 'desktop' | 'offline';
 type AttachmentFilter = 'all' | 'with' | 'without';
+type FinanceView = 'overview' | 'verifications';
 
 type InvoiceTodoRow = {
   id: string;
@@ -145,6 +147,7 @@ export default function FinancePage() {
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all');
   const [attachmentFilter, setAttachmentFilter] = useState<AttachmentFilter>('all');
   const [search, setSearch] = useState('');
+  const [view, setView] = useState<FinanceView>('overview');
 
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [dismissed, setDismissed] = useState<DismissedMap>({ ...DEFAULT_DISMISSED });
@@ -341,223 +344,387 @@ export default function FinancePage() {
   const hiddenCount = Number(dismissed.unbooked_invoices) + Number(dismissed.overdue_invoices) + Number(dismissed.verifications_without_attachment);
 
   return (
-      <section className="space-y-4">
-        <div className="flex flex-wrap gap-2">
-          {canEditFinance ? (
-            <>
-              <Button asChild><Link href="/finance/verifications/new">Ny verifikation</Link></Button>
-              <Button variant="secondary" asChild><Link href="/finance/verifications/drafts">Utkast</Link></Button>
-            </>
-          ) : null}
-          <Button variant="outline" asChild><Link href="/orders">Ordrar</Link></Button>
-          <Button variant="outline" asChild><Link href="/invoices">Fakturor</Link></Button>
-          <Button variant="outline" asChild><Link href="/reports">Alla rapporter</Link></Button>
-        </div>
-        <BankReconciliationCard companyId={companyId} />
-
-        <Card>
-          <CardHeader><CardTitle>Dagens läge</CardTitle></CardHeader>
-          <CardContent className="grid gap-2 md:grid-cols-2 lg:grid-cols-6">
-            <StatCard title="Verifikationer (urval)" value={String(stats.allCount)} />
-            <StatCard title="Bokförda" value={String(stats.bookedCount)} />
-            <StatCard title="Makulerade" value={String(stats.voidedCount)} />
-            <StatCard title="Med bilaga" value={String(stats.withAttachmentCount)} />
-            <StatCard title="Bokfört belopp" value={money(stats.totalBooked)} />
-            <StatCard title={`Moms ruta 49 (${monthRange.start} - ${monthRange.end})`} value={money(vat49)} />
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between gap-2">
-              <CardTitle>Att göra i ekonomi idag</CardTitle>
-              {hiddenCount > 0 ? <Button size="sm" variant="outline" onClick={resetAllTodoCards}>Visa alla ({hiddenCount} dolda)</Button> : null}
+    <section className="space-y-4">
+      <Card className="overflow-hidden border-border/70 bg-gradient-to-br from-card via-card to-muted/20">
+        <CardContent className="space-y-4 p-4 md:p-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.18em] text-foreground/45">
+                <Wallet className="h-3.5 w-3.5" />
+                <span>Ekonomi</span>
+              </div>
+              <div>
+                <h1 className="text-xl font-semibold tracking-tight">Bokföring och verifikationer</h1>
+                <p className="text-sm text-foreground/65">
+                  Håll fokus på dagens läge först, och öppna verifikationsvyn när du behöver söka, filtrera och granska.
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Badge className="border-border/70 bg-muted/40 text-foreground/80 hover:bg-muted/40">
+                    Månad: {monthRange.start} - {monthRange.end}
+                  </Badge>
+                  <Badge className="border-border/70 bg-muted/40 text-foreground/80 hover:bg-muted/40">
+                    {canEditFinance ? 'Skrivläge aktiverat' : 'Läsläge'}
+                  </Badge>
+                </div>
+              </div>
             </div>
-          </CardHeader>
-          <CardContent className="grid gap-4 lg:grid-cols-3">
-            <TodoCard title="Obokförda fakturor" hidden={dismissed.unbooked_invoices} dismissedAt={dismissedAt.unbooked_invoices} onDone={() => markTodoDone('unbooked_invoices')} onUndo={() => undoTodoDone('unbooked_invoices')}>
-              {todo.unbookedInvoices.length === 0 ? (
-                <p className="text-sm text-foreground/70">Inga obokförda fakturor.</p>
-              ) : (
-                <div className="space-y-2">
-                  {todo.unbookedInvoices.map((inv) => (
-                    <div key={inv.id} className="rounded border p-2 text-sm">
-                      <p className="font-medium"><Link className="underline underline-offset-2" href={`/invoices/${inv.id}`}>{inv.invoice_no}</Link></p>
-                      <p className="text-foreground/70">{money(Number(inv.total))} {inv.currency}</p>
-                    </div>
-                  ))}
-                </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="inline-flex rounded-full border border-border/70 bg-muted/40 p-1">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={view === 'overview' ? 'default' : 'ghost'}
+                  className="rounded-full"
+                  onClick={() => setView('overview')}
+                >
+                  <BarChart3 className="mr-2 h-4 w-4" />
+                  Översikt
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={view === 'verifications' ? 'default' : 'ghost'}
+                  className="rounded-full"
+                  onClick={() => setView('verifications')}
+                >
+                  <ClipboardList className="mr-2 h-4 w-4" />
+                  Verifikationer
+                </Button>
+              </div>
+
+              {canEditFinance ? <Button asChild><Link href="/finance/verifications/new">Ny verifikation</Link></Button> : null}
+              {canEditFinance ? <Button variant="secondary" asChild><Link href="/finance/verifications/drafts">Utkast</Link></Button> : null}
+            </div>
+          </div>
+
+          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+            <MiniStatCard
+              icon={FileText}
+              title="Bokfört belopp"
+              value={money(stats.totalBooked)}
+              detail={`${stats.bookedCount} bokförda verifikationer i urvalet`}
+              tone="emerald"
+            />
+            <MiniStatCard
+              icon={ClipboardList}
+              title="Verifikationer"
+              value={String(stats.allCount)}
+              detail={`${stats.withAttachmentCount} med bilaga • ${stats.voidedCount} makulerade`}
+              tone="blue"
+            />
+            <MiniStatCard
+              icon={BarChart3}
+              title="Moms ruta 49"
+              value={money(vat49)}
+              detail={`${monthRange.start} - ${monthRange.end}`}
+              tone="amber"
+            />
+            <MiniStatCard
+              icon={Filter}
+              title="Att göra idag"
+              value={String(
+                todo.unbookedInvoices.length +
+                  todo.overdueInvoices.length +
+                  todo.verificationsWithoutAttachment.length
               )}
-            </TodoCard>
+              detail={hiddenCount > 0 ? `${hiddenCount} dolda kort` : 'Inga dolda kort'}
+              tone="rose"
+            />
+          </div>
 
-            <TodoCard title="Förfallna obetalda fakturor" hidden={dismissed.overdue_invoices} dismissedAt={dismissedAt.overdue_invoices} onDone={() => markTodoDone('overdue_invoices')} onUndo={() => undoTodoDone('overdue_invoices')}>
-              {todo.overdueInvoices.length === 0 ? (
-                <p className="text-sm text-foreground/70">Inga förfallna fakturor.</p>
-              ) : (
-                <div className="space-y-2">
-                  {todo.overdueInvoices.map((inv) => (
-                    <div key={inv.id} className="rounded border p-2 text-sm">
-                      <p className="font-medium"><Link className="underline underline-offset-2" href={`/invoices/${inv.id}`}>{inv.invoice_no}</Link></p>
-                      <p className="text-foreground/70">Förfallodag: {formatDate(inv.due_date)}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </TodoCard>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" asChild><Link href="/orders">Ordrar</Link></Button>
+            <Button variant="outline" asChild><Link href="/invoices">Fakturor</Link></Button>
+            <Button variant="outline" asChild><Link href="/reports">Alla rapporter</Link></Button>
+          </div>
+        </CardContent>
+      </Card>
 
-            <TodoCard title="Verifikationer utan bilaga" hidden={dismissed.verifications_without_attachment} dismissedAt={dismissedAt.verifications_without_attachment} onDone={() => markTodoDone('verifications_without_attachment')} onUndo={() => undoTodoDone('verifications_without_attachment')}>
-              {todo.verificationsWithoutAttachment.length === 0 ? (
-                <p className="text-sm text-foreground/70">Alla bokförda verifikationer har bilaga.</p>
-              ) : (
-                <div className="space-y-2">
-                  {todo.verificationsWithoutAttachment.map((row) => (
-                    <div key={row.id} className="rounded border p-2 text-sm">
-                      <p className="font-medium"><Link className="underline underline-offset-2" href={`/finance/verifications/${row.id}`}>{verificationNumberLabel(row.fiscal_year, row.verification_no)}</Link></p>
-                      <p className="text-foreground/70 truncate">{row.description}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </TodoCard>
-          </CardContent>
-        </Card>
+      {view === 'overview' ? (
+        <div className="space-y-4">
+          <BankReconciliationCard companyId={companyId} />
 
-        <Card>
-          <CardHeader><CardTitle>Snabbfilter</CardTitle></CardHeader>
-          <CardContent className="grid gap-2 md:grid-cols-4">
-            <Input placeholder="Sök på text, id, ver.nr" value={search} onChange={(event) => setSearch(event.target.value)} />
-            <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as StatusFilter)}>
-              <SelectTrigger><SelectValue placeholder="Status" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Alla statusar</SelectItem>
-                <SelectItem value="booked">Bokförd</SelectItem>
-                <SelectItem value="voided">Makulerad</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={sourceFilter} onValueChange={(value) => setSourceFilter(value as SourceFilter)}>
-              <SelectTrigger><SelectValue placeholder="Källa" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Alla källor</SelectItem>
-                <SelectItem value="mobile">Mobil</SelectItem>
-                <SelectItem value="desktop">Desktop</SelectItem>
-                <SelectItem value="offline">Offline</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={attachmentFilter} onValueChange={(value) => setAttachmentFilter(value as AttachmentFilter)}>
-              <SelectTrigger><SelectValue placeholder="Bilaga" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Alla bilagor</SelectItem>
-                <SelectItem value="with">Med bilaga</SelectItem>
-                <SelectItem value="without">Utan bilaga</SelectItem>
-              </SelectContent>
-            </Select>
-          </CardContent>
-        </Card>
-
-        <div className="space-y-3 md:hidden">
-          {filteredRows.length === 0 ? (
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1.5fr)_minmax(320px,1fr)]">
             <Card>
-              <CardContent className="p-4 text-sm text-foreground/70">Inga verifikationer matchar filtret.</CardContent>
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between gap-2">
+                  <CardTitle>Att göra i ekonomi idag</CardTitle>
+                  {hiddenCount > 0 ? (
+                    <Button size="sm" variant="outline" onClick={resetAllTodoCards}>
+                      Visa alla ({hiddenCount})
+                    </Button>
+                  ) : null}
+                </div>
+              </CardHeader>
+              <CardContent className="grid gap-3 lg:grid-cols-3">
+                <TodoCard title="Obokförda fakturor" hidden={dismissed.unbooked_invoices} dismissedAt={dismissedAt.unbooked_invoices} onDone={() => markTodoDone('unbooked_invoices')} onUndo={() => undoTodoDone('unbooked_invoices')}>
+                  {todo.unbookedInvoices.length === 0 ? (
+                    <p className="text-sm text-foreground/70">Inga obokförda fakturor.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {todo.unbookedInvoices.map((inv) => (
+                        <div key={inv.id} className="rounded border p-2 text-sm">
+                          <p className="font-medium"><Link className="underline underline-offset-2" href={`/invoices/${inv.id}`}>{inv.invoice_no}</Link></p>
+                          <p className="text-foreground/70">{money(Number(inv.total))} {inv.currency}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </TodoCard>
+
+                <TodoCard title="Förfallna obetalda fakturor" hidden={dismissed.overdue_invoices} dismissedAt={dismissedAt.overdue_invoices} onDone={() => markTodoDone('overdue_invoices')} onUndo={() => undoTodoDone('overdue_invoices')}>
+                  {todo.overdueInvoices.length === 0 ? (
+                    <p className="text-sm text-foreground/70">Inga förfallna fakturor.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {todo.overdueInvoices.map((inv) => (
+                        <div key={inv.id} className="rounded border p-2 text-sm">
+                          <p className="font-medium"><Link className="underline underline-offset-2" href={`/invoices/${inv.id}`}>{inv.invoice_no}</Link></p>
+                          <p className="text-foreground/70">Förfallodag: {formatDate(inv.due_date)}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </TodoCard>
+
+                <TodoCard title="Verifikationer utan bilaga" hidden={dismissed.verifications_without_attachment} dismissedAt={dismissedAt.verifications_without_attachment} onDone={() => markTodoDone('verifications_without_attachment')} onUndo={() => undoTodoDone('verifications_without_attachment')}>
+                  {todo.verificationsWithoutAttachment.length === 0 ? (
+                    <p className="text-sm text-foreground/70">Alla bokförda verifikationer har bilaga.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {todo.verificationsWithoutAttachment.map((row) => (
+                        <div key={row.id} className="rounded border p-2 text-sm">
+                          <p className="font-medium"><Link className="underline underline-offset-2" href={`/finance/verifications/${row.id}`}>{verificationNumberLabel(row.fiscal_year, row.verification_no)}</Link></p>
+                          <p className="text-foreground/70 truncate">{row.description}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </TodoCard>
+              </CardContent>
             </Card>
-          ) : (
-            filteredRows.map((row) => (
-              <Link key={row.id} href={`/finance/verifications/${row.id}`} className="block">
-                <Card className="overflow-hidden p-0 transition hover:border-primary/35 hover:bg-muted/20">
-                  <div className="border-b border-border/70 bg-muted/25 px-4 py-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-foreground/45">Verifikation</p>
-                        <p className="mt-1 font-medium">{verificationNumberLabel(row.fiscal_year, row.verification_no)}</p>
-                      </div>
-                      <div className="flex flex-col items-end gap-2">
-                        <Badge>{statusLabel(row.status)}</Badge>
-                        <span className="rounded-full border border-border/70 bg-card px-2.5 py-1 text-sm font-semibold">
-                          {Number(row.total).toFixed(2)} kr
-                        </span>
-                      </div>
+
+            <div className="space-y-4">
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle>Snabbläge</CardTitle>
+                </CardHeader>
+                <CardContent className="grid gap-3 sm:grid-cols-2">
+                  <MiniStatCard icon={ClipboardList} title="Bokförda" value={String(stats.bookedCount)} detail="Verifikationer i aktuellt urval" compact tone="blue" />
+                  <MiniStatCard icon={FileText} title="Med bilaga" value={String(stats.withAttachmentCount)} detail="Verifikationer med underlag" compact tone="emerald" />
+                  <MiniStatCard icon={BarChart3} title="Makulerade" value={String(stats.voidedCount)} detail="Poster som inte längre gäller" compact tone="rose" />
+                  <MiniStatCard icon={Wallet} title="Momsperiod" value={monthRange.end} detail={`Start ${monthRange.start}`} compact tone="amber" />
+                </CardContent>
+              </Card>
+
+              {stats.latest ? (
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle>Senaste aktivitet</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-2 text-sm">
+                    <p className="font-medium">
+                      {verificationNumberLabel(stats.latest.fiscal_year, stats.latest.verification_no)} {stats.latest.description}
+                    </p>
+                    <p className="text-foreground/70">
+                      {formatDateTime(stats.latest.created_at)} • {statusLabel(stats.latest.status)} • {Number(stats.latest.total).toFixed(2)} kr
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <Badge>{sourceLabel(stats.latest.source)}</Badge>
+                      <Badge className="border-border/70 bg-muted/50 text-foreground/80 hover:bg-muted/50">
+                        {stats.latest.attachment_path ? 'Med bilaga' : 'Utan bilaga'}
+                      </Badge>
                     </div>
-                  </div>
-                  <div className="space-y-3 p-4">
-                    <p className="text-sm font-medium leading-snug">{row.description}</p>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="rounded-lg border border-border/70 bg-muted/20 px-3 py-2">
-                        <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Datum</p>
-                        <p className="mt-1 text-sm">{formatDate(row.date)}</p>
-                      </div>
-                      <div className="rounded-lg border border-border/70 bg-muted/20 px-3 py-2">
-                        <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Källa</p>
-                        <p className="mt-1 text-sm">{sourceLabel(row.source)}</p>
-                      </div>
-                      <div className="rounded-lg border border-border/70 bg-muted/20 px-3 py-2">
-                        <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Skapad</p>
-                        <p className="mt-1 text-sm">{formatDateTime(row.created_at)}</p>
-                      </div>
-                      <div className="rounded-lg border border-border/70 bg-muted/20 px-3 py-2">
-                        <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Bilaga</p>
-                        <p className="mt-1 text-sm">{row.attachment_path ? 'Ja' : 'Nej'}</p>
-                      </div>
-                    </div>
-                  </div>
+                  </CardContent>
                 </Card>
-              </Link>
-            ))
-          )}
+              ) : null}
+            </div>
+          </div>
         </div>
-
-        <Card className="hidden p-0 md:block">
-          <Table>
-            <TableHeader className="bg-muted">
-              <TableRow>
-                <TableHead>Nr</TableHead><TableHead>Datum</TableHead><TableHead>Beskrivning</TableHead><TableHead>Status</TableHead><TableHead>Total</TableHead><TableHead>Källa</TableHead><TableHead>Skapad</TableHead><TableHead>Bilaga</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredRows.length === 0 ? (
-                <TableRow><TableCell colSpan={8} className="text-foreground/70">Inga verifikationer matchar filtret.</TableCell></TableRow>
-              ) : filteredRows.map((row) => (
-                <TableRow key={row.id}>
-                  <TableCell>{verificationNumberLabel(row.fiscal_year, row.verification_no)}</TableCell>
-                  <TableCell>{formatDate(row.date)}</TableCell>
-                  <TableCell><Link href={`/finance/verifications/${row.id}`} className="font-medium underline-offset-4 hover:underline">{row.description}</Link></TableCell>
-                  <TableCell>{statusLabel(row.status)}</TableCell>
-                  <TableCell>{Number(row.total).toFixed(2)} kr</TableCell>
-                  <TableCell>{sourceLabel(row.source)}</TableCell>
-                  <TableCell>{formatDateTime(row.created_at)}</TableCell>
-                  <TableCell>{row.attachment_path ? 'Ja' : 'Nej'}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </Card>
-
-        {stats.latest ? (
+      ) : (
+        <div className="space-y-4">
           <Card>
-            <CardHeader><CardTitle>Senaste aktivitet</CardTitle></CardHeader>
-            <CardContent className="text-sm">
-              <p><span className="font-medium">{verificationNumberLabel(stats.latest.fiscal_year, stats.latest.verification_no)}</span> {stats.latest.description}</p>
-              <p className="text-foreground/70">{formatDateTime(stats.latest.created_at)} - {statusLabel(stats.latest.status)} - {Number(stats.latest.total).toFixed(2)} kr</p>
-              <div className="mt-2"><Badge>{sourceLabel(stats.latest.source)}</Badge></div>
+            <CardHeader className="pb-3">
+              <CardTitle>Filter och urval</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="grid gap-2 md:grid-cols-4">
+                <Input placeholder="Sök på text, id, ver.nr" value={search} onChange={(event) => setSearch(event.target.value)} />
+                <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as StatusFilter)}>
+                  <SelectTrigger><SelectValue placeholder="Status" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Alla statusar</SelectItem>
+                    <SelectItem value="booked">Bokförd</SelectItem>
+                    <SelectItem value="voided">Makulerad</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={sourceFilter} onValueChange={(value) => setSourceFilter(value as SourceFilter)}>
+                  <SelectTrigger><SelectValue placeholder="Källa" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Alla källor</SelectItem>
+                    <SelectItem value="mobile">Mobil</SelectItem>
+                    <SelectItem value="desktop">Desktop</SelectItem>
+                    <SelectItem value="offline">Offline</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={attachmentFilter} onValueChange={(value) => setAttachmentFilter(value as AttachmentFilter)}>
+                  <SelectTrigger><SelectValue placeholder="Bilaga" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Alla bilagor</SelectItem>
+                    <SelectItem value="with">Med bilaga</SelectItem>
+                    <SelectItem value="without">Utan bilaga</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                <MiniStatCard icon={ClipboardList} title="Urval" value={String(stats.allCount)} detail="Matchande verifikationer" compact tone="blue" />
+                <MiniStatCard icon={Wallet} title="Bokfört" value={money(stats.totalBooked)} detail="Summerat från urvalet" compact tone="emerald" />
+                <MiniStatCard icon={FileText} title="Bilagor" value={String(stats.withAttachmentCount)} detail="Med bifogat underlag" compact tone="amber" />
+                <MiniStatCard icon={BarChart3} title="Makulerade" value={String(stats.voidedCount)} detail="I samma urval" compact tone="rose" />
+              </div>
             </CardContent>
           </Card>
-        ) : null}
-      </section>
+
+          <div className="space-y-3 md:hidden">
+            {filteredRows.length === 0 ? (
+              <Card>
+                <CardContent className="p-4 text-sm text-foreground/70">Inga verifikationer matchar filtret.</CardContent>
+              </Card>
+            ) : (
+              filteredRows.map((row) => (
+                <Link key={row.id} href={`/finance/verifications/${row.id}`} className="block">
+                  <Card className="overflow-hidden p-0 transition hover:border-primary/35 hover:bg-muted/20">
+                    <div className="border-b border-border/70 bg-muted/25 px-4 py-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-foreground/45">Verifikation</p>
+                          <p className="mt-1 font-medium">{verificationNumberLabel(row.fiscal_year, row.verification_no)}</p>
+                        </div>
+                        <div className="flex flex-col items-end gap-2">
+                          <Badge>{statusLabel(row.status)}</Badge>
+                          <span className="rounded-full border border-border/70 bg-card px-2.5 py-1 text-sm font-semibold">
+                            {Number(row.total).toFixed(2)} kr
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="space-y-3 p-4">
+                      <p className="text-sm font-medium leading-snug">{row.description}</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="rounded-lg border border-border/70 bg-muted/20 px-3 py-2">
+                          <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Datum</p>
+                          <p className="mt-1 text-sm">{formatDate(row.date)}</p>
+                        </div>
+                        <div className="rounded-lg border border-border/70 bg-muted/20 px-3 py-2">
+                          <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Källa</p>
+                          <p className="mt-1 text-sm">{sourceLabel(row.source)}</p>
+                        </div>
+                        <div className="rounded-lg border border-border/70 bg-muted/20 px-3 py-2">
+                          <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Skapad</p>
+                          <p className="mt-1 text-sm">{formatDateTime(row.created_at)}</p>
+                        </div>
+                        <div className="rounded-lg border border-border/70 bg-muted/20 px-3 py-2">
+                          <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Bilaga</p>
+                          <p className="mt-1 text-sm">{row.attachment_path ? 'Ja' : 'Nej'}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </Card>
+                </Link>
+              ))
+            )}
+          </div>
+
+          <Card className="hidden p-0 md:block">
+            <Table>
+              <TableHeader className="bg-muted">
+                <TableRow>
+                  <TableHead>Nr</TableHead><TableHead>Datum</TableHead><TableHead>Beskrivning</TableHead><TableHead>Status</TableHead><TableHead>Total</TableHead><TableHead>Källa</TableHead><TableHead>Skapad</TableHead><TableHead>Bilaga</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredRows.length === 0 ? (
+                  <TableRow><TableCell colSpan={8} className="text-foreground/70">Inga verifikationer matchar filtret.</TableCell></TableRow>
+                ) : filteredRows.map((row) => (
+                  <TableRow key={row.id}>
+                    <TableCell>{verificationNumberLabel(row.fiscal_year, row.verification_no)}</TableCell>
+                    <TableCell>{formatDate(row.date)}</TableCell>
+                    <TableCell><Link href={`/finance/verifications/${row.id}`} className="font-medium underline-offset-4 hover:underline">{row.description}</Link></TableCell>
+                    <TableCell>{statusLabel(row.status)}</TableCell>
+                    <TableCell>{Number(row.total).toFixed(2)} kr</TableCell>
+                    <TableCell>{sourceLabel(row.source)}</TableCell>
+                    <TableCell>{formatDateTime(row.created_at)}</TableCell>
+                    <TableCell>{row.attachment_path ? 'Ja' : 'Nej'}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </Card>
+        </div>
+      )}
+    </section>
   );
 }
 
-function StatCard({ title, value }: { title: string; value: string }) {
+function MiniStatCard({
+  icon: Icon,
+  title,
+  value,
+  detail,
+  compact = false,
+  tone = 'neutral'
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  title: string;
+  value: string;
+  detail: string;
+  compact?: boolean;
+  tone?: 'neutral' | 'blue' | 'emerald' | 'amber' | 'rose';
+}) {
+  const toneClasses = {
+    neutral: 'border-border/70 bg-card/70',
+    blue: 'border-sky-200/60 bg-sky-50/60 dark:border-sky-900/40 dark:bg-sky-950/20',
+    emerald: 'border-emerald-200/60 bg-emerald-50/60 dark:border-emerald-900/40 dark:bg-emerald-950/20',
+    amber: 'border-amber-200/60 bg-amber-50/60 dark:border-amber-900/40 dark:bg-amber-950/20',
+    rose: 'border-rose-200/60 bg-rose-50/60 dark:border-rose-900/40 dark:bg-rose-950/20'
+  } as const;
+
+  const iconToneClasses = {
+    neutral: 'border-border/70 bg-muted/35 text-foreground/65',
+    blue: 'border-sky-200/70 bg-sky-100/70 text-sky-700 dark:border-sky-900/50 dark:bg-sky-900/40 dark:text-sky-200',
+    emerald: 'border-emerald-200/70 bg-emerald-100/70 text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-900/40 dark:text-emerald-200',
+    amber: 'border-amber-200/70 bg-amber-100/70 text-amber-700 dark:border-amber-900/50 dark:bg-amber-900/40 dark:text-amber-200',
+    rose: 'border-rose-200/70 bg-rose-100/70 text-rose-700 dark:border-rose-900/50 dark:bg-rose-900/40 dark:text-rose-200'
+  } as const;
+
   return (
-    <div className="rounded-lg border p-3">
-      <p className="text-xs text-foreground/70">{title}</p>
-      <p className="text-sm font-semibold">{value}</p>
+    <div className={`rounded-xl border ${toneClasses[tone]} ${compact ? 'p-3' : 'p-4'}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="space-y-1">
+          <p className="text-xs font-medium uppercase tracking-[0.16em] text-foreground/45">{title}</p>
+          <p className={`${compact ? 'text-lg' : 'text-2xl'} font-semibold tracking-tight`}>{value}</p>
+          <p className="text-xs text-foreground/65">{detail}</p>
+        </div>
+        <span className={`inline-flex h-9 w-9 items-center justify-center rounded-full border ${iconToneClasses[tone]}`}>
+          <Icon className="h-4 w-4" />
+        </span>
+      </div>
     </div>
   );
 }
 
 function TodoCard({ title, hidden, dismissedAt, onDone, onUndo, children }: { title: string; hidden: boolean; dismissedAt: string | null; onDone: () => void; onUndo: () => void; children: React.ReactNode }) {
   return (
-    <div className="rounded-lg border p-3">
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <p className="text-sm font-medium">{title}</p>
+    <div className="rounded-xl border border-border/70 bg-card/70 p-3">
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div className="space-y-1">
+          <p className="text-sm font-medium">{title}</p>
+          <p className="text-[11px] uppercase tracking-[0.16em] text-foreground/45">
+            {hidden ? 'Pausad för idag' : 'Fokuspunkt'}
+          </p>
+        </div>
         {hidden ? <Button size="sm" variant="outline" onClick={onUndo}>Ångra</Button> : <Button size="sm" variant="outline" onClick={onDone}>Klar för idag</Button>}
       </div>
 
