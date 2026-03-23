@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import type { Route } from 'next';
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { BarChart3, ClipboardList, FileText, Filter, Wallet } from 'lucide-react';
@@ -437,6 +438,7 @@ export default function FinancePage() {
             <Button variant="outline" asChild><Link href="/orders">Ordrar</Link></Button>
             <Button variant="outline" asChild><Link href="/invoices">Fakturor</Link></Button>
             <Button variant="outline" asChild><Link href="/reports">Alla rapporter</Link></Button>
+            <Button variant="ghost" asChild><Link href={'/help/ekonomioversikt' as Route}>Hjälp om ekonomi</Link></Button>
           </div>
         </CardContent>
       </Card>
@@ -546,7 +548,12 @@ export default function FinancePage() {
         <div className="space-y-4">
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle>Filter och urval</CardTitle>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <CardTitle>Filter och urval</CardTitle>
+                <Button variant="ghost" size="sm" asChild>
+                  <Link href={'/help/lagga-till-verifikation' as Route}>Hur använder jag verifikationer?</Link>
+                </Button>
+              </div>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="grid gap-2 md:grid-cols-4">
@@ -648,15 +655,27 @@ export default function FinancePage() {
                 {filteredRows.length === 0 ? (
                   <TableRow><TableCell colSpan={8} className="text-foreground/70">Inga verifikationer matchar filtret.</TableCell></TableRow>
                 ) : filteredRows.map((row) => (
-                  <TableRow key={row.id}>
+                  <TableRow key={row.id} className="transition-colors hover:bg-muted/25">
                     <TableCell>{verificationNumberLabel(row.fiscal_year, row.verification_no)}</TableCell>
                     <TableCell>{formatDate(row.date)}</TableCell>
-                    <TableCell><Link href={`/finance/verifications/${row.id}`} className="font-medium underline-offset-4 hover:underline">{row.description}</Link></TableCell>
-                    <TableCell>{statusLabel(row.status)}</TableCell>
-                    <TableCell>{Number(row.total).toFixed(2)} kr</TableCell>
+                    <TableCell>
+                      <Link href={`/finance/verifications/${row.id}`} className="font-medium underline-offset-4 hover:underline">
+                        {row.description}
+                      </Link>
+                    </TableCell>
+                    <TableCell>
+                      <Badge className="border-border/70 bg-muted/40 text-foreground/80 hover:bg-muted/40">
+                        {statusLabel(row.status)}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="font-medium">{Number(row.total).toFixed(2)} kr</TableCell>
                     <TableCell>{sourceLabel(row.source)}</TableCell>
-                    <TableCell>{formatDateTime(row.created_at)}</TableCell>
-                    <TableCell>{row.attachment_path ? 'Ja' : 'Nej'}</TableCell>
+                    <TableCell className="text-foreground/70">{formatDateTime(row.created_at)}</TableCell>
+                    <TableCell>
+                      <Badge className="border-border/70 bg-muted/40 text-foreground/80 hover:bg-muted/40">
+                        {row.attachment_path ? 'Ja' : 'Nej'}
+                      </Badge>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>

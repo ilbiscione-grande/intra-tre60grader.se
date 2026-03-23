@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
+import type { Route } from 'next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
@@ -55,6 +57,32 @@ type ProjectTimeHoursRow = {
   is_billable: boolean;
 };
 
+type LinkedProjectVerificationRow = {
+  id: string;
+  verification_id: string;
+  linked_at: string;
+  date: string;
+  description: string;
+  total: number;
+  status: string;
+  fiscal_year: number | null;
+  verification_no: number | null;
+  created_at: string;
+  attachment_path: string | null;
+};
+
+type VerificationPickerRow = {
+  id: string;
+  date: string;
+  description: string;
+  total: number;
+  status: string;
+  fiscal_year: number | null;
+  verification_no: number | null;
+  created_at: string;
+  attachment_path: string | null;
+};
+
 const DEFAULT_COST_CENTER_OPTIONS = [
   '100 - Försäljning',
   '200 - Konsult',
@@ -101,6 +129,7 @@ export default function ProjectFinancePanel({
   const [entryDescription, setEntryDescription] = useState('');
   const [entryAmount, setEntryAmount] = useState('0');
   const [entrySupplier, setEntrySupplier] = useState('');
+  const [selectedVerificationId, setSelectedVerificationId] = useState('none');
 
   const planQuery = useQuery<ProjectFinancePlanRow | null>({
     queryKey: ['project-finance-plan', companyId, projectId],
@@ -174,6 +203,41 @@ export default function ProjectFinancePanel({
         .eq('project_id', projectId);
       if (error) throw error;
       return (data as ProjectTimeHoursRow[] | null) ?? [];
+    }
+  });
+
+  const linkedVerificationsQuery = useQuery<LinkedProjectVerificationRow[]>({
+    queryKey: ['project-verifications', companyId, projectId],
+    enabled: canRead,
+    queryFn: async () => {
+      const response = await fetch(
+        `/api/project-verifications?companyId=${encodeURIComponent(companyId)}&projectId=${encodeURIComponent(projectId)}`,
+        { cache: 'no-store' }
+      );
+
+      const payload = (await response.json().catch(() => null)) as { rows?: LinkedProjectVerificationRow[]; error?: string } | null;
+      if (!response.ok) {
+        throw new Error(payload?.error ?? 'Kunde inte läsa projektverifikationer');
+      }
+
+      return payload?.rows ?? [];
+    }
+  });
+
+  const availableVerificationsQuery = useQuery<VerificationPickerRow[]>({
+    queryKey: ['project-verifications-available', companyId],
+    enabled: canRead,
+    queryFn: async () => {
+      const { data, error } = await db
+        .from('verifications')
+        .select('id,date,description,total,status,fiscal_year,verification_no,created_at,attachment_path')
+        .eq('company_id', companyId)
+        .order('date', { ascending: false })
+        .order('created_at', { ascending: false })
+        .limit(150);
+
+      if (error) throw error;
+      return (data as VerificationPickerRow[] | null) ?? [];
     }
   });
 
@@ -277,6 +341,50 @@ export default function ProjectFinancePanel({
     onError: (error) => toast.error(error instanceof Error ? error.message : 'Kunde inte ta bort kostnadspost')
   });
 
+  const linkVerificationMutation = useMutation({
+    mutationFn: async (verificationId: string) => {
+      const response = await fetch('/api/project-verifications', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          companyId,
+          projectId,
+          verificationId
+        })
+      });
+
+      const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+      if (!response.ok) {
+        throw new Error(payload?.error ?? 'Kunde inte koppla verifikation');
+      }
+    },
+    onSuccess: async () => {
+      setSelectedVerificationId('none');
+      await queryClient.invalidateQueries({ queryKey: ['project-verifications', companyId, projectId] });
+      toast.success('Verifikation kopplad till projektet');
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'Kunde inte koppla verifikation')
+  });
+
+  const unlinkVerificationMutation = useMutation({
+    mutationFn: async (verificationId: string) => {
+      const response = await fetch(
+        `/api/project-verifications?companyId=${encodeURIComponent(companyId)}&projectId=${encodeURIComponent(projectId)}&verificationId=${encodeURIComponent(verificationId)}`,
+        { method: 'DELETE' }
+      );
+
+      const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+      if (!response.ok) {
+        throw new Error(payload?.error ?? 'Kunde inte ta bort koppling');
+      }
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['project-verifications', companyId, projectId] });
+      toast.success('Verifikation bortkopplad');
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'Kunde inte ta bort koppling')
+  });
+
   const plan = planQuery.data;
   const summary = summaryQuery.data;
 
@@ -289,6 +397,9 @@ export default function ProjectFinancePanel({
   }, [plan?.id, plan?.cost_center, plan?.budget_hours, plan?.budget_revenue, plan?.budget_cost]);
 
   const mergedCostCenterOptions = [...new Set([...(companyCostCentersQuery.data ?? []).map((row) => row.name), ...DEFAULT_COST_CENTER_OPTIONS, ...(costCenter ? [costCenter] : [])])];
+  const linkedVerificationIds = new Set((linkedVerificationsQuery.data ?? []).map((row) => row.verification_id));
+  const availableVerificationOptions = (availableVerificationsQuery.data ?? []).filter((row) => !linkedVerificationIds.has(row.id));
+  const newVerificationHref = `/finance/verifications/new?projectId=${encodeURIComponent(projectId)}&returnTo=${encodeURIComponent(`/projects/${projectId}?tab=economy`)}` as Route;
   const actualHours = useMemo(
     () => (timeHoursQuery.data ?? []).reduce((sum, entry) => sum + Number(entry.hours ?? 0), 0),
     [timeHoursQuery.data]
@@ -479,6 +590,87 @@ export default function ProjectFinancePanel({
         </div>
 
         <div className="rounded-lg border p-3">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-medium">Projektverifikationer</p>
+              <p className="mt-1 text-sm text-foreground/70">
+                Koppla befintliga verifikationer till projektet eller skapa en ny direkt från ekonomifliken.
+              </p>
+            </div>
+            <Button asChild size="sm" variant="secondary">
+              <Link href={newVerificationHref}>Ny verifikation</Link>
+            </Button>
+          </div>
+
+          <div className="mt-3 grid gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
+            <Select value={selectedVerificationId} onValueChange={setSelectedVerificationId} disabled={!canWrite || availableVerificationOptions.length === 0}>
+              <SelectTrigger>
+                <SelectValue placeholder="Välj verifikation att koppla" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Välj verifikation</SelectItem>
+                {availableVerificationOptions.map((verification) => (
+                  <SelectItem key={verification.id} value={verification.id}>
+                    {formatVerificationLabel(verification)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              type="button"
+              onClick={() => {
+                if (!canWrite || selectedVerificationId === 'none') return;
+                linkVerificationMutation.mutate(selectedVerificationId);
+              }}
+              disabled={!canWrite || selectedVerificationId === 'none' || linkVerificationMutation.isPending}
+            >
+              {linkVerificationMutation.isPending ? 'Kopplar...' : 'Koppla verifikation'}
+            </Button>
+          </div>
+
+          <div className="mt-3 space-y-2">
+            {(linkedVerificationsQuery.data ?? []).length === 0 ? (
+              <p className="text-sm text-foreground/70">Inga verifikationer är kopplade till projektet ännu.</p>
+            ) : (
+              (linkedVerificationsQuery.data ?? []).map((verification) => (
+                <div key={verification.id} className="rounded-lg border p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium">
+                        <Link href={`/finance/verifications/${verification.verification_id}` as Route} className="underline underline-offset-2">
+                          {formatVerificationNumber(verification)} {verification.description}
+                        </Link>
+                      </p>
+                      <p className="mt-1 text-xs text-foreground/70">
+                        {new Date(verification.date).toLocaleDateString('sv-SE')} • {Number(verification.total).toFixed(2)} kr • Kopplad {new Date(verification.linked_at).toLocaleString('sv-SE')}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge>{verification.status === 'voided' ? 'Makulerad' : 'Bokförd'}</Badge>
+                      {verification.attachment_path ? (
+                        <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-200">
+                          Bilaga
+                        </Badge>
+                      ) : null}
+                      {canWrite ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => unlinkVerificationMutation.mutate(verification.verification_id)}
+                          disabled={unlinkVerificationMutation.isPending}
+                        >
+                          Ta bort koppling
+                        </Button>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        <div className="rounded-lg border p-3">
           <p className="mb-2 text-sm font-medium">Lägg till kostnadspost</p>
           <div className="grid gap-2 md:grid-cols-4">
             <label className="space-y-1">
@@ -551,4 +743,16 @@ export default function ProjectFinancePanel({
       </CardContent>
     </Card>
   );
+}
+
+function formatVerificationNumber(verification: {
+  fiscal_year: number | null;
+  verification_no: number | null;
+}) {
+  if (!verification.fiscal_year || !verification.verification_no) return 'Verifikation';
+  return `${verification.fiscal_year}-${String(verification.verification_no).padStart(5, '0')}`;
+}
+
+function formatVerificationLabel(verification: VerificationPickerRow) {
+  return `${formatVerificationNumber(verification)} • ${new Date(verification.date).toLocaleDateString('sv-SE')} • ${Number(verification.total).toFixed(2)} kr • ${verification.description}`;
 }

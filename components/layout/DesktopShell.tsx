@@ -46,12 +46,12 @@ export default function DesktopShell({
   }
 
   return (
-    <div className="min-h-screen lg:flex">
+    <div className="min-h-screen overflow-x-hidden lg:flex">
       {showSidebar ? <DesktopSidebar role={role} capabilities={capabilities} collapsed={collapsed} onToggle={toggleSidebar} /> : null}
-      <div className="flex min-h-screen flex-1 flex-col">
+      <div className="flex min-h-screen min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-[120] border-b border-border bg-card/80 px-6 py-4 backdrop-blur">
           <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
+            <div className="flex min-w-0 items-center gap-3">
               {showSidebar ? (
                 <Button variant="ghost" size="icon" onClick={toggleSidebar} aria-label="Växla sidomeny">
                   {collapsed ? <PanelLeftOpen className="h-5 w-5" /> : <PanelLeftClose className="h-5 w-5" />}
@@ -67,7 +67,7 @@ export default function DesktopShell({
           </div>
         </header>
         <OfflineBanner />
-        <main className="flex-1 p-6">
+        <main className="min-w-0 flex-1 p-6">
           <MfaReminder />
           {children}
         </main>

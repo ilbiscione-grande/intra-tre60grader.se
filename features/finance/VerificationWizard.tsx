@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import type { Route } from 'next';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { FileText, Plus, X } from 'lucide-react';
 import { useOnlineStatus } from '@/lib/ui/useOnlineStatus';
 import { useBreakpointMode } from '@/lib/ui/useBreakpointMode';
@@ -436,11 +437,14 @@ export default function VerificationWizard({
     verificationId?: string;
   } | null>(null);
   const router = useRouter();
+  const searchParams = useSearchParams();
   const isOnline = useOnlineStatus();
   const mode = useBreakpointMode();
   const isMobile = mode === 'mobile';
   const supabase = useMemo(() => createClient(), []);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const projectId = searchParams.get('projectId');
+  const returnTo = searchParams.get('returnTo') || '/finance';
 
   const saveDraftMutation = useSaveDraft();
   const sendMutation = useSendVerification();
@@ -636,7 +640,26 @@ export default function VerificationWizard({
 
   function closeCreatedSummary() {
     setCreatedSummary(null);
-    router.push('/finance');
+    router.push(returnTo as Route);
+  }
+
+  async function maybeLinkVerificationToProject(verificationId: string | undefined) {
+    if (!projectId || !verificationId) return;
+
+    const response = await fetch('/api/project-verifications', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        companyId,
+        projectId,
+        verificationId
+      })
+    });
+
+    const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+    if (!response.ok) {
+      throw new Error(payload?.error ?? 'Kunde inte koppla verifikation till projekt');
+    }
   }
 
   const detailsRows = detailsConfig
@@ -680,7 +703,7 @@ export default function VerificationWizard({
             <CardTitle>Ny verifikation</CardTitle>
             <span className="rounded bg-muted px-2 py-1 text-xs">Steg {step}/4</span>
           </div>
-          <Button type="button" variant="ghost" size="sm" onClick={() => router.push('/finance')}>
+          <Button type="button" variant="ghost" size="sm" onClick={() => router.push(returnTo as Route)}>
             Avbryt
           </Button>
         </div>
@@ -976,6 +999,8 @@ export default function VerificationWizard({
                           ? (result.result as { verification_id?: string })?.verification_id
                           : undefined;
 
+                      await maybeLinkVerificationToProject(verificationId);
+
                       setCreatedSummary({
                         date: draft.date,
                         description: draft.description,
@@ -1048,11 +1073,11 @@ export default function VerificationWizard({
                 </div>
               </div>
 
-              <div className="flex justify-end">
-                <Button type="button" onClick={closeCreatedSummary}>
-                  Stäng
-                </Button>
-              </div>
+                <div className="flex justify-end">
+                  <Button type="button" onClick={closeCreatedSummary}>
+                    {projectId ? 'Tillbaka till projekt' : 'Stäng'}
+                  </Button>
+                </div>
             </div>
           ) : null}
         </DialogContent>
@@ -1110,17 +1135,3 @@ export default function VerificationWizard({
     </Card>
   );
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-

@@ -58,7 +58,7 @@ export default function DesktopSidebar({
   return (
     <aside
       className={cn(
-        'border-r border-border bg-card/80 backdrop-blur transition-all duration-200',
+        'shrink-0 border-r border-border bg-card/80 backdrop-blur transition-all duration-200',
         collapsed ? 'w-20' : 'w-64'
       )}
     >

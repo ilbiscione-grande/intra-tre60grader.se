@@ -1,9 +1,12 @@
 'use client';
 
 import Link from 'next/link';
+import type { Route } from 'next';
 import { useMemo, useState } from 'react';
+import { BarChart3, ClipboardCheck, FileSpreadsheet, ReceiptText } from 'lucide-react';
 import { useAppContext } from '@/components/providers/AppContext';
 import { canViewReporting } from '@/lib/auth/capabilities';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -182,12 +185,58 @@ export default function ReportsPage() {
 
   const financeAuditRows = toArray(financeAuditLogQuery.data);
   const auditChainVerify = toObject(financeAuditChainVerifyQuery.data);
+  const auditRows = auditQuery.data ?? [];
 
   return (
     <section className="space-y-4">
+      <Card className="overflow-hidden border-border/70 bg-gradient-to-br from-card via-card to-muted/20">
+        <CardContent className="space-y-4 p-4 md:p-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.18em] text-foreground/45">
+                <BarChart3 className="h-3.5 w-3.5" />
+                <span>Rapporter</span>
+              </div>
+              <div>
+                <h1 className="text-xl font-semibold tracking-tight">Ekonomirapporter och revision</h1>
+                <p className="text-sm text-foreground/65">
+                  Samla moms, huvudbok, resultat, balans och revisionsspår på ett ställe. Börja med periodvalet och gå sedan in i rätt rapport.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <label className="space-y-1 text-sm">
+                <span>Från</span>
+                <Input type="date" value={periodStart} onChange={(e) => setPeriodStart(e.target.value)} />
+              </label>
+              <label className="space-y-1 text-sm">
+                <span>Till</span>
+                <Input type="date" value={periodEnd} onChange={(e) => setPeriodEnd(e.target.value)} />
+              </label>
+              <Button variant="ghost" asChild>
+                <Link href={'/help/ekonomirapporter' as Route}>Hjälp om rapporter</Link>
+              </Button>
+            </div>
+          </div>
+
+          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+            <ReportMetricCard icon={ReceiptText} title="Moms ruta 49" value={fmt(getVatBox(vatQuery.data, '49'))} />
+            <ReportMetricCard icon={FileSpreadsheet} title="Huvudboksrader" value={String(glRows.length)} />
+            <ReportMetricCard icon={BarChart3} title="Konton i saldolista" value={String(tbRows.length)} />
+            <ReportMetricCard icon={ClipboardCheck} title="Verifikationer i revisionslogg" value={String(auditRows.length)} />
+          </div>
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader>
-          <CardTitle>Momsrapport</CardTitle>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <CardTitle>Momsrapport</CardTitle>
+            <Badge className="border-border/70 bg-muted/40 text-foreground/80 hover:bg-muted/40">
+              Period: {periodStart} - {periodEnd}
+            </Badge>
+          </div>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
@@ -217,8 +266,8 @@ export default function ReportsPage() {
         <CardContent>
           <Table>
             <TableHeader className="bg-muted">
-              <TableRow>
-                <TableHead>Datum</TableHead>
+                <TableRow>
+                  <TableHead>Datum</TableHead>
                 <TableHead>Konto</TableHead>
                 <TableHead>Benämning</TableHead>
                 <TableHead>Text</TableHead>
@@ -235,7 +284,7 @@ export default function ReportsPage() {
                 </TableRow>
               ) : (
                 glRows.map((row, idx) => (
-                  <TableRow key={`${row.verification_id ?? 'v'}-${idx}`}>
+                  <TableRow key={`${row.verification_id ?? 'v'}-${idx}`} className="transition-colors hover:bg-muted/20">
                     <TableCell>{String(row.entry_date ?? '-')}</TableCell>
                     <TableCell>{String(row.account_no ?? '-')}</TableCell>
                     <TableCell>{String(row.account_name ?? '-')}</TableCell>
@@ -275,7 +324,7 @@ export default function ReportsPage() {
                   </TableRow>
                 ) : (
                   tbRows.map((row) => (
-                    <TableRow key={String(row.account_no ?? Math.random())}>
+                    <TableRow key={String(row.account_no ?? Math.random())} className="transition-colors hover:bg-muted/20">
                       <TableCell>{String(row.account_no ?? '-')}</TableCell>
                       <TableCell>{String(row.account_name ?? '-')}</TableCell>
                       <TableCell className="text-right">{num(row.debit).toFixed(2)}</TableCell>
@@ -310,7 +359,7 @@ export default function ReportsPage() {
                   </TableRow>
                 ) : (
                   isRows.map((row) => (
-                    <TableRow key={String(row.account_no ?? Math.random())}>
+                    <TableRow key={String(row.account_no ?? Math.random())} className="transition-colors hover:bg-muted/20">
                       <TableCell>{String(row.account_no ?? '-')}</TableCell>
                       <TableCell>{String(row.account_name ?? '-')}</TableCell>
                       <TableCell>{String(row.account_type ?? '-')}</TableCell>
@@ -356,43 +405,43 @@ export default function ReportsPage() {
         <CardHeader>
           <CardTitle>Revisionslogg verifikationer</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="grid gap-2 md:grid-cols-6">
-            <label className="space-y-1 text-sm">
-              <span>Från</span>
-              <Input type="date" value={periodStart} onChange={(e) => setPeriodStart(e.target.value)} />
-            </label>
-            <label className="space-y-1 text-sm">
-              <span>Till</span>
-              <Input type="date" value={periodEnd} onChange={(e) => setPeriodEnd(e.target.value)} />
-            </label>
-            <label className="space-y-1 text-sm">
-              <span>Status</span>
-              <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as VerificationStatusFilter)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Alla" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Alla</SelectItem>
-                  <SelectItem value="booked">Bokförd</SelectItem>
-                  <SelectItem value="voided">Makulerad</SelectItem>
-                </SelectContent>
-              </Select>
-            </label>
-            <div className="flex items-end">
-              <Button className="w-full" onClick={() => openWithConfirm(exportCsvHref, 'CSV')}>Exportera CSV</Button>
+          <CardContent className="space-y-3">
+            <div className="grid gap-2 md:grid-cols-6">
+              <label className="space-y-1 text-sm">
+                <span>Från</span>
+                <Input type="date" value={periodStart} onChange={(e) => setPeriodStart(e.target.value)} />
+              </label>
+              <label className="space-y-1 text-sm">
+                <span>Till</span>
+                <Input type="date" value={periodEnd} onChange={(e) => setPeriodEnd(e.target.value)} />
+              </label>
+              <label className="space-y-1 text-sm">
+                <span>Status</span>
+                <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as VerificationStatusFilter)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Alla" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Alla</SelectItem>
+                    <SelectItem value="booked">Bokförd</SelectItem>
+                    <SelectItem value="voided">Makulerad</SelectItem>
+                  </SelectContent>
+                </Select>
+              </label>
+              <div className="flex items-end">
+                <Button className="w-full" onClick={() => openWithConfirm(exportCsvHref, 'CSV')}>Exportera CSV</Button>
+              </div>
+              <div className="flex items-end">
+                <Button variant="secondary" className="w-full" onClick={() => openWithConfirm(exportSieHref, 'SIE4')}>Exportera SIE4</Button>
+              </div>
+              <div className="flex items-end">
+                <Button asChild variant="outline" className="w-full">
+                  <a href={validateSieHref} target="_blank" rel="noreferrer">
+                    Validera SIE4
+                  </a>
+                </Button>
+              </div>
             </div>
-            <div className="flex items-end">
-              <Button variant="secondary" className="w-full" onClick={() => openWithConfirm(exportSieHref, 'SIE4')}>Exportera SIE4</Button>
-            </div>
-            <div className="flex items-end">
-              <Button asChild variant="outline" className="w-full">
-                <a href={validateSieHref} target="_blank" rel="noreferrer">
-                  Validera SIE4
-                </a>
-              </Button>
-            </div>
-          </div>
 
           <Table>
             <TableHeader className="bg-muted">
@@ -408,8 +457,8 @@ export default function ReportsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {(auditQuery.data ?? []).map((row) => (
-                <TableRow key={row.id}>
+              {auditRows.map((row) => (
+                <TableRow key={row.id} className="transition-colors hover:bg-muted/20">
                   <TableCell>{verificationNumberLabel(row.fiscal_year, row.verification_no)}</TableCell>
                   <TableCell>{new Date(row.date).toLocaleDateString('sv-SE')}</TableCell>
                   <TableCell>
@@ -466,7 +515,7 @@ export default function ReportsPage() {
                 </TableRow>
               ) : (
                 financeAuditRows.map((row) => (
-                  <TableRow key={String(row.id ?? Math.random())}>
+                  <TableRow key={String(row.id ?? Math.random())} className="transition-colors hover:bg-muted/20">
                     <TableCell>{String(row.event_no ?? '-')}</TableCell>
                     <TableCell>{String(row.created_at ? new Date(String(row.created_at)).toLocaleString('sv-SE') : '-')}</TableCell>
                     <TableCell>{String(row.action ?? '-')}</TableCell>
@@ -482,6 +531,30 @@ export default function ReportsPage() {
         </CardContent>
       </Card>
     </section>
+  );
+}
+
+function ReportMetricCard({
+  icon: Icon,
+  title,
+  value
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  title: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-xl border border-border/70 bg-card/70 p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="space-y-1">
+          <p className="text-xs font-medium uppercase tracking-[0.16em] text-foreground/45">{title}</p>
+          <p className="text-xl font-semibold tracking-tight">{value}</p>
+        </div>
+        <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border/70 bg-muted/35 text-foreground/65">
+          <Icon className="h-4 w-4" />
+        </span>
+      </div>
+    </div>
   );
 }
 

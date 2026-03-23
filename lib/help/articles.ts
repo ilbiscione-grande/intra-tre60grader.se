@@ -21,6 +21,164 @@ export type HelpArticle = {
 
 export const helpArticles: HelpArticle[] = [
   {
+    slug: 'ekonomirapporter',
+    title: 'Hur använder jag rapportsidan?',
+    summary: 'Rapportsidan samlar momsrapport, huvudbok, resultat, balans och revisionsspår så att du kan jobba periodvis i rätt ordning.',
+    category: 'guide',
+    audience: 'Ekonomi, admin och revisor',
+    keywords: ['rapporter', 'momsrapport', 'huvudbok', 'balans', 'resultat', 'revision'],
+    sections: [
+      {
+        title: 'Börja med perioden',
+        paragraphs: [
+          'Rapportsidan fungerar bäst när du först sätter rätt period. Därefter kan du läsa flera rapporter mot samma urval utan att byta kontext.',
+          'Tänk i ordningen moms, bokföring, resultat/balans och därefter revisionsspår om du felsöker eller exporterar.'
+        ],
+        steps: [
+          'Sätt först från- och tilldatum högst upp.',
+          'Börja med momsrapporten om du arbetar med momsperioden.',
+          'Öppna huvudbok eller saldolista om du vill förstå detaljerna bakom siffrorna.',
+          'Gå vidare till resultat och balans när du behöver sammanfattande utfall.',
+          'Använd revisionslogg eller finansiell audit-logg när du behöver kontrollera vad som skapats eller exporterats.'
+        ]
+      }
+    ],
+    cta: { href: '/reports' as Route, label: 'Öppna rapporter' }
+  },
+  {
+    slug: 'fakturor-och-statusar',
+    title: 'Hur använder jag fakturasidan?',
+    summary: 'Fakturasidan används för att följa fakturors status, öppna detaljer och hoppa vidare till export eller relaterat projekt.',
+    category: 'guide',
+    audience: 'Ekonomi och administration',
+    keywords: ['fakturor', 'status', 'utfärdad', 'betald', 'makulerad', 'export'],
+    sections: [
+      {
+        title: 'Vad sidan är till för',
+        paragraphs: [
+          'Fakturasidan är en överblickslista. Den ska hjälpa dig att snabbt se vilka fakturor som finns, vilken status de har och var du ska gå vidare för nästa steg.',
+          'Använd den för att hitta rätt faktura snabbt, inte för att göra all uppföljning direkt i listan.'
+        ],
+        steps: [
+          'Börja med att hitta rätt fakturanummer eller projekt.',
+          'Kontrollera statusen i listan.',
+          'Öppna fakturan om du behöver se detaljer eller exportera JSON.',
+          'Gå vidare till rapporter eller reskontra när du behöver analys i stället för bara överblick.'
+        ]
+      }
+    ],
+    cta: { href: '/invoices' as Route, label: 'Öppna fakturor' }
+  },
+  {
+    slug: 'kundreskontra',
+    title: 'Hur använder jag kundreskontran?',
+    summary: 'Kundreskontran visar vad som fortfarande är öppet, vad som är förfallet och om huvudboken stämmer mot öppna kundfordringar.',
+    category: 'guide',
+    audience: 'Ekonomi och administration',
+    keywords: ['kundreskontra', 'öppna kundfordringar', '1510', 'förfallet', 'avstämning'],
+    sections: [
+      {
+        title: 'När du använder kundreskontran',
+        paragraphs: [
+          'Kundreskontran är rätt vy när du vill veta vilka kundfakturor som fortfarande är obetalda och hur stora de öppna fordringarna är per valt datum.',
+          'Den hjälper också till att upptäcka om något inte stämmer mellan fakturaflödet och huvudboken.'
+        ],
+        steps: [
+          'Välj rätt datum högst upp på sidan.',
+          'Kontrollera först avstämningen mellan öppna fordringar och konto 1510.',
+          'Titta sedan på öppna och förfallna poster längre ner i listan.',
+          'Öppna en faktura direkt från listan om du behöver följa upp den vidare.'
+        ]
+      }
+    ],
+    cta: { href: '/receivables' as Route, label: 'Öppna kundreskontra' }
+  },
+  {
+    slug: 'leverantorsreskontra',
+    title: 'Hur använder jag leverantörsreskontran?',
+    summary: 'Leverantörsreskontran används för att registrera leverantörsfakturor, följa öppna poster och bokföra utbetalningar i rätt ordning.',
+    category: 'guide',
+    audience: 'Ekonomi och administration',
+    keywords: ['leverantörsreskontra', 'leverantörsfaktura', 'utbetalning', 'öppna leverantörsfakturor'],
+    sections: [
+      {
+        title: 'Praktiskt arbetssätt',
+        paragraphs: [
+          'Använd leverantörsreskontran när du vill hålla ordning på inkomna leverantörsfakturor och se vad som fortfarande återstår att betala.',
+          'Sidan är tänkt som en arbetsyta där du både kan registrera nya poster och boka betalningar.'
+        ],
+        steps: [
+          'Börja med att kontrollera öppna och förfallna leverantörsposter.',
+          'Registrera ny leverantör eller leverantörsfaktura vid behov.',
+          'Registrera utbetalning först när du vet vilken faktura betalningen hör till.',
+          'Följ sedan upp att öppet belopp minskar som väntat i listan.'
+        ]
+      }
+    ],
+    cta: { href: '/payables' as Route, label: 'Öppna leverantörsreskontra' }
+  },
+  {
+    slug: 'ekonomioversikt',
+    title: 'Hur använder jag ekonomisidan?',
+    summary: 'Ekonomisidan är uppdelad för att du först ska få överblick och sedan kunna gå djupare i verifikationerna när det behövs.',
+    category: 'guide',
+    audience: 'Ekonomi, admin och revisor',
+    keywords: ['ekonomi', 'verifikationer', 'bankavstämning', 'översikt', 'filter'],
+    sections: [
+      {
+        title: 'Översikt',
+        paragraphs: [
+          'Börja i översiktsläget när du vill se dagens läge, moms, senaste aktivitet och vad som behöver göras i ekonomin just nu.',
+          'Det här läget är till för snabb orientering, inte för detaljgranskning av varje verifikation.'
+        ],
+        steps: [
+          'Titta först på snabbstatistiken högst upp.',
+          'Gå igenom korten under Att göra i ekonomi idag.',
+          'Öppna bankavstämning om nya bankhändelser behöver matchas.',
+          'Byt till Verifikationer när du behöver söka, filtrera eller öppna enskilda poster.'
+        ]
+      },
+      {
+        title: 'Verifikationer',
+        paragraphs: [
+          'Verifikationsläget är arbetsytan för sökning, urval och granskning. Där kan du filtrera på status, källa och bilagor utan att resten av ekonomisidan stör.',
+          'Tänk översikt först, detaljer sedan. Då blir sidan både snabbare att arbeta i och lättare att läsa.'
+        ]
+      }
+    ],
+    cta: { href: '/finance' as Route, label: 'Öppna ekonomi' }
+  },
+  {
+    slug: 'bankavstamning',
+    title: 'Hur fungerar bankavstämning?',
+    summary: 'Bankavstämning används för att importera kontoutdrag, få matchningsförslag och bekräfta att inbetalningar hör till rätt fakturor.',
+    category: 'guide',
+    audience: 'Ekonomi och administration',
+    featured: true,
+    keywords: ['bankavstämning', 'kontoutdrag', 'matchning', 'inbetalning', 'fakturor'],
+    sections: [
+      {
+        title: 'Vad bankavstämning är till för',
+        paragraphs: [
+          'Bankavstämningen hjälper dig att koppla verkliga banktransaktioner till rätt fakturor och betalningar. Målet är att kundreskontra och konto ska stämma med varandra.',
+          'Du använder den främst när du har fått ett kontoutdrag eller vill verifiera att föreslagna matchningar verkligen ser rimliga ut.'
+        ]
+      },
+      {
+        title: 'Arbetssätt',
+        paragraphs: ['Börja med importen och gå sedan vidare till matchningsförslagen innan du bekräftar något.'],
+        steps: [
+          'Importera kontoutdraget som CSV.',
+          'Kör auto-match för att få förslag på möjliga träffar.',
+          'Gå igenom föreslagna matchningar och kontrollera datum, belopp och fakturanummer.',
+          'Bekräfta bara de matchningar som tydligt ser korrekta ut.',
+          'Avvisa förslag som inte stämmer och följ upp dem manuellt senare.'
+        ]
+      }
+    ],
+    cta: { href: '/finance' as Route, label: 'Öppna bankavstämning' }
+  },
+  {
     slug: 'kom-igang',
     title: 'Kom igång i appen',
     summary: 'Börja i rätt ordning så blir både uppföljning och ekonomi enklare senare.',

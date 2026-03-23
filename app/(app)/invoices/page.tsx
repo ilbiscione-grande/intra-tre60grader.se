@@ -1,11 +1,13 @@
 'use client';
 
 import Link from 'next/link';
+import type { Route } from 'next';
 import { useQuery } from '@tanstack/react-query';
+import { FileText, Receipt, Wallet } from 'lucide-react';
 import { useAppContext } from '@/components/providers/AppContext';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { canViewFinance } from '@/lib/auth/capabilities';
 import { createClient } from '@/lib/supabase/client';
@@ -56,16 +58,52 @@ export default function InvoicesPage() {
     return <p className="rounded-lg bg-muted p-4 text-sm">Fakturor är endast tillgängliga för ekonomi, admin eller revisor.</p>;
   }
 
+  const rows = query.data ?? [];
+  const issuedCount = rows.filter((row) => row.status === 'issued' || row.status === 'sent').length;
+  const paidCount = rows.filter((row) => row.status === 'paid').length;
+  const totalValue = rows.reduce((sum, row) => sum + Number(row.total), 0);
+
   return (
     <section className="space-y-4">
-        <div className="flex items-center justify-between gap-2">
-          <h2 className="text-lg font-semibold">Fakturor</h2>
-          <Button asChild variant="secondary">
-            <Link href="/reports">Rapporter</Link>
-          </Button>
-        </div>
+      <Card className="overflow-hidden border-border/70 bg-gradient-to-br from-card via-card to-muted/20">
+        <CardContent className="space-y-4 p-4 md:p-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.18em] text-foreground/45">
+                <Receipt className="h-3.5 w-3.5" />
+                <span>Fakturor</span>
+              </div>
+              <div>
+                <h1 className="text-xl font-semibold tracking-tight">Fakturaöversikt</h1>
+                <p className="text-sm text-foreground/65">
+                  Använd sidan för att följa status, öppna fakturor och hoppa vidare till detaljer eller export.
+                </p>
+              </div>
+            </div>
 
-        <Card className="p-0">
+            <div className="flex flex-wrap gap-2">
+              <Button variant="secondary" asChild>
+                <Link href="/reports">Rapporter</Link>
+              </Button>
+              <Button variant="ghost" asChild>
+                <Link href={'/help/fakturor-och-statusar' as Route}>Hjälp om fakturor</Link>
+              </Button>
+            </div>
+          </div>
+
+          <div className="grid gap-2 md:grid-cols-3">
+            <InvoiceMetricCard icon={Wallet} label="Totalt fakturavärde" value={`${totalValue.toFixed(2)} SEK`} />
+            <InvoiceMetricCard icon={FileText} label="Öppna/utfärdade" value={String(issuedCount)} />
+            <InvoiceMetricCard icon={Receipt} label="Betalda" value={String(paidCount)} />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="p-0">
+        <CardHeader className="border-b border-border/70 pb-3">
+          <CardTitle>Senaste fakturor</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
           <Table>
             <TableHeader className="bg-muted">
               <TableRow>
@@ -80,7 +118,7 @@ export default function InvoicesPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {(query.data ?? []).length === 0 && !query.isLoading && (
+              {rows.length === 0 && !query.isLoading && (
                 <TableRow>
                   <TableCell colSpan={8} className="text-foreground/70">
                     Inga fakturor hittades.
@@ -88,18 +126,22 @@ export default function InvoicesPage() {
                 </TableRow>
               )}
 
-              {(query.data ?? []).map((row) => (
-                <TableRow key={row.id}>
+              {rows.map((row) => (
+                <TableRow key={row.id} className="transition-colors hover:bg-muted/20">
                   <TableCell className="font-medium">{row.invoice_no}</TableCell>
                   <TableCell>
-                    <Badge>{fakturaTypEtikett(row.kind)}</Badge>
+                    <Badge className="border-border/70 bg-muted/40 text-foreground/80 hover:bg-muted/40">
+                      {fakturaTypEtikett(row.kind)}
+                    </Badge>
                   </TableCell>
                   <TableCell>
-                    <Badge>{fakturaStatusEtikett(row.status)}</Badge>
+                    <Badge className="border-border/70 bg-muted/40 text-foreground/80 hover:bg-muted/40">
+                      {fakturaStatusEtikett(row.status)}
+                    </Badge>
                   </TableCell>
                   <TableCell>{new Date(row.issue_date).toLocaleDateString('sv-SE')}</TableCell>
                   <TableCell>{new Date(row.due_date).toLocaleDateString('sv-SE')}</TableCell>
-                  <TableCell>
+                  <TableCell className="font-medium">
                     {Number(row.total).toFixed(2)} {row.currency}
                   </TableCell>
                   <TableCell>
@@ -121,7 +163,32 @@ export default function InvoicesPage() {
               ))}
             </TableBody>
           </Table>
-        </Card>
-      </section>
+        </CardContent>
+      </Card>
+    </section>
+  );
+}
+
+function InvoiceMetricCard({
+  icon: Icon,
+  label,
+  value
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-xl border border-border/70 bg-card/70 p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="space-y-1">
+          <p className="text-xs font-medium uppercase tracking-[0.16em] text-foreground/45">{label}</p>
+          <p className="text-xl font-semibold tracking-tight">{value}</p>
+        </div>
+        <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border/70 bg-muted/35 text-foreground/65">
+          <Icon className="h-4 w-4" />
+        </span>
+      </div>
+    </div>
   );
 }

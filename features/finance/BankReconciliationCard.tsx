@@ -1,5 +1,7 @@
 'use client';
 
+import Link from 'next/link';
+import type { Route } from 'next';
 import { ChangeEvent, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -353,7 +355,12 @@ export default function BankReconciliationCard({ companyId }: { companyId: strin
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Bankavstämning</CardTitle>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <CardTitle>Bankavstämning</CardTitle>
+          <Button variant="ghost" size="sm" asChild>
+            <Link href={'/help/bankavstamning' as Route}>Hur fungerar bankavstämning?</Link>
+          </Button>
+        </div>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="grid gap-2 md:grid-cols-6">

@@ -1,8 +1,10 @@
 'use client';
 
 import Link from 'next/link';
+import type { Route } from 'next';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { CalendarRange, ReceiptText, Wallet } from 'lucide-react';
 import { useAppContext } from '@/components/providers/AppContext';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -128,52 +130,68 @@ export default function ReceivablesPage() {
   }
 
   return (
-      <section className="space-y-4">
-        <div className="flex flex-wrap items-end gap-2">
-          <label className="space-y-1 text-sm">
-            <span>Per datum</span>
-            <Input type="date" value={asOf} onChange={(event) => setAsOf(event.target.value)} />
-          </label>
-          <Button variant="outline" asChild>
-            <Link href="/invoices">Fakturor</Link>
-          </Button>
-        </div>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Avstämning kundfordringar</CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-2 md:grid-cols-3">
-            <MetricCard
-              label="Öppna kundfordringar"
-              value={formatMoney(recon?.receivables_open_total ?? 0)}
-            />
-            <MetricCard
-              label="Konto 1510 (huvudbok)"
-              value={formatMoney(recon?.ledger_1510_balance ?? 0)}
-            />
-            <div className="rounded-lg border p-3">
-              <p className="text-xs text-foreground/70">Differens</p>
-              <p className="text-sm font-semibold">{formatMoney(recon?.difference ?? 0)}</p>
-              {recon ? (
-                recon.ok ? <Badge className="mt-2">OK</Badge> : <Badge className="mt-2 bg-destructive text-destructive-foreground">Ej i balans</Badge>
-              ) : null}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Öppna kundfordringar</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="grid gap-2 md:grid-cols-3">
-              <MetricCard label="Antal fakturor" value={String(report?.summary.invoice_count ?? 0)} />
-              <MetricCard label="Öppet belopp" value={formatMoney(report?.summary.open_total ?? 0)} />
-              <MetricCard label="Förfallet belopp" value={formatMoney(report?.summary.overdue_total ?? 0)} />
+    <section className="space-y-4">
+      <Card className="overflow-hidden border-border/70 bg-gradient-to-br from-card via-card to-muted/20">
+        <CardContent className="space-y-4 p-4 md:p-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.18em] text-foreground/45">
+                <ReceiptText className="h-3.5 w-3.5" />
+                <span>Kundreskontra</span>
+              </div>
+              <div>
+                <h1 className="text-xl font-semibold tracking-tight">Öppna kundfordringar</h1>
+                <p className="text-sm text-foreground/65">
+                  Följ öppna poster, förfallna belopp och balans mot konto 1510 utan att behöva hoppa mellan flera vyer.
+                </p>
+              </div>
             </div>
 
-            <Table>
+            <div className="flex flex-wrap items-end gap-2">
+              <label className="space-y-1 text-sm">
+                <span>Per datum</span>
+                <Input type="date" value={asOf} onChange={(event) => setAsOf(event.target.value)} />
+              </label>
+              <Button variant="outline" asChild>
+                <Link href="/invoices">Fakturor</Link>
+              </Button>
+              <Button variant="ghost" asChild>
+                <Link href={'/help/kundreskontra' as Route}>Hjälp om kundreskontra</Link>
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Avstämning kundfordringar</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-2 md:grid-cols-3">
+          <MetricCard label="Öppna kundfordringar" value={formatMoney(recon?.receivables_open_total ?? 0)} icon={Wallet} />
+          <MetricCard label="Konto 1510 (huvudbok)" value={formatMoney(recon?.ledger_1510_balance ?? 0)} icon={ReceiptText} />
+          <div className="rounded-xl border border-border/70 bg-card/70 p-3">
+            <p className="text-xs text-foreground/70">Differens</p>
+            <p className="text-sm font-semibold">{formatMoney(recon?.difference ?? 0)}</p>
+            {recon ? (
+              recon.ok ? <Badge className="mt-2">OK</Badge> : <Badge className="mt-2 bg-destructive text-destructive-foreground">Ej i balans</Badge>
+            ) : null}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Öppna kundfordringar</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="grid gap-2 md:grid-cols-3">
+            <MetricCard label="Antal fakturor" value={String(report?.summary.invoice_count ?? 0)} icon={ReceiptText} />
+            <MetricCard label="Öppet belopp" value={formatMoney(report?.summary.open_total ?? 0)} icon={Wallet} />
+            <MetricCard label="Förfallet belopp" value={formatMoney(report?.summary.overdue_total ?? 0)} icon={CalendarRange} />
+          </div>
+
+          <Table>
               <TableHeader className="bg-muted">
                 <TableRow>
                   <TableHead>Faktura</TableHead>
@@ -195,7 +213,7 @@ export default function ReceivablesPage() {
                   </TableRow>
                 ) : (
                   (report?.rows ?? []).map((row) => (
-                    <TableRow key={row.invoice_id}>
+                    <TableRow key={row.invoice_id} className="transition-colors hover:bg-muted/20">
                       <TableCell>
                         <Link href={`/invoices/${row.invoice_id}`} className="underline underline-offset-2">
                           {row.invoice_no}
@@ -214,18 +232,33 @@ export default function ReceivablesPage() {
                   ))
                 )}
               </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      </section>
+          </Table>
+        </CardContent>
+      </Card>
+    </section>
   );
 }
 
-function MetricCard({ label, value }: { label: string; value: string }) {
+function MetricCard({
+  label,
+  value,
+  icon: Icon
+}: {
+  label: string;
+  value: string;
+  icon: React.ComponentType<{ className?: string }>;
+}) {
   return (
-    <div className="rounded-lg border p-3">
-      <p className="text-xs text-foreground/70">{label}</p>
-      <p className="text-sm font-semibold">{value}</p>
+    <div className="rounded-xl border border-border/70 bg-card/70 p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs text-foreground/70">{label}</p>
+          <p className="text-sm font-semibold">{value}</p>
+        </div>
+        <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border/70 bg-muted/35 text-foreground/65">
+          <Icon className="h-4 w-4" />
+        </span>
+      </div>
     </div>
   );
 }
