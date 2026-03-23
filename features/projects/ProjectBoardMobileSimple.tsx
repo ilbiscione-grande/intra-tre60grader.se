@@ -100,8 +100,7 @@ function SortableProjectCard({
   isUpdatingWorkflowStatus,
   members,
   availableMembers,
-  activitySummary,
-  onOpenMoveMenu
+  activitySummary
 }: {
   project: Project;
   statusLabel: string;
@@ -113,7 +112,6 @@ function SortableProjectCard({
   members: React.ComponentProps<typeof ProjectCard>['members'];
   availableMembers: React.ComponentProps<typeof ProjectCard>['availableMembers'];
   activitySummary?: React.ComponentProps<typeof ProjectCard>['activitySummary'];
-  onOpenMoveMenu: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: project.id });
 
@@ -141,21 +139,6 @@ function SortableProjectCard({
         members={members}
         availableMembers={availableMembers}
         activitySummary={activitySummary}
-        actions={
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onPointerDown={(event) => event.stopPropagation()}
-            onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              onOpenMoveMenu();
-            }}
-          >
-            Flytta
-          </Button>
-        }
       />
     </div>
   );
@@ -213,7 +196,6 @@ export default function ProjectBoardMobileSimple({ companyId }: { companyId: str
   const supabase = useMemo(() => createClient(), []);
   const queryClient = useQueryClient();
   const [activeStatus, setActiveStatus] = useState('');
-  const [selected, setSelected] = useState<Project | null>(null);
   const [board, setBoard] = useState<BoardState>({});
   const [activeId, setActiveId] = useState<string | null>(null);
   const [lockedStatus, setLockedStatus] = useState<string | null>(null);
@@ -647,7 +629,6 @@ export default function ProjectBoardMobileSimple({ companyId }: { companyId: str
                     members={membersByProjectId.get(project.id) ?? []}
                     availableMembers={availableMembers}
                     activitySummary={activitySummaryByProjectId.get(project.id)}
-                    onOpenMoveMenu={() => setSelected(project)}
                   />
                 ))}
                 {activeList.length === 0 ? <p className="rounded-2xl bg-muted/60 p-4 text-sm text-foreground/70">Inga projekt i kolumnen.</p> : null}
@@ -679,26 +660,6 @@ export default function ProjectBoardMobileSimple({ companyId }: { companyId: str
           ) : null}
         </DragOverlay>
       </DndContext>
-
-      <ActionSheet open={Boolean(selected)} onClose={() => setSelected(null)} title="Flytta projekt" description={selected?.title}>
-        <div className="grid gap-2">
-          {columns.map((column) => (
-            <Button
-              key={column.key}
-              variant={selected?.status === column.key ? 'secondary' : 'outline'}
-              className="justify-start"
-              disabled={!selected || selected.status === column.key || moveMutation.isPending}
-              onClick={() => {
-                if (!selected) return;
-                commitMove(selected, column.key, 1);
-                setSelected(null);
-              }}
-            >
-              {column.title}
-            </Button>
-          ))}
-        </div>
-      </ActionSheet>
 
       <ActionSheet open={columnSheetOpen} onClose={() => setColumnSheetOpen(false)} title={activeColumn?.title ?? 'Kolumn'} description="Hantera den aktiva kolumnen.">
         <div className="grid gap-2">

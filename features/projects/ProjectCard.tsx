@@ -1,9 +1,11 @@
 'use client';
 
 import Link from 'next/link';
+import { useState } from 'react';
 import { AlertTriangle, MoreHorizontal, Trash2 } from 'lucide-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import ActionSheet from '@/components/common/ActionSheet';
 import { useAppContext } from '@/components/providers/AppContext';
 import {
   DropdownMenu,
@@ -17,6 +19,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import type { Project } from '@/lib/types';
 import type { ProjectActivitySummary, ProjectMemberVisual } from '@/features/projects/projectQueries';
 import { getUserDisplayName } from '@/features/profile/profileBadge';
+import { useBreakpointMode } from '@/lib/ui/useBreakpointMode';
 
 function fallbackLabel(status: string) {
   const map: Record<string, string> = {
@@ -73,7 +76,9 @@ export default function ProjectCard({
   activitySummary?: ProjectActivitySummary & { actorLabel?: string | null };
 }) {
   const { role } = useAppContext();
+  const breakpointMode = useBreakpointMode();
   const queryClient = useQueryClient();
+  const [projectMenuOpen, setProjectMenuOpen] = useState(false);
   const visibleMembers = members.slice(0, 3);
   const hiddenCount = Math.max(0, members.length - visibleMembers.length);
   const canManageMembers = role !== 'auditor';
@@ -170,6 +175,80 @@ export default function ProjectCard({
     }
   });
 
+  const projectMenuSections = onSetWorkflowStatus ? (
+    <>
+      <div className="space-y-2">
+        <p className="px-1 text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Projekt</p>
+        <Link
+          href={`/projects/${project.id}`}
+          className="flex rounded-lg border border-border/60 px-3 py-2 text-sm transition hover:bg-muted"
+          onClick={(event) => event.stopPropagation()}
+        >
+          Öppna projekt
+        </Link>
+        <Link
+          href={`/projects/${project.id}?tab=members`}
+          className="flex rounded-lg border border-border/60 px-3 py-2 text-sm transition hover:bg-muted"
+          onClick={(event) => event.stopPropagation()}
+        >
+          Medlemmar
+        </Link>
+      </div>
+
+      <div className="space-y-2 pt-3">
+        <p className="px-1 text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Projektstatus</p>
+        <div className="grid gap-2">
+          {statusOptions.map((option) => {
+            const active = (project.workflow_status ?? project.status) === option.key;
+            return (
+              <button
+                key={`${project.id}-${option.key}`}
+                type="button"
+                disabled={active || isUpdatingWorkflowStatus}
+                className="flex rounded-lg border border-border/60 px-3 py-2 text-left text-sm transition hover:bg-muted disabled:cursor-default disabled:opacity-55"
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onSetWorkflowStatus(project, option.key);
+                  setProjectMenuOpen(false);
+                }}
+              >
+                {active ? `• ${option.title}` : option.title}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {onMoveToColumn ? (
+        <div className="space-y-2 pt-3">
+          <p className="px-1 text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Flytta till kolumn</p>
+          <div className="grid gap-2">
+            {columnOptions.map((option) => {
+              const active = project.status === option.key;
+              return (
+                <button
+                  key={`${project.id}-column-${option.key}`}
+                  type="button"
+                  disabled={active}
+                  className="flex rounded-lg border border-border/60 px-3 py-2 text-left text-sm transition hover:bg-muted disabled:cursor-default disabled:opacity-55"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    onMoveToColumn(project, option.key);
+                    setProjectMenuOpen(false);
+                  }}
+                >
+                  {active ? `• ${option.title}` : option.title}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+    </>
+  ) : null;
+
   return (
     <Card className="group relative transition-shadow hover:shadow-sm">
       <Link
@@ -180,8 +259,8 @@ export default function ProjectCard({
       <CardContent className="relative p-4">
         <div className="absolute right-3 top-3 z-20 flex items-start gap-1">
           {onSetWorkflowStatus ? (
-            <DropdownMenu modal={false}>
-              <DropdownMenuTrigger asChild>
+            breakpointMode === 'mobile' ? (
+              <>
                 <button
                   type="button"
                   className="inline-flex h-9 w-9 items-center justify-center rounded-full border bg-background/95 text-foreground shadow-sm transition hover:bg-muted hover:text-foreground"
@@ -189,71 +268,96 @@ export default function ProjectCard({
                   onClick={(event) => {
                     event.preventDefault();
                     event.stopPropagation();
+                    setProjectMenuOpen(true);
                   }}
                 >
                   <MoreHorizontal className="h-4 w-4" />
                 </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                <div className="px-2 pb-2 pt-1">
-                  <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Projekt</p>
-                </div>
-                <DropdownMenuItem asChild>
-                  <Link href={`/projects/${project.id}`} onClick={(event) => event.stopPropagation()}>
-                    Öppna projekt
-                  </Link>
-                </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                  <Link href={`/projects/${project.id}?tab=members`} onClick={(event) => event.stopPropagation()}>
-                    Medlemmar
-                  </Link>
-                </DropdownMenuItem>
+                <ActionSheet
+                  open={projectMenuOpen}
+                  onClose={() => setProjectMenuOpen(false)}
+                  title="Projektmeny"
+                  description={project.title}
+                >
+                  <div className="space-y-3">{projectMenuSections}</div>
+                </ActionSheet>
+              </>
+            ) : (
+              <DropdownMenu modal={false}>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border bg-background/95 text-foreground shadow-sm transition hover:bg-muted hover:text-foreground"
+                    aria-label="Projektmeny"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                    }}
+                  >
+                    <MoreHorizontal className="h-4 w-4" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <div className="px-2 pb-2 pt-1">
+                    <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Projekt</p>
+                  </div>
+                  <DropdownMenuItem asChild>
+                    <Link href={`/projects/${project.id}`} onClick={(event) => event.stopPropagation()}>
+                      Öppna projekt
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href={`/projects/${project.id}?tab=members`} onClick={(event) => event.stopPropagation()}>
+                      Medlemmar
+                    </Link>
+                  </DropdownMenuItem>
 
-                <div className="px-2 pb-2 pt-1">
-                  <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Projektstatus</p>
-                </div>
-                {statusOptions.map((option) => {
-                  const active = (project.workflow_status ?? project.status) === option.key;
-                  return (
-                    <DropdownMenuItem
-                      key={`${project.id}-${option.key}`}
-                      disabled={active || isUpdatingWorkflowStatus}
-                      onClick={(event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        onSetWorkflowStatus(project, option.key);
-                      }}
-                    >
-                      {active ? `• ${option.title}` : option.title}
-                    </DropdownMenuItem>
-                  );
-                })}
+                  <div className="px-2 pb-2 pt-1">
+                    <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Projektstatus</p>
+                  </div>
+                  {statusOptions.map((option) => {
+                    const active = (project.workflow_status ?? project.status) === option.key;
+                    return (
+                      <DropdownMenuItem
+                        key={`${project.id}-${option.key}`}
+                        disabled={active || isUpdatingWorkflowStatus}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          onSetWorkflowStatus(project, option.key);
+                        }}
+                      >
+                        {active ? `• ${option.title}` : option.title}
+                      </DropdownMenuItem>
+                    );
+                  })}
 
-                {onMoveToColumn ? (
-                  <>
-                    <div className="px-2 pb-2 pt-3">
-                      <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Flytta till kolumn</p>
-                    </div>
-                    {columnOptions.map((option) => {
-                      const active = project.status === option.key;
-                      return (
-                        <DropdownMenuItem
-                          key={`${project.id}-column-${option.key}`}
-                          disabled={active}
-                          onClick={(event) => {
-                            event.preventDefault();
-                            event.stopPropagation();
-                            onMoveToColumn(project, option.key);
-                          }}
-                        >
-                          {active ? `• ${option.title}` : option.title}
-                        </DropdownMenuItem>
-                      );
-                    })}
-                  </>
-                ) : null}
-              </DropdownMenuContent>
-            </DropdownMenu>
+                  {onMoveToColumn ? (
+                    <>
+                      <div className="px-2 pb-2 pt-3">
+                        <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Flytta till kolumn</p>
+                      </div>
+                      {columnOptions.map((option) => {
+                        const active = project.status === option.key;
+                        return (
+                          <DropdownMenuItem
+                            key={`${project.id}-column-${option.key}`}
+                            disabled={active}
+                            onClick={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              onMoveToColumn(project, option.key);
+                            }}
+                          >
+                            {active ? `• ${option.title}` : option.title}
+                          </DropdownMenuItem>
+                        );
+                      })}
+                    </>
+                  ) : null}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )
           ) : null}
           {actions ? <div>{actions}</div> : null}
         </div>
