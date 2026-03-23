@@ -198,8 +198,8 @@ export default function ProjectCard({
                 align="end"
                 side="bottom"
                 sideOffset={8}
-                collisionPadding={12}
-                className="max-h-[min(70vh,32rem)] w-56 overflow-y-auto"
+                collisionPadding={{ top: 20, right: 12, bottom: 12, left: 12 }}
+                className="max-h-[calc(100svh-2.5rem)] w-56 overflow-y-auto"
               >
                 <div className="px-2 pb-2 pt-1">
                   <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Projekt</p>
