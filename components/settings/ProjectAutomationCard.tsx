@@ -6,6 +6,8 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { normalizeProjectStatusMoveRules, type ProjectStatusMoveRule } from '@/features/projects/projectAutomation';
 import { useProjectColumns } from '@/features/projects/projectQueries';
 import { createClient } from '@/lib/supabase/client';
 import type { TableRow } from '@/lib/supabase/database.types';
@@ -16,7 +18,8 @@ const DEFAULT_SETTINGS = {
   watched_statuses: [] as string[],
   remind_days_before_end: 3,
   stale_days_without_update: 7,
-  remind_done_without_invoice: true
+  remind_done_without_invoice: true,
+  status_move_rules: [] as ProjectStatusMoveRule[]
 };
 
 export default function ProjectAutomationCard({ companyId }: { companyId: string }) {
@@ -28,7 +31,7 @@ export default function ProjectAutomationCard({ companyId }: { companyId: string
     queryFn: async () => {
       const { data, error } = await supabase
         .from('project_automation_settings')
-        .select('company_id,created_at,updated_at,watched_statuses,remind_days_before_end,stale_days_without_update,remind_done_without_invoice')
+        .select('company_id,created_at,updated_at,watched_statuses,remind_days_before_end,stale_days_without_update,remind_done_without_invoice,status_move_rules')
         .eq('company_id', companyId)
         .maybeSingle<ProjectAutomationSettingsRow>();
 
@@ -41,6 +44,7 @@ export default function ProjectAutomationCard({ companyId }: { companyId: string
   const [remindDaysBeforeEnd, setRemindDaysBeforeEnd] = useState('3');
   const [staleDaysWithoutUpdate, setStaleDaysWithoutUpdate] = useState('7');
   const [remindDoneWithoutInvoice, setRemindDoneWithoutInvoice] = useState(true);
+  const [statusMoveRules, setStatusMoveRules] = useState<ProjectStatusMoveRule[]>([]);
 
   useEffect(() => {
     const next = settingsQuery.data;
@@ -49,6 +53,7 @@ export default function ProjectAutomationCard({ companyId }: { companyId: string
     setRemindDaysBeforeEnd(String(next.remind_days_before_end ?? DEFAULT_SETTINGS.remind_days_before_end));
     setStaleDaysWithoutUpdate(String(next.stale_days_without_update ?? DEFAULT_SETTINGS.stale_days_without_update));
     setRemindDoneWithoutInvoice(next.remind_done_without_invoice ?? DEFAULT_SETTINGS.remind_done_without_invoice);
+    setStatusMoveRules(normalizeProjectStatusMoveRules(next.status_move_rules));
   }, [settingsQuery.data]);
 
   const saveMutation = useMutation({
@@ -58,7 +63,8 @@ export default function ProjectAutomationCard({ companyId }: { companyId: string
         watched_statuses: watchedStatuses,
         remind_days_before_end: Number(remindDaysBeforeEnd || DEFAULT_SETTINGS.remind_days_before_end),
         stale_days_without_update: Number(staleDaysWithoutUpdate || DEFAULT_SETTINGS.stale_days_without_update),
-        remind_done_without_invoice: remindDoneWithoutInvoice
+        remind_done_without_invoice: remindDoneWithoutInvoice,
+        status_move_rules: statusMoveRules
       };
 
       const { error } = await supabase.from('project_automation_settings').upsert(payload, { onConflict: 'company_id' });
@@ -74,6 +80,22 @@ export default function ProjectAutomationCard({ companyId }: { companyId: string
   });
 
   const columns = columnsQuery.data ?? [];
+  const availableStatuses = columns.map((column) => ({ key: column.key, title: column.title }));
+
+  function addStatusMoveRule() {
+    if (availableStatuses.length < 2) return;
+    const first = availableStatuses[0]?.key ?? '';
+    const second = availableStatuses[1]?.key ?? first;
+    setStatusMoveRules((current) => [
+      ...current,
+      {
+        id: crypto.randomUUID(),
+        from_status: first,
+        to_status: second,
+        enabled: true
+      }
+    ]);
+  }
 
   return (
     <Card>
@@ -129,6 +151,99 @@ export default function ProjectAutomationCard({ companyId }: { companyId: string
           />
           <span className="text-sm">Påminn när projekt är klart men ännu inte fakturerat</span>
         </label>
+
+        <div className="space-y-3 rounded-lg border p-3">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-medium">Automatiserade statusflöden</p>
+              <p className="text-sm text-muted-foreground">
+                Enkel första version: när ett projekt sätts till en viss status flyttas det automatiskt vidare till vald kolumn.
+              </p>
+            </div>
+            <Button type="button" variant="outline" onClick={addStatusMoveRule} disabled={availableStatuses.length < 2}>
+              Lägg till regel
+            </Button>
+          </div>
+
+          {statusMoveRules.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Inga automatiserade statusflöden ännu.</p>
+          ) : (
+            <div className="space-y-3">
+              {statusMoveRules.map((rule) => (
+                <div key={rule.id} className="grid gap-3 rounded-lg border p-3 md:grid-cols-[1fr_1fr_auto_auto]">
+                  <label className="space-y-1">
+                    <span className="text-sm">När status sätts till</span>
+                    <Select
+                      value={rule.from_status}
+                      onValueChange={(value) =>
+                        setStatusMoveRules((current) =>
+                          current.map((item) => (item.id === rule.id ? { ...item, from_status: value } : item))
+                        )
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Välj kolumn" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availableStatuses.map((column) => (
+                          <SelectItem key={`${rule.id}-from-${column.key}`} value={column.key}>
+                            {column.title}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </label>
+
+                  <label className="space-y-1">
+                    <span className="text-sm">Flytta till kolumn</span>
+                    <Select
+                      value={rule.to_status}
+                      onValueChange={(value) =>
+                        setStatusMoveRules((current) =>
+                          current.map((item) => (item.id === rule.id ? { ...item, to_status: value } : item))
+                        )
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Välj kolumn" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availableStatuses.map((column) => (
+                          <SelectItem key={`${rule.id}-to-${column.key}`} value={column.key}>
+                            {column.title}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </label>
+
+                  <label className="flex items-center gap-3 rounded-lg border px-3 py-2">
+                    <input
+                      type="checkbox"
+                      checked={rule.enabled}
+                      onChange={(event) =>
+                        setStatusMoveRules((current) =>
+                          current.map((item) => (item.id === rule.id ? { ...item, enabled: event.target.checked } : item))
+                        )
+                      }
+                    />
+                    <span className="text-sm">Aktiv</span>
+                  </label>
+
+                  <div className="flex items-end justify-end">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => setStatusMoveRules((current) => current.filter((item) => item.id !== rule.id))}
+                    >
+                      Ta bort
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
 
         <div className="flex justify-end">
           <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>

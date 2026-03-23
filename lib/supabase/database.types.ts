@@ -738,6 +738,7 @@ export type Database = {
           created_at: string
           remind_days_before_end: number
           remind_done_without_invoice: boolean
+          status_move_rules: Json
           stale_days_without_update: number
           updated_at: string
           watched_statuses: string[]
@@ -747,6 +748,7 @@ export type Database = {
           created_at?: string
           remind_days_before_end?: number
           remind_done_without_invoice?: boolean
+          status_move_rules?: Json
           stale_days_without_update?: number
           updated_at?: string
           watched_statuses?: string[]
@@ -756,6 +758,7 @@ export type Database = {
           created_at?: string
           remind_days_before_end?: number
           remind_done_without_invoice?: boolean
+          status_move_rules?: Json
           stale_days_without_update?: number
           updated_at?: string
           watched_statuses?: string[]

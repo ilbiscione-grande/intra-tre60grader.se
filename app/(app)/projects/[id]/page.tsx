@@ -25,6 +25,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { createInvoiceFromOrder } from '@/lib/rpc';
 import { useProjectColumns, useProjectMembers, type ProjectMemberVisual } from '@/features/projects/projectQueries';
+import { applyProjectStatusAutomation } from '@/features/projects/projectAutomation';
 import ProjectFinancePanel from '@/features/projects/ProjectFinancePanel';
 import ProjectFilesPanel from '@/features/projects/ProjectFilesPanel';
 import ProjectTasksPanel from '@/features/projects/ProjectTasksPanel';
@@ -566,12 +567,26 @@ export default function ProjectDetailsPage() {
         .eq('id', projectId);
 
       if (error) throw error;
+
+      if (draftStatus !== projectQuery.data.status) {
+        return applyProjectStatusAutomation({
+          companyId,
+          projectId,
+          status: draftStatus
+        });
+      }
+
+      return { applied: false as const, targetStatus: null };
     },
-    onSuccess: async () => {
+    onSuccess: async (automationResult) => {
       await queryClient.invalidateQueries({ queryKey: ['project', companyId, projectId] });
       await queryClient.invalidateQueries({ queryKey: ['projects', companyId] });
       addLocalActivity('Projekt uppdaterat');
-      toast.success('Projekt uppdaterat');
+      toast.success(
+        automationResult?.applied
+          ? 'Projekt uppdaterat och flyttat enligt regel'
+          : 'Projekt uppdaterat'
+      );
     },
     onError: (error) => {
       toast.error(getErrorMessage(error, 'Kunde inte spara projekt'));
