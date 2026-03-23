@@ -48,11 +48,23 @@ export async function applyProjectStatusAutomation({
   if (error) throw error;
 
   const matchingRule = normalizeProjectStatusMoveRules(data?.status_move_rules).find(
-    (rule) => rule.enabled && rule.from_status === workflowStatus && rule.to_status !== workflowStatus
+    (rule) => rule.enabled && rule.from_status === workflowStatus
   );
 
   if (!matchingRule) {
     return { applied: false as const, targetStatus: null };
+  }
+
+  const { data: projectRow, error: projectError } = await supabase
+    .from('projects')
+    .select('status')
+    .eq('company_id', companyId)
+    .eq('id', projectId)
+    .maybeSingle<{ status: string }>();
+
+  if (projectError) throw projectError;
+  if (!projectRow?.status || projectRow.status === matchingRule.to_status) {
+    return { applied: false as const, targetStatus: matchingRule.to_status };
   }
 
   await moveProject(projectId, matchingRule.to_status, 9999);
