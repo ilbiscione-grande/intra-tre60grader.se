@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { AlertTriangle, MoreHorizontal, Trash2 } from 'lucide-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -80,6 +80,10 @@ export default function ProjectCard({
   const queryClient = useQueryClient();
   const [mobileProjectMenuOpen, setMobileProjectMenuOpen] = useState(false);
   const mobileProjectMenuRef = useRef<HTMLDivElement | null>(null);
+  const mobileProjectMenuPanelRef = useRef<HTMLDivElement | null>(null);
+  const mobileProjectMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const [mobileProjectMenuPlacement, setMobileProjectMenuPlacement] = useState<'down' | 'up'>('down');
+  const [mobileProjectMenuMaxHeight, setMobileProjectMenuMaxHeight] = useState<number>(320);
   const visibleMembers = members.slice(0, 3);
   const hiddenCount = Math.max(0, members.length - visibleMembers.length);
   const canManageMembers = role !== 'auditor';
@@ -200,6 +204,32 @@ export default function ProjectCard({
     };
   }, [mobileProjectMenuOpen]);
 
+  useLayoutEffect(() => {
+    if (!mobileProjectMenuOpen || breakpointMode !== 'mobile') return;
+
+    function updateMenuPlacement() {
+      const triggerRect = mobileProjectMenuTriggerRef.current?.getBoundingClientRect();
+      const panel = mobileProjectMenuPanelRef.current;
+      if (!triggerRect || !panel) return;
+
+      const viewportHeight = window.innerHeight;
+      const topGap = 16;
+      const bottomGap = 16;
+      const gutter = 8;
+      const spaceBelow = Math.max(120, viewportHeight - triggerRect.bottom - bottomGap - gutter);
+      const spaceAbove = Math.max(120, triggerRect.top - topGap - gutter);
+      const panelHeight = panel.scrollHeight;
+      const shouldOpenUp = spaceBelow < Math.min(panelHeight, 320) && spaceAbove > spaceBelow;
+
+      setMobileProjectMenuPlacement(shouldOpenUp ? 'up' : 'down');
+      setMobileProjectMenuMaxHeight(Math.max(120, shouldOpenUp ? spaceAbove : spaceBelow));
+    }
+
+    updateMenuPlacement();
+    window.addEventListener('resize', updateMenuPlacement);
+    return () => window.removeEventListener('resize', updateMenuPlacement);
+  }, [mobileProjectMenuOpen, breakpointMode, statusOptions.length, columnOptions.length]);
+
   return (
     <Card className="group relative transition-shadow hover:shadow-sm">
       <Link
@@ -213,6 +243,7 @@ export default function ProjectCard({
             breakpointMode === 'mobile' ? (
               <div ref={mobileProjectMenuRef} className="relative">
                 <button
+                  ref={mobileProjectMenuTriggerRef}
                   type="button"
                   className="inline-flex h-9 w-9 items-center justify-center rounded-full border bg-background/95 text-foreground shadow-sm transition hover:bg-muted hover:text-foreground"
                   aria-label="Projektmeny"
@@ -227,7 +258,11 @@ export default function ProjectCard({
                 </button>
                 {mobileProjectMenuOpen ? (
                   <div
-                    className="absolute right-0 top-[calc(100%+0.5rem)] z-[220] w-56 max-h-[calc(100svh-7rem)] overflow-y-auto rounded-xl border border-border bg-card p-2 shadow-xl"
+                    ref={mobileProjectMenuPanelRef}
+                    className={`absolute right-0 z-[220] w-56 overflow-y-auto rounded-xl border border-border bg-card p-2 shadow-xl ${
+                      mobileProjectMenuPlacement === 'up' ? 'bottom-[calc(100%+0.5rem)]' : 'top-[calc(100%+0.5rem)]'
+                    }`}
+                    style={{ maxHeight: `${mobileProjectMenuMaxHeight}px` }}
                     onClick={(event) => event.stopPropagation()}
                   >
                     <div className="px-2 pb-2 pt-1">
