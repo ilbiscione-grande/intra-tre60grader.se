@@ -26,7 +26,7 @@ import { Input } from '@/components/ui/input';
 import { PROJECT_COLUMN_COLOR_OPTIONS, getProjectColumnBackground } from '@/features/projects/columnColors';
 import { getUserDisplayName } from '@/features/profile/profileBadge';
 import ProjectCard from '@/features/projects/ProjectCard';
-import { useMoveProject, useProjectActivitySummaries, useProjectColumns, useProjectMembers, useProjects } from '@/features/projects/projectQueries';
+import { useMoveProject, useProjectActivitySummaries, useProjectColumns, useProjectMembers, useProjects, useUpdateProjectWorkflowStatus } from '@/features/projects/projectQueries';
 import { createClient } from '@/lib/supabase/client';
 import type { Project } from '@/lib/types';
 import { useAutoScrollActiveTab } from '@/lib/ui/useAutoScrollActiveTab';
@@ -93,6 +93,11 @@ function moveProjectBetweenColumns(current: BoardState, projectId: string, targe
 function SortableProjectCard({
   project,
   statusLabel,
+  statusOptions,
+  columnOptions,
+  onSetWorkflowStatus,
+  onMoveToColumn,
+  isUpdatingWorkflowStatus,
   members,
   availableMembers,
   activitySummary,
@@ -100,6 +105,11 @@ function SortableProjectCard({
 }: {
   project: Project;
   statusLabel: string;
+  statusOptions?: React.ComponentProps<typeof ProjectCard>['statusOptions'];
+  columnOptions?: React.ComponentProps<typeof ProjectCard>['columnOptions'];
+  onSetWorkflowStatus?: React.ComponentProps<typeof ProjectCard>['onSetWorkflowStatus'];
+  onMoveToColumn?: React.ComponentProps<typeof ProjectCard>['onMoveToColumn'];
+  isUpdatingWorkflowStatus?: React.ComponentProps<typeof ProjectCard>['isUpdatingWorkflowStatus'];
   members: React.ComponentProps<typeof ProjectCard>['members'];
   availableMembers: React.ComponentProps<typeof ProjectCard>['availableMembers'];
   activitySummary?: React.ComponentProps<typeof ProjectCard>['activitySummary'];
@@ -123,6 +133,11 @@ function SortableProjectCard({
       <ProjectCard
         project={project}
         statusLabel={statusLabel}
+        statusOptions={statusOptions}
+        columnOptions={columnOptions}
+        onSetWorkflowStatus={onSetWorkflowStatus}
+        onMoveToColumn={onMoveToColumn}
+        isUpdatingWorkflowStatus={isUpdatingWorkflowStatus}
         members={members}
         availableMembers={availableMembers}
         activitySummary={activitySummary}
@@ -225,6 +240,7 @@ export default function ProjectBoardMobileSimple({ companyId }: { companyId: str
   const projectMembersQuery = useProjectMembers(companyId);
   const activitySummariesQuery = useProjectActivitySummaries(companyId);
   const moveMutation = useMoveProject(companyId);
+  const updateWorkflowStatusMutation = useUpdateProjectWorkflowStatus(companyId);
 
   const columns = columnsQuery.data ?? [];
   const projects = projectsQuery.data ?? [];
@@ -619,6 +635,15 @@ export default function ProjectBoardMobileSimple({ companyId }: { companyId: str
                     key={project.id}
                     project={project}
                     statusLabel={titleByStatus.get(project.workflow_status ?? project.status) ?? project.workflow_status ?? project.status}
+                    statusOptions={columns.map((column) => ({ key: column.key, title: column.title }))}
+                    columnOptions={columns.map((column) => ({ key: column.key, title: column.title }))}
+                    onSetWorkflowStatus={(cardProject, workflowStatus) =>
+                      updateWorkflowStatusMutation.mutate({ projectId: cardProject.id, workflowStatus })
+                    }
+                    onMoveToColumn={(cardProject, status) =>
+                      moveMutation.mutate({ project: cardProject, toStatus: status, toPosition: 9999 })
+                    }
+                    isUpdatingWorkflowStatus={updateWorkflowStatusMutation.isPending}
                     members={membersByProjectId.get(project.id) ?? []}
                     availableMembers={availableMembers}
                     activitySummary={activitySummaryByProjectId.get(project.id)}
@@ -636,7 +661,16 @@ export default function ProjectBoardMobileSimple({ companyId }: { companyId: str
             <div className="w-[88vw] touch-none">
               <ProjectCard
                 project={activeProject}
-                statusLabel={titleByStatus.get(activeProject.status) ?? activeProject.status}
+                statusLabel={titleByStatus.get(activeProject.workflow_status ?? activeProject.status) ?? activeProject.workflow_status ?? activeProject.status}
+                statusOptions={columns.map((column) => ({ key: column.key, title: column.title }))}
+                columnOptions={columns.map((column) => ({ key: column.key, title: column.title }))}
+                onSetWorkflowStatus={(cardProject, workflowStatus) =>
+                  updateWorkflowStatusMutation.mutate({ projectId: cardProject.id, workflowStatus })
+                }
+                onMoveToColumn={(cardProject, status) =>
+                  moveMutation.mutate({ project: cardProject, toStatus: status, toPosition: 9999 })
+                }
+                isUpdatingWorkflowStatus={updateWorkflowStatusMutation.isPending}
                 members={membersByProjectId.get(activeProject.id) ?? []}
                 availableMembers={availableMembers}
                 activitySummary={activitySummaryByProjectId.get(activeProject.id)}

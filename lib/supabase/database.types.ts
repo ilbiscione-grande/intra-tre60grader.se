@@ -734,34 +734,52 @@ export type Database = {
       }
       project_automation_settings: {
         Row: {
+          create_task_on_watched_status: boolean
+          create_update_on_workflow_status_change: boolean
           company_id: string
           created_at: string
+          notify_assigned_on_deadline_overdue: boolean
+          notify_assigned_on_milestone_overdue: boolean
+          notify_assigned_on_watched_status: boolean
           remind_days_before_end: number
           remind_done_without_invoice: boolean
           status_move_rules: Json
           stale_days_without_update: number
           updated_at: string
           watched_statuses: string[]
+          watched_status_task_title: string
         }
         Insert: {
+          create_task_on_watched_status?: boolean
+          create_update_on_workflow_status_change?: boolean
           company_id: string
           created_at?: string
+          notify_assigned_on_deadline_overdue?: boolean
+          notify_assigned_on_milestone_overdue?: boolean
+          notify_assigned_on_watched_status?: boolean
           remind_days_before_end?: number
           remind_done_without_invoice?: boolean
           status_move_rules?: Json
           stale_days_without_update?: number
           updated_at?: string
           watched_statuses?: string[]
+          watched_status_task_title?: string
         }
         Update: {
+          create_task_on_watched_status?: boolean
+          create_update_on_workflow_status_change?: boolean
           company_id?: string
           created_at?: string
+          notify_assigned_on_deadline_overdue?: boolean
+          notify_assigned_on_milestone_overdue?: boolean
+          notify_assigned_on_watched_status?: boolean
           remind_days_before_end?: number
           remind_done_without_invoice?: boolean
           status_move_rules?: Json
           stale_days_without_update?: number
           updated_at?: string
           watched_statuses?: string[]
+          watched_status_task_title?: string
         }
         Relationships: [
           {

@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { createClient } from '@/lib/supabase/client';
 import { enqueueAction, getQueueCounts, processQueue } from '@/features/offline/syncQueue';
 import { useOfflineStore } from '@/features/offline/offlineStore';
+import { applyProjectStatusAutomation, maybeCreateWatchedStatusTask, maybeCreateWorkflowStatusUpdate } from '@/features/projects/projectAutomation';
 import { createProjectWithOrder, moveProject, setProjectStatus } from '@/lib/rpc';
 import { resolveCustomerForPayload, type ProjectCreatePayload } from '@/features/projects/customerResolver';
 import type { TableRow as DbRow } from '@/lib/supabase/database.types';
@@ -435,6 +436,11 @@ export function useMoveProject(companyId: string) {
       }
 
       await moveProject(project.id, toStatus, toPosition);
+      await maybeCreateWatchedStatusTask({
+        companyId,
+        projectId: project.id,
+        targetStatus: toStatus
+      });
       await processQueue(companyId);
       setCounts(await getQueueCounts());
       toast.success('Projekt flyttat');
@@ -445,6 +451,61 @@ export function useMoveProject(companyId: string) {
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : 'Kunde inte flytta projekt');
+    }
+  });
+}
+
+export function useUpdateProjectWorkflowStatus(companyId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ projectId, workflowStatus }: { projectId: string; workflowStatus: string }) => {
+      const supabase = createClient();
+      const { data: existingProject, error: existingProjectError } = await supabase
+        .from('projects')
+        .select('workflow_status,status')
+        .eq('company_id', companyId)
+        .eq('id', projectId)
+        .maybeSingle<{ workflow_status: string | null; status: string }>();
+
+      if (existingProjectError) throw existingProjectError;
+
+      const { error } = await supabase
+        .from('projects')
+        .update({ workflow_status: workflowStatus })
+        .eq('company_id', companyId)
+        .eq('id', projectId);
+
+      if (error) throw error;
+
+      const [automationResult] = await Promise.all([
+        applyProjectStatusAutomation({
+          companyId,
+          projectId,
+          workflowStatus
+        }),
+        maybeCreateWorkflowStatusUpdate({
+          companyId,
+          projectId,
+          previousWorkflowStatus: existingProject?.workflow_status ?? existingProject?.status ?? null,
+          nextWorkflowStatus: workflowStatus
+        })
+      ]);
+
+      return automationResult;
+    },
+    onSuccess: async (automationResult) => {
+      await queryClient.invalidateQueries({ queryKey: projectKey(companyId) });
+      await queryClient.invalidateQueries({ queryKey: ['project-members', companyId] });
+      await queryClient.invalidateQueries({ queryKey: ['project-activity-summaries', companyId] });
+      toast.success(
+        automationResult?.applied
+          ? 'Projektstatus uppdaterad och kortet flyttades enligt regel'
+          : 'Projektstatus uppdaterad'
+      );
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : 'Kunde inte uppdatera projektstatus');
     }
   });
 }

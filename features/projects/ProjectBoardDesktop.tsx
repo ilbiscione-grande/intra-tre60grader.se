@@ -30,7 +30,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { PROJECT_COLUMN_COLOR_OPTIONS, getProjectColumnBackground } from '@/features/projects/columnColors';
 import { getUserDisplayName } from '@/features/profile/profileBadge';
 import ProjectCard from '@/features/projects/ProjectCard';
-import { useMoveProject, useProjectActivitySummaries, useProjectColumns, useProjectMembers, useProjects } from '@/features/projects/projectQueries';
+import { useMoveProject, useProjectActivitySummaries, useProjectColumns, useProjectMembers, useProjects, useUpdateProjectWorkflowStatus } from '@/features/projects/projectQueries';
 import { createClient } from '@/lib/supabase/client';
 import type { Project } from '@/lib/types';
 
@@ -309,6 +309,7 @@ export default function ProjectBoardDesktop({ companyId }: { companyId: string }
   const projectMembersQuery = useProjectMembers(companyId);
   const activitySummariesQuery = useProjectActivitySummaries(companyId);
   const moveMutation = useMoveProject(companyId);
+  const updateWorkflowStatusMutation = useUpdateProjectWorkflowStatus(companyId);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
   const columns = columnsQuery.data ?? [];
@@ -711,6 +712,15 @@ export default function ProjectBoardDesktop({ companyId }: { companyId: string }
                           <ProjectCard
                             project={project}
                             statusLabel={titleByStatus.get(project.workflow_status ?? project.status) ?? project.workflow_status ?? project.status}
+                            statusOptions={columns.map((column) => ({ key: column.key, title: column.title }))}
+                            columnOptions={columns.map((column) => ({ key: column.key, title: column.title }))}
+                            onSetWorkflowStatus={(cardProject, workflowStatus) =>
+                              updateWorkflowStatusMutation.mutate({ projectId: cardProject.id, workflowStatus })
+                            }
+                            onMoveToColumn={(cardProject, status) =>
+                              moveMutation.mutate({ project: cardProject, toStatus: status, toPosition: 9999 })
+                            }
+                            isUpdatingWorkflowStatus={updateWorkflowStatusMutation.isPending}
                             members={membersByProjectId.get(project.id) ?? []}
                             availableMembers={availableMembers}
                             activitySummary={activitySummaryByProjectId.get(project.id)}

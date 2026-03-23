@@ -19,6 +19,12 @@ const DEFAULT_SETTINGS = {
   remind_days_before_end: 3,
   stale_days_without_update: 7,
   remind_done_without_invoice: true,
+  notify_assigned_on_deadline_overdue: true,
+  notify_assigned_on_milestone_overdue: true,
+  notify_assigned_on_watched_status: false,
+  create_task_on_watched_status: false,
+  watched_status_task_title: 'Följ upp projekt i bevakad kolumn',
+  create_update_on_workflow_status_change: true,
   status_move_rules: [] as ProjectStatusMoveRule[]
 };
 
@@ -31,7 +37,7 @@ export default function ProjectAutomationCard({ companyId }: { companyId: string
     queryFn: async () => {
       const { data, error } = await supabase
         .from('project_automation_settings')
-        .select('company_id,created_at,updated_at,watched_statuses,remind_days_before_end,stale_days_without_update,remind_done_without_invoice,status_move_rules')
+        .select('company_id,created_at,updated_at,watched_statuses,remind_days_before_end,stale_days_without_update,remind_done_without_invoice,notify_assigned_on_deadline_overdue,notify_assigned_on_milestone_overdue,notify_assigned_on_watched_status,create_task_on_watched_status,watched_status_task_title,create_update_on_workflow_status_change,status_move_rules')
         .eq('company_id', companyId)
         .maybeSingle<ProjectAutomationSettingsRow>();
 
@@ -44,6 +50,12 @@ export default function ProjectAutomationCard({ companyId }: { companyId: string
   const [remindDaysBeforeEnd, setRemindDaysBeforeEnd] = useState('3');
   const [staleDaysWithoutUpdate, setStaleDaysWithoutUpdate] = useState('7');
   const [remindDoneWithoutInvoice, setRemindDoneWithoutInvoice] = useState(true);
+  const [notifyAssignedOnDeadlineOverdue, setNotifyAssignedOnDeadlineOverdue] = useState(true);
+  const [notifyAssignedOnMilestoneOverdue, setNotifyAssignedOnMilestoneOverdue] = useState(true);
+  const [notifyAssignedOnWatchedStatus, setNotifyAssignedOnWatchedStatus] = useState(false);
+  const [createTaskOnWatchedStatus, setCreateTaskOnWatchedStatus] = useState(false);
+  const [watchedStatusTaskTitle, setWatchedStatusTaskTitle] = useState(DEFAULT_SETTINGS.watched_status_task_title);
+  const [createUpdateOnWorkflowStatusChange, setCreateUpdateOnWorkflowStatusChange] = useState(true);
   const [statusMoveRules, setStatusMoveRules] = useState<ProjectStatusMoveRule[]>([]);
 
   useEffect(() => {
@@ -53,6 +65,12 @@ export default function ProjectAutomationCard({ companyId }: { companyId: string
     setRemindDaysBeforeEnd(String(next.remind_days_before_end ?? DEFAULT_SETTINGS.remind_days_before_end));
     setStaleDaysWithoutUpdate(String(next.stale_days_without_update ?? DEFAULT_SETTINGS.stale_days_without_update));
     setRemindDoneWithoutInvoice(next.remind_done_without_invoice ?? DEFAULT_SETTINGS.remind_done_without_invoice);
+    setNotifyAssignedOnDeadlineOverdue(next.notify_assigned_on_deadline_overdue ?? DEFAULT_SETTINGS.notify_assigned_on_deadline_overdue);
+    setNotifyAssignedOnMilestoneOverdue(next.notify_assigned_on_milestone_overdue ?? DEFAULT_SETTINGS.notify_assigned_on_milestone_overdue);
+    setNotifyAssignedOnWatchedStatus(next.notify_assigned_on_watched_status ?? DEFAULT_SETTINGS.notify_assigned_on_watched_status);
+    setCreateTaskOnWatchedStatus(next.create_task_on_watched_status ?? DEFAULT_SETTINGS.create_task_on_watched_status);
+    setWatchedStatusTaskTitle(next.watched_status_task_title ?? DEFAULT_SETTINGS.watched_status_task_title);
+    setCreateUpdateOnWorkflowStatusChange(next.create_update_on_workflow_status_change ?? DEFAULT_SETTINGS.create_update_on_workflow_status_change);
     setStatusMoveRules(normalizeProjectStatusMoveRules(next.status_move_rules));
   }, [settingsQuery.data]);
 
@@ -64,6 +82,12 @@ export default function ProjectAutomationCard({ companyId }: { companyId: string
         remind_days_before_end: Number(remindDaysBeforeEnd || DEFAULT_SETTINGS.remind_days_before_end),
         stale_days_without_update: Number(staleDaysWithoutUpdate || DEFAULT_SETTINGS.stale_days_without_update),
         remind_done_without_invoice: remindDoneWithoutInvoice,
+        notify_assigned_on_deadline_overdue: notifyAssignedOnDeadlineOverdue,
+        notify_assigned_on_milestone_overdue: notifyAssignedOnMilestoneOverdue,
+        notify_assigned_on_watched_status: notifyAssignedOnWatchedStatus,
+        create_task_on_watched_status: createTaskOnWatchedStatus,
+        watched_status_task_title: watchedStatusTaskTitle.trim() || DEFAULT_SETTINGS.watched_status_task_title,
+        create_update_on_workflow_status_change: createUpdateOnWorkflowStatusChange,
         status_move_rules: statusMoveRules
       };
 
@@ -151,6 +175,72 @@ export default function ProjectAutomationCard({ companyId }: { companyId: string
           />
           <span className="text-sm">Påminn när projekt är klart men ännu inte fakturerat</span>
         </label>
+
+        <div className="space-y-3 rounded-lg border p-3">
+          <p className="text-sm font-medium">Riktade medlemsnotiser</p>
+          <p className="text-sm text-muted-foreground">
+            Visas i appens notismenyer för tilldelade projektmedlemmar. Bra första steg innan mer avancerade automationsflöden.
+          </p>
+
+          <label className="flex items-center gap-3 rounded-lg border p-3">
+            <input
+              type="checkbox"
+              checked={notifyAssignedOnDeadlineOverdue}
+              onChange={(event) => setNotifyAssignedOnDeadlineOverdue(event.target.checked)}
+            />
+            <span className="text-sm">Meddela tilldelade medlemmar när slutdatum har passerat</span>
+          </label>
+
+          <label className="flex items-center gap-3 rounded-lg border p-3">
+            <input
+              type="checkbox"
+              checked={notifyAssignedOnMilestoneOverdue}
+              onChange={(event) => setNotifyAssignedOnMilestoneOverdue(event.target.checked)}
+            />
+            <span className="text-sm">Meddela tilldelade medlemmar när ett delmål blir försenat</span>
+          </label>
+
+          <label className="flex items-center gap-3 rounded-lg border p-3">
+            <input
+              type="checkbox"
+              checked={notifyAssignedOnWatchedStatus}
+              onChange={(event) => setNotifyAssignedOnWatchedStatus(event.target.checked)}
+            />
+            <span className="text-sm">Meddela tilldelade medlemmar när projekt hamnar i bevakad kolumn</span>
+          </label>
+        </div>
+
+        <div className="space-y-3 rounded-lg border p-3">
+          <p className="text-sm font-medium">Automatiska uppgifter och uppdateringar</p>
+          <p className="text-sm text-muted-foreground">
+            Små arbetsflöden som skapar nästa steg automatiskt när något viktigt händer i projektflödet.
+          </p>
+
+          <label className="flex items-center gap-3 rounded-lg border p-3">
+            <input
+              type="checkbox"
+              checked={createTaskOnWatchedStatus}
+              onChange={(event) => setCreateTaskOnWatchedStatus(event.target.checked)}
+            />
+            <span className="text-sm">Skapa uppgift automatiskt när projekt hamnar i bevakad kolumn</span>
+          </label>
+
+          {createTaskOnWatchedStatus ? (
+            <label className="space-y-1">
+              <span className="text-sm">Titel för automatisk uppgift</span>
+              <Input value={watchedStatusTaskTitle} onChange={(event) => setWatchedStatusTaskTitle(event.target.value)} placeholder="Följ upp projekt i bevakad kolumn" />
+            </label>
+          ) : null}
+
+          <label className="flex items-center gap-3 rounded-lg border p-3">
+            <input
+              type="checkbox"
+              checked={createUpdateOnWorkflowStatusChange}
+              onChange={(event) => setCreateUpdateOnWorkflowStatusChange(event.target.checked)}
+            />
+            <span className="text-sm">Skapa projektuppdatering automatiskt när projektstatus ändras</span>
+          </label>
+        </div>
 
         <div className="space-y-3 rounded-lg border p-3">
           <div className="flex items-center justify-between gap-3">

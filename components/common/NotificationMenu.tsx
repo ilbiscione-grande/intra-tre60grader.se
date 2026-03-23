@@ -17,13 +17,14 @@ import { createClient } from '@/lib/supabase/client';
 import type { TableRow as DbRow } from '@/lib/supabase/database.types';
 
 type NotificationRow = DbRow<'project_update_notifications'>;
-type ProjectRow = Pick<DbRow<'projects'>, 'id' | 'title' | 'end_date' | 'status' | 'created_at'>;
+type ProjectRow = Pick<DbRow<'projects'>, 'id' | 'title' | 'end_date' | 'status' | 'workflow_status' | 'milestones' | 'created_at'>;
 type AutomationSettingsRow = DbRow<'project_automation_settings'>;
 type ProjectUpdateRow = Pick<DbRow<'project_updates'>, 'project_id' | 'created_at'>;
 type InvoiceSourceRow = Pick<DbRow<'invoice_sources'>, 'project_id'>;
+type ProjectMemberRow = Pick<DbRow<'project_members'>, 'project_id' | 'user_id'>;
 type MenuNotificationItem =
   | { id: string; kind: 'mention' | 'reply'; title: string; subtitle: string; href: Route; createdAt: string; read: boolean; markReadId?: string }
-  | { id: string; kind: 'deadline_overdue' | 'deadline_soon' | 'stale_project' | 'done_without_invoice' | 'watched_status'; title: string; subtitle: string; href: Route; createdAt: string; read: boolean };
+  | { id: string; kind: 'deadline_overdue' | 'deadline_soon' | 'stale_project' | 'done_without_invoice' | 'watched_status' | 'milestone_overdue'; title: string; subtitle: string; href: Route; createdAt: string; read: boolean };
 
 function todayIso() {
   return new Date().toLocaleDateString('sv-CA');
@@ -33,7 +34,13 @@ const DEFAULT_AUTOMATION_SETTINGS = {
   watched_statuses: [] as string[],
   remind_days_before_end: 3,
   stale_days_without_update: 7,
-  remind_done_without_invoice: true
+  remind_done_without_invoice: true,
+  notify_assigned_on_deadline_overdue: true,
+  notify_assigned_on_milestone_overdue: true,
+  notify_assigned_on_watched_status: false,
+  create_task_on_watched_status: false,
+  watched_status_task_title: 'Följ upp projekt i bevakad kolumn',
+  create_update_on_workflow_status_change: true
 };
 
 function addDays(dateString: string, days: number) {
@@ -57,6 +64,21 @@ function formatSafeDate(value?: string | null) {
   return date.toLocaleDateString('sv-SE');
 }
 
+function normalizeMilestones(value: DbRow<'projects'>['milestones']) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) return null;
+      const row = item as Record<string, unknown>;
+      return {
+        title: typeof row.title === 'string' ? row.title.trim() : '',
+        date: typeof row.date === 'string' ? row.date : '',
+        completed: Boolean(row.completed)
+      };
+    })
+    .filter((item): item is { title: string; date: string; completed: boolean } => Boolean(item));
+}
+
 export default function NotificationMenu({
   companyId,
   compact = false
@@ -67,6 +89,17 @@ export default function NotificationMenu({
   const supabase = createClient();
   const queryClient = useQueryClient();
   const [dismissedPlanningIds, setDismissedPlanningIds] = useState<string[]>([]);
+  const currentUserQuery = useQuery({
+    queryKey: ['notification-user', companyId],
+    queryFn: async () => {
+      const {
+        data: { user },
+        error
+      } = await supabase.auth.getUser();
+      if (error) throw error;
+      return user;
+    }
+  });
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -135,7 +168,7 @@ export default function NotificationMenu({
     queryFn: async () => {
       const { data, error } = await supabase
         .from('project_automation_settings')
-        .select('company_id,created_at,updated_at,watched_statuses,remind_days_before_end,stale_days_without_update,remind_done_without_invoice')
+        .select('company_id,created_at,updated_at,watched_statuses,remind_days_before_end,stale_days_without_update,remind_done_without_invoice,notify_assigned_on_deadline_overdue,notify_assigned_on_milestone_overdue,notify_assigned_on_watched_status,create_task_on_watched_status,watched_status_task_title,create_update_on_workflow_status_change')
         .eq('company_id', companyId)
         .maybeSingle<AutomationSettingsRow>();
 
@@ -153,7 +186,7 @@ export default function NotificationMenu({
     queryFn: async () => {
       const { data, error } = await supabase
         .from('projects')
-        .select('id,title,end_date,status,created_at')
+        .select('id,title,end_date,status,workflow_status,milestones,created_at')
         .eq('company_id', companyId)
         .returns<ProjectRow[]>();
 
@@ -192,6 +225,24 @@ export default function NotificationMenu({
         .select('project_id')
         .eq('company_id', companyId)
         .returns<InvoiceSourceRow[]>();
+
+      if (error) throw error;
+      return data ?? [];
+    }
+  });
+
+  const projectMembersQuery = useQuery<ProjectMemberRow[]>({
+    queryKey: ['notification-project-members', companyId],
+    staleTime: 5 * 60_000,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
+    refetchInterval: false,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('project_members')
+        .select('project_id,user_id')
+        .eq('company_id', companyId)
+        .returns<ProjectMemberRow[]>();
 
       if (error) throw error;
       return data ?? [];
@@ -250,18 +301,26 @@ export default function NotificationMenu({
   );
   const planningNotifications = useMemo(() => {
     const today = todayIso();
+    const currentUserId = currentUserQuery.data?.id ?? null;
     const remindUntil = addDays(today, automationSettings.remind_days_before_end ?? DEFAULT_AUTOMATION_SETTINGS.remind_days_before_end);
     const staleThreshold = addDays(today, -(automationSettings.stale_days_without_update ?? DEFAULT_AUTOMATION_SETTINGS.stale_days_without_update));
+    const assignedProjectIds = new Set(
+      (projectMembersQuery.data ?? [])
+        .filter((row) => !currentUserId || row.user_id === currentUserId)
+        .map((row) => row.project_id)
+    );
 
     return (planningProjectsQuery.data ?? []).flatMap((project) => {
       const items: MenuNotificationItem[] = [];
+      const isAssigned = assignedProjectIds.has(project.id);
+      const workflowStatus = project.workflow_status ?? project.status;
 
-      if (project.end_date && project.status !== 'done' && project.end_date < today) {
+      if (project.end_date && workflowStatus !== 'done' && project.end_date < today && (!automationSettings.notify_assigned_on_deadline_overdue || isAssigned)) {
         const id = `deadline-overdue:${project.id}:${project.end_date}`;
         items.push({
           id,
           kind: 'deadline_overdue',
-          title: 'Projekt har passerat slutdatum',
+          title: automationSettings.notify_assigned_on_deadline_overdue ? 'Ditt projekt har passerat slutdatum' : 'Projekt har passerat slutdatum',
           subtitle: `${project.title} • slutdatum ${formatSafeDate(project.end_date) ?? project.end_date}`,
           href: `/projects/${project.id}?tab=planning` as Route,
           createdAt: project.end_date,
@@ -269,7 +328,7 @@ export default function NotificationMenu({
         });
       }
 
-      if (project.end_date && project.status !== 'done' && remindUntil && project.end_date >= today && project.end_date <= remindUntil) {
+      if (project.end_date && workflowStatus !== 'done' && remindUntil && project.end_date >= today && project.end_date <= remindUntil) {
         const id = `deadline-soon:${project.id}:${project.end_date}`;
         items.push({
           id,
@@ -282,12 +341,12 @@ export default function NotificationMenu({
         });
       }
 
-      if ((automationSettings.watched_statuses ?? []).includes(project.status)) {
+      if ((automationSettings.watched_statuses ?? []).includes(project.status) && (!automationSettings.notify_assigned_on_watched_status || isAssigned)) {
         const id = `watched-status:${project.id}:${project.status}`;
         items.push({
           id,
           kind: 'watched_status',
-          title: 'Projekt i bevakad kolumn',
+          title: automationSettings.notify_assigned_on_watched_status ? 'Ditt projekt ligger i bevakad kolumn' : 'Projekt i bevakad kolumn',
           subtitle: `${project.title} • ${project.status}`,
           href: `/projects/${project.id}` as Route,
           createdAt: project.created_at,
@@ -295,10 +354,26 @@ export default function NotificationMenu({
         });
       }
 
+      const overdueMilestone = normalizeMilestones(project.milestones)
+        .filter((milestone) => !milestone.completed && milestone.date && milestone.date < today)
+        .sort((a, b) => a.date.localeCompare(b.date))[0];
+      if (overdueMilestone && (!automationSettings.notify_assigned_on_milestone_overdue || isAssigned)) {
+        const id = `milestone-overdue:${project.id}:${overdueMilestone.title}:${overdueMilestone.date}`;
+        items.push({
+          id,
+          kind: 'milestone_overdue',
+          title: automationSettings.notify_assigned_on_milestone_overdue ? 'Ditt projekt har försenat delmål' : 'Projekt har försenat delmål',
+          subtitle: `${project.title} • ${overdueMilestone.title || 'Delmål'} • ${formatSafeDate(overdueMilestone.date) ?? overdueMilestone.date}`,
+          href: `/projects/${project.id}?tab=planning` as Route,
+          createdAt: overdueMilestone.date,
+          read: dismissedPlanningIds.includes(id)
+        });
+      }
+
       const lastUpdate = latestUpdateByProjectId.get(project.id);
       const staleFrom = lastUpdate ?? project.created_at;
       const staleFromDate = toIsoDate(staleFrom);
-      if (project.status !== 'done' && staleThreshold && staleFromDate && staleFromDate <= staleThreshold) {
+      if (workflowStatus !== 'done' && staleThreshold && staleFromDate && staleFromDate <= staleThreshold) {
         const id = `stale-project:${project.id}:${staleThreshold}`;
         items.push({
           id,
@@ -311,7 +386,7 @@ export default function NotificationMenu({
         });
       }
 
-      if (automationSettings.remind_done_without_invoice && project.status === 'done' && !invoicedProjectIds.has(project.id)) {
+      if (automationSettings.remind_done_without_invoice && workflowStatus === 'done' && !invoicedProjectIds.has(project.id)) {
         const id = `done-without-invoice:${project.id}`;
         items.push({
           id,
@@ -326,7 +401,7 @@ export default function NotificationMenu({
 
       return items;
     });
-  }, [automationSettings, companyId, dismissedPlanningIds, invoicedProjectIds, latestUpdateByProjectId, planningProjectsQuery.data]);
+  }, [automationSettings, companyId, currentUserQuery.data?.id, dismissedPlanningIds, invoicedProjectIds, latestUpdateByProjectId, planningProjectsQuery.data, projectMembersQuery.data]);
   const projectNotifications = notifications.map((notification) => {
     const project = projectsById.get(notification.project_id);
     return {
@@ -352,7 +427,9 @@ export default function NotificationMenu({
       planningProjectsQuery.refetch(),
       planningProjectUpdatesQuery.refetch(),
       invoiceSourcesQuery.refetch(),
-      automationSettingsQuery.refetch()
+      automationSettingsQuery.refetch(),
+      projectMembersQuery.refetch(),
+      currentUserQuery.refetch()
     ]);
   }
 

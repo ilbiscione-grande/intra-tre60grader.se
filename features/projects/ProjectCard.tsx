@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { AlertTriangle, Trash2 } from 'lucide-react';
+import { AlertTriangle, MoreHorizontal, Trash2 } from 'lucide-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useAppContext } from '@/components/providers/AppContext';
@@ -51,6 +51,11 @@ export default function ProjectCard({
   project,
   actions,
   statusLabel,
+  statusOptions = [],
+  columnOptions = [],
+  onSetWorkflowStatus,
+  onMoveToColumn,
+  isUpdatingWorkflowStatus = false,
   members = [],
   availableMembers = [],
   activitySummary
@@ -58,6 +63,11 @@ export default function ProjectCard({
   project: Project;
   actions?: React.ReactNode;
   statusLabel?: string;
+  statusOptions?: Array<{ key: string; title: string }>;
+  columnOptions?: Array<{ key: string; title: string }>;
+  onSetWorkflowStatus?: (project: Project, workflowStatus: string) => void;
+  onMoveToColumn?: (project: Project, status: string) => void;
+  isUpdatingWorkflowStatus?: boolean;
   members?: ProjectMemberVisual[];
   availableMembers?: ProjectMemberVisual[];
   activitySummary?: ProjectActivitySummary & { actorLabel?: string | null };
@@ -167,8 +177,88 @@ export default function ProjectCard({
         aria-label={`Öppna projekt ${project.title}`}
         className="absolute inset-0 z-10 rounded-[inherit]"
       />
-      <CardContent className="relative flex items-start justify-between gap-3 p-4">
-        <div className="min-w-0 pb-12">
+      <CardContent className="relative p-4">
+        <div className="absolute right-3 top-3 z-20 flex items-start gap-1">
+          {onSetWorkflowStatus ? (
+            <DropdownMenu modal={false}>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border bg-background/95 text-foreground shadow-sm transition hover:bg-muted hover:text-foreground"
+                  aria-label="Projektmeny"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                  }}
+                >
+                  <MoreHorizontal className="h-4 w-4" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <div className="px-2 pb-2 pt-1">
+                  <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Projekt</p>
+                </div>
+                <DropdownMenuItem asChild>
+                  <Link href={`/projects/${project.id}`} onClick={(event) => event.stopPropagation()}>
+                    Öppna projekt
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link href={`/projects/${project.id}?tab=members`} onClick={(event) => event.stopPropagation()}>
+                    Medlemmar
+                  </Link>
+                </DropdownMenuItem>
+
+                <div className="px-2 pb-2 pt-1">
+                  <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Projektstatus</p>
+                </div>
+                {statusOptions.map((option) => {
+                  const active = (project.workflow_status ?? project.status) === option.key;
+                  return (
+                    <DropdownMenuItem
+                      key={`${project.id}-${option.key}`}
+                      disabled={active || isUpdatingWorkflowStatus}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        onSetWorkflowStatus(project, option.key);
+                      }}
+                    >
+                      {active ? `• ${option.title}` : option.title}
+                    </DropdownMenuItem>
+                  );
+                })}
+
+                {onMoveToColumn ? (
+                  <>
+                    <div className="px-2 pb-2 pt-3">
+                      <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Flytta till kolumn</p>
+                    </div>
+                    {columnOptions.map((option) => {
+                      const active = project.status === option.key;
+                      return (
+                        <DropdownMenuItem
+                          key={`${project.id}-column-${option.key}`}
+                          disabled={active}
+                          onClick={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            onMoveToColumn(project, option.key);
+                          }}
+                        >
+                          {active ? `• ${option.title}` : option.title}
+                        </DropdownMenuItem>
+                      );
+                    })}
+                  </>
+                ) : null}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : null}
+          {actions ? <div>{actions}</div> : null}
+        </div>
+
+        <div className="min-w-0 pb-12 pr-24">
           <h3 className="font-semibold group-hover:underline">{project.title}</h3>
           <Badge className="mt-2 w-fit uppercase tracking-wide">{statusLabel ?? fallbackLabel(project.workflow_status ?? project.status)}</Badge>
           <div className="mt-3 max-w-full space-y-1">
@@ -201,7 +291,6 @@ export default function ProjectCard({
             </div>
           ) : null}
         </div>
-        {actions ? <div className="relative z-20">{actions}</div> : null}
         {members.length > 0 ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
