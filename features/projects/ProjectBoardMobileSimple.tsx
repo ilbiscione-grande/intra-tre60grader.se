@@ -618,7 +618,7 @@ export default function ProjectBoardMobileSimple({ companyId }: { companyId: str
                   <SortableProjectCard
                     key={project.id}
                     project={project}
-                    statusLabel={titleByStatus.get(project.status) ?? project.status}
+                    statusLabel={titleByStatus.get(project.workflow_status ?? project.status) ?? project.workflow_status ?? project.status}
                     members={membersByProjectId.get(project.id) ?? []}
                     availableMembers={availableMembers}
                     activitySummary={activitySummaryByProjectId.get(project.id)}

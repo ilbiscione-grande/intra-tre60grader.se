@@ -710,7 +710,7 @@ export default function ProjectBoardDesktop({ companyId }: { companyId: string }
                         <SortableCardItem key={project.id} id={project.id}>
                           <ProjectCard
                             project={project}
-                            statusLabel={titleByStatus.get(project.status) ?? project.status}
+                            statusLabel={titleByStatus.get(project.workflow_status ?? project.status) ?? project.workflow_status ?? project.status}
                             members={membersByProjectId.get(project.id) ?? []}
                             availableMembers={availableMembers}
                             activitySummary={activitySummaryByProjectId.get(project.id)}

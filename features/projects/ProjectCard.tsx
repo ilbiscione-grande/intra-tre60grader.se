@@ -170,7 +170,7 @@ export default function ProjectCard({
       <CardContent className="relative flex items-start justify-between gap-3 p-4">
         <div className="min-w-0 pb-12">
           <h3 className="font-semibold group-hover:underline">{project.title}</h3>
-          <Badge className="mt-2 w-fit uppercase tracking-wide">{statusLabel ?? fallbackLabel(project.status)}</Badge>
+          <Badge className="mt-2 w-fit uppercase tracking-wide">{statusLabel ?? fallbackLabel(project.workflow_status ?? project.status)}</Badge>
           <div className="mt-3 max-w-full space-y-1">
             <div className="flex items-center gap-2">
               {isMilestoneOverdue || isEndDateOverdue ? (

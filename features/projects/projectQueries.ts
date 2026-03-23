@@ -5,7 +5,6 @@ import { toast } from 'sonner';
 import { createClient } from '@/lib/supabase/client';
 import { enqueueAction, getQueueCounts, processQueue } from '@/features/offline/syncQueue';
 import { useOfflineStore } from '@/features/offline/offlineStore';
-import { applyProjectStatusAutomation } from '@/features/projects/projectAutomation';
 import { createProjectWithOrder, moveProject, setProjectStatus } from '@/lib/rpc';
 import { resolveCustomerForPayload, type ProjectCreatePayload } from '@/features/projects/customerResolver';
 import type { TableRow as DbRow } from '@/lib/supabase/database.types';
@@ -93,7 +92,7 @@ export function useProjects(companyId: string) {
       const supabase = createClient();
       const { data, error } = await supabase
         .from('projects')
-        .select('id,company_id,title,status,position,customer_id,start_date,end_date,milestones,updated_at,created_at')
+        .select('id,company_id,title,status,workflow_status,position,customer_id,start_date,end_date,milestones,updated_at,created_at')
         .eq('company_id', companyId)
         .order('position', { ascending: true });
 
@@ -393,22 +392,13 @@ export function useSetProjectStatus(companyId: string) {
       }
 
       await setProjectStatus(project.id, toStatus);
-      return applyProjectStatusAutomation({
-        companyId,
-        projectId: project.id,
-        status: toStatus
-      });
     },
-    onSuccess: async (automationResult) => {
+    onSuccess: async () => {
       await processQueue(companyId);
       setCounts(await getQueueCounts());
       await queryClient.invalidateQueries({ queryKey: projectKey(companyId) });
       await queryClient.invalidateQueries({ queryKey: projectColumnsKey(companyId) });
-      toast.success(
-        automationResult?.applied
-          ? `Status uppdaterad och flyttad till ${automationResult.targetStatus}`
-          : 'Status uppdaterad'
-      );
+      toast.success('Status uppdaterad');
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : 'Kunde inte ändra status');

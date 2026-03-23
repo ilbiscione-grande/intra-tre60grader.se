@@ -39,7 +39,7 @@ import { useSwipeTabs } from '@/lib/ui/useSwipeTabs';
 
 type ProjectRow = Pick<
   DbRow<'projects'>,
-  'id' | 'company_id' | 'title' | 'status' | 'position' | 'customer_id' | 'start_date' | 'end_date' | 'milestones' | 'created_at' | 'updated_at'
+  'id' | 'company_id' | 'title' | 'status' | 'workflow_status' | 'position' | 'customer_id' | 'start_date' | 'end_date' | 'milestones' | 'created_at' | 'updated_at'
 >;
 
 type CustomerRow = Pick<DbRow<'customers'>, 'id' | 'name'>;
@@ -241,6 +241,7 @@ export default function ProjectDetailsPage() {
 
   const [draftTitle, setDraftTitle] = useState('');
   const [draftStatus, setDraftStatus] = useState<ProjectStatus>('');
+  const [draftWorkflowStatus, setDraftWorkflowStatus] = useState<ProjectStatus>('');
   const [draftCustomerId, setDraftCustomerId] = useState<string>('none');
   const [draftStartDate, setDraftStartDate] = useState('');
   const [draftEndDate, setDraftEndDate] = useState('');
@@ -288,7 +289,7 @@ export default function ProjectDetailsPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('projects')
-        .select('id,company_id,title,status,position,customer_id,start_date,end_date,milestones,created_at,updated_at')
+        .select('id,company_id,title,status,workflow_status,position,customer_id,start_date,end_date,milestones,created_at,updated_at')
         .eq('company_id', companyId)
         .eq('id', projectId)
         .maybeSingle<ProjectRow>();
@@ -489,11 +490,12 @@ export default function ProjectDetailsPage() {
     if (!projectQuery.data) return;
     setDraftTitle(projectQuery.data.title);
     setDraftStatus(projectQuery.data.status as ProjectStatus);
+    setDraftWorkflowStatus((projectQuery.data.workflow_status ?? projectQuery.data.status) as ProjectStatus);
     setDraftCustomerId(projectQuery.data.customer_id ?? 'none');
     setDraftStartDate(projectQuery.data.start_date ?? '');
     setDraftEndDate(projectQuery.data.end_date ?? '');
     setDraftMilestones(normalizeProjectMilestones(projectQuery.data.milestones));
-  }, [projectQuery.data?.customer_id, projectQuery.data?.end_date, projectQuery.data?.milestones, projectQuery.data?.start_date, projectQuery.data?.status, projectQuery.data?.title]);
+  }, [projectQuery.data?.customer_id, projectQuery.data?.end_date, projectQuery.data?.milestones, projectQuery.data?.start_date, projectQuery.data?.status, projectQuery.data?.title, projectQuery.data?.workflow_status]);
 
   useEffect(() => {
     if (!draftStatus && statusColumns.length > 0) {
@@ -553,7 +555,7 @@ export default function ProjectDetailsPage() {
 
       const payload: Partial<ProjectRow> = {
         title,
-        status: draftStatus,
+        workflow_status: draftWorkflowStatus || draftStatus,
         customer_id: draftCustomerId === 'none' ? null : draftCustomerId,
         start_date: draftStartDate || null,
         end_date: draftEndDate || null,
@@ -568,11 +570,11 @@ export default function ProjectDetailsPage() {
 
       if (error) throw error;
 
-      if (draftStatus !== projectQuery.data.status) {
+      if ((draftWorkflowStatus || draftStatus) !== (projectQuery.data.workflow_status ?? projectQuery.data.status)) {
         return applyProjectStatusAutomation({
           companyId,
           projectId,
-          status: draftStatus
+          workflowStatus: draftWorkflowStatus || draftStatus
         });
       }
 
@@ -990,7 +992,7 @@ export default function ProjectDetailsPage() {
   const latestInvoice = invoicesQuery.data?.[0] ?? null;
   const latestActivityItem = activity[0] ?? null;
   const latestActivityActorLabel = latestActivityItem?.actorUserId ? memberLabelByUserId.get(latestActivityItem.actorUserId) ?? 'Intern användare' : null;
-  const projectStatusLabel = projectColumnTitle(draftStatus || project.status, statusColumns);
+  const projectStatusLabel = projectColumnTitle(draftWorkflowStatus || project.workflow_status || project.status, statusColumns);
   const projectLogs = activity
     .map((item) => ({
       id: item.id,
@@ -1097,8 +1099,8 @@ export default function ProjectDetailsPage() {
                 </label>
 
                 <label className="space-y-1">
-                  <span className="text-sm">Kolumn</span>
-                  <Select value={draftStatus} onValueChange={(value) => setDraftStatus(value as ProjectStatus)}>
+                  <span className="text-sm">Projektstatus</span>
+                  <Select value={draftWorkflowStatus} onValueChange={(value) => setDraftWorkflowStatus(value as ProjectStatus)}>
                     <SelectTrigger disabled={isProjectMetaBusy}>
                       <SelectValue />
                     </SelectTrigger>
@@ -1659,8 +1661,12 @@ export default function ProjectDetailsPage() {
               <p className="mt-1 break-all font-mono text-foreground/70">{project.company_id}</p>
             </div>
             <div className="rounded-lg border p-3 text-sm">
-              <p className="font-medium">Statusnyckel</p>
+              <p className="font-medium">Kolumnnyckel</p>
               <p className="mt-1 text-foreground/70">{project.status}</p>
+            </div>
+            <div className="rounded-lg border p-3 text-sm">
+              <p className="font-medium">Projektstatus</p>
+              <p className="mt-1 text-foreground/70">{project.workflow_status ?? project.status}</p>
             </div>
             <div className="rounded-lg border p-3 text-sm">
               <p className="font-medium">Position</p>

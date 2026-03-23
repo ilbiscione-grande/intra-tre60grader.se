@@ -904,6 +904,7 @@ export type Database = {
           status: string
           title: string
           updated_at: string
+          workflow_status: string
         }
         Insert: {
           company_id: string
@@ -917,6 +918,7 @@ export type Database = {
           status?: string
           title: string
           updated_at?: string
+          workflow_status?: string
         }
         Update: {
           company_id?: string
@@ -930,6 +932,7 @@ export type Database = {
           status?: string
           title?: string
           updated_at?: string
+          workflow_status?: string
         }
         Relationships: [
           {

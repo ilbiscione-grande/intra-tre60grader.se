@@ -32,11 +32,11 @@ export function normalizeProjectStatusMoveRules(input: unknown): ProjectStatusMo
 export async function applyProjectStatusAutomation({
   companyId,
   projectId,
-  status
+  workflowStatus
 }: {
   companyId: string;
   projectId: string;
-  status: string;
+  workflowStatus: string;
 }) {
   const supabase = createClient();
   const { data, error } = await supabase
@@ -48,7 +48,7 @@ export async function applyProjectStatusAutomation({
   if (error) throw error;
 
   const matchingRule = normalizeProjectStatusMoveRules(data?.status_move_rules).find(
-    (rule) => rule.enabled && rule.from_status === status && rule.to_status !== status
+    (rule) => rule.enabled && rule.from_status === workflowStatus && rule.to_status !== workflowStatus
   );
 
   if (!matchingRule) {

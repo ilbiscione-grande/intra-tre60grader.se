@@ -172,7 +172,7 @@ export default function ProjectAutomationCard({ companyId }: { companyId: string
               {statusMoveRules.map((rule) => (
                 <div key={rule.id} className="grid gap-3 rounded-lg border p-3 md:grid-cols-[1fr_1fr_auto_auto]">
                   <label className="space-y-1">
-                    <span className="text-sm">När status sätts till</span>
+                    <span className="text-sm">När projektstatus sätts till</span>
                     <Select
                       value={rule.from_status}
                       onValueChange={(value) =>
@@ -195,7 +195,7 @@ export default function ProjectAutomationCard({ companyId }: { companyId: string
                   </label>
 
                   <label className="space-y-1">
-                    <span className="text-sm">Flytta till kolumn</span>
+                    <span className="text-sm">Flytta kort till kolumn</span>
                     <Select
                       value={rule.to_status}
                       onValueChange={(value) =>
