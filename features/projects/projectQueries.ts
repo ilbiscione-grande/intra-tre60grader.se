@@ -436,18 +436,29 @@ export function useMoveProject(companyId: string) {
       }
 
       await moveProject(project.id, toStatus, toPosition);
-      await maybeCreateWatchedStatusTask({
-        companyId,
-        projectId: project.id,
-        targetStatus: toStatus
-      });
+
+      let sideEffectError: string | null = null;
+      try {
+        await maybeCreateWatchedStatusTask({
+          companyId,
+          projectId: project.id,
+          targetStatus: toStatus
+        });
+      } catch (error) {
+        sideEffectError = error instanceof Error ? error.message : 'Kunde inte skapa automatisk uppgift';
+      }
+
       await processQueue(companyId);
       setCounts(await getQueueCounts());
-      toast.success('Projekt flyttat');
+      return { sideEffectError };
     },
-    onSuccess: async () => {
+    onSuccess: async (result) => {
       await queryClient.invalidateQueries({ queryKey: projectKey(companyId) });
       await queryClient.invalidateQueries({ queryKey: projectColumnsKey(companyId) });
+      toast.success('Projekt flyttat');
+      if (result?.sideEffectError) {
+        toast.warning(`Projektet flyttades, men en automation kunde inte köras: ${result.sideEffectError}`);
+      }
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : 'Kunde inte flytta projekt');
@@ -478,6 +489,7 @@ export function useUpdateProjectWorkflowStatus(companyId: string) {
 
       if (error) throw error;
 
+      let workflowUpdateSideEffectError: string | null = null;
       const [automationResult] = await Promise.all([
         applyProjectStatusAutomation({
           companyId,
@@ -489,10 +501,18 @@ export function useUpdateProjectWorkflowStatus(companyId: string) {
           projectId,
           previousWorkflowStatus: existingProject?.workflow_status ?? existingProject?.status ?? null,
           nextWorkflowStatus: workflowStatus
+        }).catch((error) => {
+          workflowUpdateSideEffectError =
+            error instanceof Error ? error.message : 'Kunde inte skapa automatisk projektuppdatering';
+          return { created: false as const };
         })
       ]);
 
-      return automationResult;
+      return {
+        ...automationResult,
+        sideEffectError:
+          workflowUpdateSideEffectError ?? ('sideEffectError' in automationResult ? automationResult.sideEffectError : null)
+      };
     },
     onSuccess: async (automationResult) => {
       await queryClient.invalidateQueries({ queryKey: projectKey(companyId) });
@@ -503,6 +523,9 @@ export function useUpdateProjectWorkflowStatus(companyId: string) {
           ? 'Projektstatus uppdaterad och kortet flyttades enligt regel'
           : 'Projektstatus uppdaterad'
       );
+      if (automationResult?.sideEffectError) {
+        toast.warning(`Projektstatusen sparades, men en automation kunde inte köras: ${automationResult.sideEffectError}`);
+      }
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : 'Kunde inte uppdatera projektstatus');

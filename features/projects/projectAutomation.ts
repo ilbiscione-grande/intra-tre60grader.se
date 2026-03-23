@@ -193,10 +193,17 @@ export async function applyProjectStatusAutomation({
   }
 
   await moveProject(projectId, matchingRule.to_status, 9999);
-  await maybeCreateWatchedStatusTask({
-    companyId,
-    projectId,
-    targetStatus: matchingRule.to_status
-  });
-  return { applied: true as const, targetStatus: matchingRule.to_status };
+  let sideEffectError: string | null = null;
+
+  try {
+    await maybeCreateWatchedStatusTask({
+      companyId,
+      projectId,
+      targetStatus: matchingRule.to_status
+    });
+  } catch (error) {
+    sideEffectError = error instanceof Error ? error.message : 'Kunde inte skapa automatisk uppgift';
+  }
+
+  return { applied: true as const, targetStatus: matchingRule.to_status, sideEffectError };
 }
