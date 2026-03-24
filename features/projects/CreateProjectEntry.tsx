@@ -15,7 +15,6 @@ import {
   useCompanyMemberOptions,
   useCreateProject,
   useProjectColumns,
-  useProjectMembers,
   useProjectTemplates,
   type ProjectMemberVisual,
   type ProjectTemplate
@@ -522,7 +521,6 @@ export default function CreateProjectEntry({ companyId, mode }: { companyId: str
   const searchParams = useSearchParams();
   const createMutation = useCreateProject(companyId);
   const columnsQuery = useProjectColumns(companyId);
-  const projectMembersQuery = useProjectMembers(companyId);
   const companyMemberOptionsQuery = useCompanyMemberOptions(companyId);
   const projectTemplatesQuery = useProjectTemplates(companyId);
   const currentUserQuery = useQuery({
@@ -562,9 +560,6 @@ export default function CreateProjectEntry({ companyId, mode }: { companyId: str
   const columns: ColumnItem[] = (columnsQuery.data ?? []).map((c) => ({ key: c.key, title: c.title }));
   const initialStatus = columns[0]?.key ?? '';
   const availableMembers = useMemo(() => {
-    const visualsByUserId = new Map(
-      (projectMembersQuery.data?.availableMembers ?? []).map((member) => [member.user_id, member] as const)
-    );
     const baseMembers = new Map<string, { id: string; company_id: string; user_id: string; role: ProjectMemberVisual['role']; created_at: string; email: string | null; handle: string | null; display_name: string | null }>();
 
     for (const member of companyMemberOptionsQuery.data ?? []) {
@@ -595,16 +590,15 @@ export default function CreateProjectEntry({ companyId, mode }: { companyId: str
     }
 
     return Array.from(baseMembers.values()).map((member) => {
-      const visual = visualsByUserId.get(member.user_id);
       return {
         ...member,
-        color: visual?.color ?? '#3b82f6',
-        avatar_path: visual?.avatar_path ?? null,
-        avatar_url: visual?.avatar_url ?? null,
-        emoji: visual?.emoji ?? null
+        color: '#3b82f6',
+        avatar_path: null,
+        avatar_url: null,
+        emoji: null
       };
     });
-  }, [companyId, companyMemberOptionsQuery.data, currentUserQuery.data, projectMembersQuery.data?.availableMembers]);
+  }, [companyId, companyMemberOptionsQuery.data, currentUserQuery.data]);
 
   useEffect(() => {
     if (pathname !== '/projects') return;

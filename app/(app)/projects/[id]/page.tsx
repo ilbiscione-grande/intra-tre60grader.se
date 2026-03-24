@@ -899,9 +899,6 @@ export default function ProjectDetailsPage() {
   });
 
   const availableMembers = useMemo(() => {
-    const visualsByUserId = new Map(
-      (projectMembersQuery.data?.availableMembers ?? []).map((member) => [member.user_id, member] as const)
-    );
     const baseMembers = new Map<string, { id: string; company_id: string; user_id: string; role: Role; created_at: string; email: string | null; handle: string | null; display_name: string | null }>();
 
     for (const member of companyMemberOptionsQuery.data ?? []) {
@@ -932,24 +929,41 @@ export default function ProjectDetailsPage() {
     }
 
     return Array.from(baseMembers.values()).map((member) => {
-      const visual = visualsByUserId.get(member.user_id);
       return {
         ...member,
-        color: visual?.color ?? '#3b82f6',
-        avatar_path: visual?.avatar_path ?? null,
-        avatar_url: visual?.avatar_url ?? null,
-        emoji: visual?.emoji ?? null
+        color: '#3b82f6',
+        avatar_path: null,
+        avatar_url: null,
+        emoji: null
       };
     });
-  }, [companyId, companyMemberOptionsQuery.data, currentUserQuery.data, projectMembersQuery.data?.availableMembers, role]);
+  }, [companyId, companyMemberOptionsQuery.data, currentUserQuery.data, role]);
   const currentUserId = currentUserQuery.data?.id ?? '';
   const assignedMembers = useMemo(
-    () =>
-      (projectMembersQuery.data?.assignments ?? [])
+    () => {
+      const memberByUserId = new Map(availableMembers.map((member) => [member.user_id, member] as const));
+      return (projectMembersQuery.data?.assignments ?? [])
         .filter((assignment) => assignment.project_id === projectId)
-        .map((assignment) => assignment.member)
-        .filter((member): member is ProjectMemberVisual => Boolean(member)),
-    [projectId, projectMembersQuery.data?.assignments]
+        .map((assignment) => {
+          const member = memberByUserId.get(assignment.user_id);
+          if (member) return member;
+          return {
+            id: assignment.id,
+            company_id: assignment.company_id,
+            user_id: assignment.user_id,
+            role: 'member' as Role,
+            created_at: assignment.created_at,
+            email: null,
+            handle: null,
+            display_name: assignment.user_id,
+            color: '#3b82f6',
+            avatar_path: null,
+            avatar_url: null,
+            emoji: null
+          };
+        });
+    },
+    [availableMembers, projectId, projectMembersQuery.data?.assignments]
   );
   const taskAssignableMembers = availableMembers;
   const responsibleMember = useMemo(
