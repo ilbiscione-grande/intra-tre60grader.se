@@ -80,15 +80,15 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: auth.message }, { status: auth.status });
   }
 
-  const supabase = createClient();
+  const admin = createAdminClient();
   const [{ data: members, error }, { data: preferences, error: preferencesError }, authUsersById] = await Promise.all([
-    supabase
+    admin
       .from('company_members')
       .select('id,company_id,user_id,role,created_at')
       .eq('company_id', companyId)
       .order('created_at', { ascending: true })
       .returns<Array<Pick<CompanyMemberRow, 'id' | 'company_id' | 'user_id' | 'role' | 'created_at'>>>(),
-    supabase
+    admin
       .from('user_company_preferences')
       .select('user_id,preference_value')
       .eq('company_id', companyId)
