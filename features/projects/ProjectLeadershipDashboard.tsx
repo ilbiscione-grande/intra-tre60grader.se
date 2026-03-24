@@ -8,7 +8,7 @@ import { AlertTriangle, Clock3, ReceiptText, TriangleAlert, Users } from 'lucide
 import ProfileBadge from '@/components/common/ProfileBadge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { createClient } from '@/lib/supabase/client';
-import { useCompanyMemberDirectory, useProjectActivitySummaries, useProjectMembers, useProjects } from '@/features/projects/projectQueries';
+import { useCompanyMemberDirectory, useProjectActivitySummaries, useProjects } from '@/features/projects/projectQueries';
 import type { Json, TableRow as DbRow } from '@/lib/supabase/database.types';
 
 type ProjectFinancePlanLite = {
@@ -121,7 +121,6 @@ function DashboardList({
 export default function ProjectLeadershipDashboard({ companyId }: { companyId: string }) {
   const supabase = useMemo(() => createClient(), []);
   const projectsQuery = useProjects(companyId);
-  const projectMembersQuery = useProjectMembers(companyId);
   const activitySummariesQuery = useProjectActivitySummaries(companyId);
   const memberDirectoryQuery = useCompanyMemberDirectory(companyId);
 
@@ -171,7 +170,6 @@ export default function ProjectLeadershipDashboard({ companyId }: { companyId: s
 
   const data = useMemo(() => {
     const projects = projectsQuery.data ?? [];
-    const assignments = projectMembersQuery.data?.assignments ?? [];
     const activitySummaries = activitySummariesQuery.data ?? [];
     const financePlansByProject = new Map((financePlansQuery.data ?? []).map((plan) => [plan.project_id, plan]));
     const latestActivityByProject = new Map(activitySummaries.map((item) => [item.project_id, item]));
@@ -255,9 +253,7 @@ export default function ProjectLeadershipDashboard({ companyId }: { companyId: s
         };
       });
 
-    const projectsWithoutOwner = projects.filter(
-      (project) => !assignments.some((assignment) => assignment.project_id === project.id && Boolean(assignment.member))
-    ).length;
+    const projectsWithoutOwner = projects.filter((project) => !project.responsible_user_id).length;
 
     const teamLoad = Array.from(hoursByMemberId.entries())
       .map(([userId, info]) => {
@@ -295,7 +291,6 @@ export default function ProjectLeadershipDashboard({ companyId }: { companyId: s
     financePlansQuery.data,
     invoiceSourcesQuery.data,
     memberDirectoryQuery.data,
-    projectMembersQuery.data?.assignments,
     projectsQuery.data,
     timeEntriesQuery.data
   ]);

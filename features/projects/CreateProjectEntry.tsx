@@ -34,6 +34,7 @@ type CreateProjectFormData = {
   startDate?: string;
   endDate?: string;
   orderTotal: number;
+  responsibleUserId?: string;
   memberIds: string[];
 };
 
@@ -221,6 +222,7 @@ function ProjectForm({
   customers,
   columns,
   initialStatus,
+  currentUserId,
   availableMembers,
   templates
 }: {
@@ -229,6 +231,7 @@ function ProjectForm({
   customers: CustomerItem[];
   columns: ColumnItem[];
   initialStatus: string;
+  currentUserId: string;
   availableMembers: ProjectMemberVisual[];
   templates: ProjectTemplate[];
 }) {
@@ -246,6 +249,7 @@ function ProjectForm({
       startDate: '',
       endDate: '',
       orderTotal: 0,
+      responsibleUserId: currentUserId,
       memberIds: []
     }
   });
@@ -253,6 +257,7 @@ function ProjectForm({
   const selectedCustomer = form.watch('customerSelect');
   const selectedTemplateId = form.watch('templateId');
   const startDate = form.watch('startDate');
+  const responsibleUserId = form.watch('responsibleUserId');
   const selectedMemberIds = form.watch('memberIds');
   const selectedTemplate = useMemo(
     () => templates.find((template) => template.id === selectedTemplateId) ?? null,
@@ -279,6 +284,12 @@ function ProjectForm({
     form.setValue('memberIds', selectedTemplate.member_user_ids ?? []);
   }, [form, selectedTemplate, selectedTemplateId]);
 
+  useEffect(() => {
+    if (!form.getValues('responsibleUserId') && currentUserId) {
+      form.setValue('responsibleUserId', currentUserId);
+    }
+  }, [currentUserId, form]);
+
   return (
     <form
       className="space-y-3"
@@ -293,6 +304,7 @@ function ProjectForm({
           startDate: '',
           endDate: '',
           orderTotal: 0,
+          responsibleUserId: currentUserId,
           memberIds: []
         });
       })}
@@ -379,6 +391,27 @@ function ProjectForm({
           <Input type="date" {...form.register('endDate')} />
           {form.formState.errors.endDate && <p className="text-xs text-danger">{form.formState.errors.endDate.message}</p>}
         </div>
+      </div>
+
+      <div className="space-y-1">
+        <p className="text-sm">Ansvarig</p>
+        <Select value={responsibleUserId || currentUserId || undefined} onValueChange={(value) => form.setValue('responsibleUserId', value)}>
+          <SelectTrigger>
+            <SelectValue placeholder="Välj ansvarig" />
+          </SelectTrigger>
+          <SelectContent>
+            {availableMembers.map((member) => (
+              <SelectItem key={member.id} value={member.user_id}>
+                {getUserDisplayName({
+                  displayName: member.display_name,
+                  email: member.email,
+                  handle: member.handle,
+                  userId: member.user_id
+                })}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       {selectedTemplate && (templateMilestonePreview?.length ?? 0) > 0 ? (
@@ -490,6 +523,20 @@ export default function CreateProjectEntry({ companyId, mode }: { companyId: str
   const columnsQuery = useProjectColumns(companyId);
   const projectMembersQuery = useProjectMembers(companyId);
   const projectTemplatesQuery = useProjectTemplates(companyId);
+  const currentUserQuery = useQuery({
+    queryKey: ['current-user-auth-id'],
+    queryFn: async () => {
+      const supabase = createClient();
+      const {
+        data: { user },
+        error
+      } = await supabase.auth.getUser();
+
+      if (error) throw error;
+      return user?.id ?? '';
+    },
+    staleTime: 1000 * 60 * 10
+  });
 
   const customersQuery = useQuery<CustomerItem[]>({
     queryKey: ['customers', companyId],
@@ -538,6 +585,10 @@ export default function CreateProjectEntry({ companyId, mode }: { companyId: str
     const customerId = data.customerSelect && data.customerSelect !== NEW_CUSTOMER_VALUE ? data.customerSelect : null;
     const customerName = data.customerSelect === NEW_CUSTOMER_VALUE ? data.newCustomerName?.trim() ?? '' : null;
     const template = (projectTemplatesQuery.data ?? []).find((item) => item.id === data.templateId) ?? null;
+    const responsibleUserId = data.responsibleUserId?.trim() || currentUserQuery.data || null;
+    const memberIds = responsibleUserId
+      ? Array.from(new Set([...(data.memberIds ?? []), responsibleUserId]))
+      : data.memberIds;
 
     await createMutation.mutateAsync({
       title: data.title,
@@ -547,7 +598,8 @@ export default function CreateProjectEntry({ companyId, mode }: { companyId: str
       start_date: data.startDate?.trim() ? data.startDate : null,
       end_date: data.endDate?.trim() ? data.endDate : null,
       order_total: data.orderTotal,
-      member_ids: data.memberIds,
+      responsible_user_id: responsibleUserId,
+      member_ids: memberIds,
       milestones: buildProjectMilestonesFromTemplate(template, data.startDate),
       task_templates: buildProjectTasksFromTemplate(template),
       order_line_templates: buildOrderLinesFromTemplate(template),
@@ -558,6 +610,7 @@ export default function CreateProjectEntry({ companyId, mode }: { companyId: str
   }
 
   const customers = customersQuery.data ?? [];
+  const currentUserId = currentUserQuery.data ?? '';
 
   if (mode === 'mobile') {
     return (
@@ -574,6 +627,7 @@ export default function CreateProjectEntry({ companyId, mode }: { companyId: str
                 customers={customers}
                 columns={columns}
                 initialStatus={initialStatus}
+                currentUserId={currentUserId}
                 availableMembers={projectMembersQuery.data?.availableMembers ?? []}
                 templates={projectTemplatesQuery.data ?? []}
               />
@@ -601,6 +655,7 @@ export default function CreateProjectEntry({ companyId, mode }: { companyId: str
             customers={customers}
             columns={columns}
             initialStatus={initialStatus}
+            currentUserId={currentUserId}
             availableMembers={projectMembersQuery.data?.availableMembers ?? []}
             templates={projectTemplatesQuery.data ?? []}
           />

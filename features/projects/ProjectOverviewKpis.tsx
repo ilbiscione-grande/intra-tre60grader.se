@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle, Clock3, FolderKanban, TriangleAlert, UserMinus } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { createClient } from '@/lib/supabase/client';
-import { useProjectMembers, useProjects } from '@/features/projects/projectQueries';
+import { useProjects } from '@/features/projects/projectQueries';
 import type { Json, TableRow as DbRow } from '@/lib/supabase/database.types';
 
 type ProjectFinancePlanLite = {
@@ -75,7 +75,6 @@ function KpiCard({
 export default function ProjectOverviewKpis({ companyId }: { companyId: string }) {
   const supabase = useMemo(() => createClient(), []);
   const projectsQuery = useProjects(companyId);
-  const projectMembersQuery = useProjectMembers(companyId);
 
   const financePlansQuery = useQuery<ProjectFinancePlanLite[]>({
     queryKey: ['project-finance-plans-lite', companyId],
@@ -108,7 +107,6 @@ export default function ProjectOverviewKpis({ companyId }: { companyId: string }
 
   const metrics = useMemo(() => {
     const projects = projectsQuery.data ?? [];
-    const assignments = projectMembersQuery.data?.assignments ?? [];
     const plansByProjectId = new Map((financePlansQuery.data ?? []).map((plan) => [plan.project_id, plan]));
     const hoursByProjectId = new Map<string, number>();
 
@@ -126,9 +124,7 @@ export default function ProjectOverviewKpis({ companyId }: { companyId: string }
       return milestones.some((milestone) => !milestone.completed && milestone.date && milestone.date < today);
     });
 
-    const projectsWithoutOwner = projects.filter(
-      (project) => !assignments.some((assignment) => assignment.project_id === project.id && Boolean(assignment.member))
-    );
+    const projectsWithoutOwner = projects.filter((project) => !project.responsible_user_id);
 
     const riskProjects = projects.filter((project) => {
       const plan = plansByProjectId.get(project.id);
@@ -156,7 +152,7 @@ export default function ProjectOverviewKpis({ companyId }: { companyId: string }
       noBudgetWithActivity: noBudgetWithActivity.length,
       staleProjects: staleProjects.length
     };
-  }, [financePlansQuery.data, projectMembersQuery.data?.assignments, projectsQuery.data, timeEntriesQuery.data]);
+  }, [financePlansQuery.data, projectsQuery.data, timeEntriesQuery.data]);
 
   if (projectsQuery.isLoading) {
     return <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6"><Card><CardContent className="p-4 text-sm text-foreground/65">Laddar KPI:er...</CardContent></Card></div>;

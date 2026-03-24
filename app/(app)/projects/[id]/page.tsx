@@ -39,7 +39,7 @@ import { useSwipeTabs } from '@/lib/ui/useSwipeTabs';
 
 type ProjectRow = Pick<
   DbRow<'projects'>,
-  'id' | 'company_id' | 'title' | 'status' | 'workflow_status' | 'position' | 'customer_id' | 'start_date' | 'end_date' | 'milestones' | 'created_at' | 'updated_at'
+  'id' | 'company_id' | 'title' | 'status' | 'workflow_status' | 'position' | 'customer_id' | 'start_date' | 'end_date' | 'milestones' | 'responsible_user_id' | 'created_at' | 'updated_at'
 >;
 
 type CustomerRow = Pick<DbRow<'customers'>, 'id' | 'name'>;
@@ -289,7 +289,7 @@ export default function ProjectDetailsPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('projects')
-        .select('id,company_id,title,status,workflow_status,position,customer_id,start_date,end_date,milestones,created_at,updated_at')
+        .select('id,company_id,title,status,workflow_status,position,customer_id,start_date,end_date,milestones,responsible_user_id,created_at,updated_at')
         .eq('company_id', companyId)
         .eq('id', projectId)
         .maybeSingle<ProjectRow>();
@@ -346,6 +346,18 @@ export default function ProjectDetailsPage() {
       if (error) throw error;
       return Boolean(data);
     }
+  });
+  const currentUserQuery = useQuery({
+    queryKey: ['current-user-auth-id'],
+    queryFn: async () => {
+      const {
+        data: { user },
+        error
+      } = await supabase.auth.getUser();
+      if (error) throw error;
+      return user?.id ?? '';
+    },
+    staleTime: 1000 * 60 * 10
   });
 
   const linesQuery = useQuery<OrderLineRow[]>({
@@ -883,6 +895,7 @@ export default function ProjectDetailsPage() {
   });
 
   const availableMembers = projectMembersQuery.data?.availableMembers ?? [];
+  const currentUserId = currentUserQuery.data ?? '';
   const assignedMembers = useMemo(
     () =>
       (projectMembersQuery.data?.assignments ?? [])
@@ -892,6 +905,10 @@ export default function ProjectDetailsPage() {
     [projectId, projectMembersQuery.data?.assignments]
   );
   const taskAssignableMembers = assignedMembers.length > 0 ? assignedMembers : availableMembers;
+  const responsibleMember = useMemo(
+    () => availableMembers.find((member) => member.user_id === projectQuery.data?.responsible_user_id) ?? null,
+    [availableMembers, projectQuery.data?.responsible_user_id]
+  );
   const assignedUserIds = useMemo(() => new Set(assignedMembers.map((member) => member.user_id)), [assignedMembers]);
   const filteredAvailableMembers = useMemo(() => {
     const query = memberSearch.trim().toLowerCase();
@@ -905,10 +922,36 @@ export default function ProjectDetailsPage() {
   const memberLabelByUserId = useMemo(() => {
     const map = new Map<string, string>();
     for (const member of availableMembers) {
-      map.set(member.user_id, member.email ?? member.handle ?? member.user_id);
+      map.set(
+        member.user_id,
+        member.display_name ?? member.email ?? member.handle ?? member.user_id
+      );
     }
     return map;
   }, [availableMembers]);
+  const setResponsibleMutation = useMutation({
+    mutationFn: async (responsibleUserId: string | null) => {
+      const res = await fetch('/api/project-responsible', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ companyId, projectId, responsibleUserId })
+      });
+
+      const body = (await res.json().catch(() => null)) as { error?: string } | null;
+      if (!res.ok) {
+        throw new Error(body?.error ?? 'Kunde inte uppdatera ansvarig');
+      }
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['project', companyId, projectId] });
+      await queryClient.invalidateQueries({ queryKey: ['project-members', companyId] });
+      await queryClient.invalidateQueries({ queryKey: ['projects', companyId] });
+      toast.success('Ansvarig uppdaterad');
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error, 'Kunde inte uppdatera ansvarig'));
+    }
+  });
   const nextMilestone = useMemo(
     () =>
       sortProjectMilestones(draftMilestones)
@@ -1533,6 +1576,47 @@ export default function ProjectDetailsPage() {
                 <p className="text-sm text-foreground/70">Tilldelade i projektet</p>
                 <p className="mt-1 font-medium">{assignedMembers.length}</p>
               </div>
+            </div>
+
+            <div className="rounded-lg border p-3">
+              <p className="text-sm text-foreground/70">Projektansvarig</p>
+              <p className="mt-1 font-medium">
+                {responsibleMember
+                  ? memberLabelByUserId.get(responsibleMember.user_id) ?? responsibleMember.email ?? responsibleMember.user_id
+                  : 'Ingen ansvarig'}
+              </p>
+              {role !== 'auditor' ? (
+                <div className="mt-3 space-y-3">
+                  <Select
+                    value={project.responsible_user_id ?? 'none'}
+                    onValueChange={(value) => setResponsibleMutation.mutate(value === 'none' ? null : value)}
+                    disabled={setResponsibleMutation.isPending}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Välj ansvarig" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Ingen ansvarig</SelectItem>
+                      {availableMembers.map((member) => (
+                        <SelectItem key={member.id} value={member.user_id}>
+                          {memberLabelByUserId.get(member.user_id) ?? member.email ?? member.user_id}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={setResponsibleMutation.isPending || !currentUserId}
+                      onClick={() => setResponsibleMutation.mutate(currentUserId)}
+                    >
+                      Sätt mig som ansvarig
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
             </div>
 
             {assignedMembers.length > 0 ? (

@@ -93,7 +93,7 @@ export function useProjects(companyId: string) {
       const supabase = createClient();
       const { data, error } = await supabase
         .from('projects')
-        .select('id,company_id,title,status,workflow_status,position,customer_id,start_date,end_date,milestones,updated_at,created_at')
+        .select('id,company_id,title,status,workflow_status,position,customer_id,start_date,end_date,milestones,responsible_user_id,updated_at,created_at')
         .eq('company_id', companyId)
         .order('position', { ascending: true });
 

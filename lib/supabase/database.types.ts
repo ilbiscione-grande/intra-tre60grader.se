@@ -918,6 +918,7 @@ export type Database = {
           id: string
           milestones: Json
           position: number
+          responsible_user_id: string | null
           start_date: string | null
           status: string
           title: string
@@ -932,6 +933,7 @@ export type Database = {
           id?: string
           milestones?: Json
           position?: number
+          responsible_user_id?: string | null
           start_date?: string | null
           status?: string
           title: string
@@ -946,6 +948,7 @@ export type Database = {
           id?: string
           milestones?: Json
           position?: number
+          responsible_user_id?: string | null
           start_date?: string | null
           status?: string
           title?: string

@@ -39,6 +39,7 @@ export type ProjectCreatePayload = {
   }> | null;
   start_date?: string | null;
   end_date?: string | null;
+  responsible_user_id?: string | null;
   customer_id?: string | null;
   customer_name?: string | null;
 };
