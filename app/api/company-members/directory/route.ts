@@ -45,9 +45,8 @@ export async function GET(request: NextRequest) {
   }
 
   const admin = createAdminClient();
-  const supabase = createClient();
   const [{ data: members, error }, { data: preferences, error: preferencesError }] = await Promise.all([
-    supabase
+    admin
       .from('company_members')
       .select('id,company_id,user_id,role,created_at')
       .eq('company_id', companyId)

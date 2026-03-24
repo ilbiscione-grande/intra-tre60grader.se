@@ -920,7 +920,7 @@ export default function ProjectDetailsPage() {
         .filter((member): member is ProjectMemberVisual => Boolean(member)),
     [projectId, projectMembersQuery.data?.assignments]
   );
-  const taskAssignableMembers = assignedMembers.length > 0 ? assignedMembers : availableMembers;
+  const taskAssignableMembers = availableMembers;
   const responsibleMember = useMemo(
     () => availableMembers.find((member) => member.user_id === projectQuery.data?.responsible_user_id) ?? null,
     [availableMembers, projectQuery.data?.responsible_user_id]

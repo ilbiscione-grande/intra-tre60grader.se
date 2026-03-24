@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import type { Database } from '@/lib/supabase/database.types';
 
 type CompanyMemberRow = Database['public']['Tables']['company_members']['Row'];
@@ -49,12 +50,13 @@ export async function POST(request: NextRequest) {
   if (!actor.ok) {
     return NextResponse.json({ error: actor.error }, { status: actor.status });
   }
+  const admin = createAdminClient();
 
   if (actor.member.role === 'auditor') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const { data: project, error: projectError } = await actor.supabase
+  const { data: project, error: projectError } = await admin
     .from('projects')
     .select('id,company_id')
     .eq('company_id', companyId)
@@ -66,7 +68,7 @@ export async function POST(request: NextRequest) {
   }
 
   if (responsibleUserId) {
-    const { data: member, error: memberError } = await actor.supabase
+    const { data: member, error: memberError } = await admin
       .from('company_members')
       .select('user_id')
       .eq('company_id', companyId)
@@ -78,7 +80,7 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  const { error: updateError } = await actor.supabase
+  const { error: updateError } = await admin
     .from('projects')
     .update({ responsible_user_id: responsibleUserId })
     .eq('company_id', companyId)
@@ -89,7 +91,7 @@ export async function POST(request: NextRequest) {
   }
 
   if (responsibleUserId) {
-    const { data: existingAssignment, error: assignmentError } = await actor.supabase
+    const { data: existingAssignment, error: assignmentError } = await admin
       .from('project_members')
       .select('id')
       .eq('company_id', companyId)
@@ -102,7 +104,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (!existingAssignment) {
-      const { error: insertError } = await actor.supabase.from('project_members').insert({
+      const { error: insertError } = await admin.from('project_members').insert({
         company_id: companyId,
         project_id: projectId,
         user_id: responsibleUserId,
