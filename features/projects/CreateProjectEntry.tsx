@@ -12,6 +12,7 @@ import ProfileBadge from '@/components/common/ProfileBadge';
 import { getUserDisplayName } from '@/features/profile/profileBadge';
 import { createClient } from '@/lib/supabase/client';
 import {
+  useCompanyMemberDirectory,
   useCreateProject,
   useProjectColumns,
   useProjectMembers,
@@ -522,6 +523,7 @@ export default function CreateProjectEntry({ companyId, mode }: { companyId: str
   const createMutation = useCreateProject(companyId);
   const columnsQuery = useProjectColumns(companyId);
   const projectMembersQuery = useProjectMembers(companyId);
+  const companyMemberDirectoryQuery = useCompanyMemberDirectory(companyId);
   const projectTemplatesQuery = useProjectTemplates(companyId);
   const currentUserQuery = useQuery({
     queryKey: ['current-user-auth-id'],
@@ -556,6 +558,22 @@ export default function CreateProjectEntry({ companyId, mode }: { companyId: str
 
   const columns: ColumnItem[] = (columnsQuery.data ?? []).map((c) => ({ key: c.key, title: c.title }));
   const initialStatus = columns[0]?.key ?? '';
+  const availableMembers = useMemo(() => {
+    const visualsByUserId = new Map(
+      (projectMembersQuery.data?.availableMembers ?? []).map((member) => [member.user_id, member] as const)
+    );
+
+    return (companyMemberDirectoryQuery.data ?? []).map((member) => {
+      const visual = visualsByUserId.get(member.user_id);
+      return {
+        ...member,
+        color: visual?.color ?? '#3b82f6',
+        avatar_path: visual?.avatar_path ?? null,
+        avatar_url: visual?.avatar_url ?? null,
+        emoji: visual?.emoji ?? null
+      };
+    });
+  }, [companyMemberDirectoryQuery.data, projectMembersQuery.data?.availableMembers]);
 
   useEffect(() => {
     if (pathname !== '/projects') return;
@@ -628,7 +646,7 @@ export default function CreateProjectEntry({ companyId, mode }: { companyId: str
                 columns={columns}
                 initialStatus={initialStatus}
                 currentUserId={currentUserId}
-                availableMembers={projectMembersQuery.data?.availableMembers ?? []}
+                availableMembers={availableMembers}
                 templates={projectTemplatesQuery.data ?? []}
               />
             </div>
@@ -656,7 +674,7 @@ export default function CreateProjectEntry({ companyId, mode }: { companyId: str
             columns={columns}
             initialStatus={initialStatus}
             currentUserId={currentUserId}
-            availableMembers={projectMembersQuery.data?.availableMembers ?? []}
+            availableMembers={availableMembers}
             templates={projectTemplatesQuery.data ?? []}
           />
         </div>

@@ -24,7 +24,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { createInvoiceFromOrder } from '@/lib/rpc';
-import { useProjectColumns, useProjectMembers, type ProjectMemberVisual } from '@/features/projects/projectQueries';
+import { useCompanyMemberDirectory, useProjectColumns, useProjectMembers, type ProjectMemberVisual } from '@/features/projects/projectQueries';
 import { applyProjectStatusAutomation } from '@/features/projects/projectAutomation';
 import ProjectFinancePanel from '@/features/projects/ProjectFinancePanel';
 import ProjectFilesPanel from '@/features/projects/ProjectFilesPanel';
@@ -438,6 +438,7 @@ export default function ProjectDetailsPage() {
   });
 
   const projectMembersQuery = useProjectMembers(companyId);
+  const companyMemberDirectoryQuery = useCompanyMemberDirectory(companyId);
   const projectUpdatesActivityQuery = useQuery<ProjectUpdateActivityRow[]>({
     queryKey: ['project-updates-activity', companyId, projectId],
     queryFn: async () => {
@@ -894,7 +895,22 @@ export default function ProjectDetailsPage() {
     }
   });
 
-  const availableMembers = projectMembersQuery.data?.availableMembers ?? [];
+  const availableMembers = useMemo(() => {
+    const visualsByUserId = new Map(
+      (projectMembersQuery.data?.availableMembers ?? []).map((member) => [member.user_id, member] as const)
+    );
+
+    return (companyMemberDirectoryQuery.data ?? []).map((member) => {
+      const visual = visualsByUserId.get(member.user_id);
+      return {
+        ...member,
+        color: visual?.color ?? '#3b82f6',
+        avatar_path: visual?.avatar_path ?? null,
+        avatar_url: visual?.avatar_url ?? null,
+        emoji: visual?.emoji ?? null
+      };
+    });
+  }, [companyMemberDirectoryQuery.data, projectMembersQuery.data?.availableMembers]);
   const currentUserId = currentUserQuery.data ?? '';
   const assignedMembers = useMemo(
     () =>
