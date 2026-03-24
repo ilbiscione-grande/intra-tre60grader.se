@@ -13,6 +13,12 @@ type UserPreferenceRow = Database['public']['Tables']['user_company_preferences'
 
 const allowedRoles: Role[] = ['member', 'finance', 'admin', 'auditor'];
 
+function normalizeMemberRole(role: unknown): Role {
+  if (role === 'employee') return 'member';
+  if (role === 'finance' || role === 'admin' || role === 'auditor' || role === 'member') return role;
+  return 'member';
+}
+
 function isAllowedRole(value: unknown): value is Role {
   return typeof value === 'string' && allowedRoles.includes(value as Role);
 }
@@ -73,10 +79,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: auth.message }, { status: auth.status });
   }
 
-  const supabase = createClient();
   const admin = createAdminClient();
   const [{ data: members, error }, { data: preferences, error: preferencesError }] = await Promise.all([
-    supabase
+    admin
       .from('company_members')
       .select('id,company_id,user_id,role,created_at')
       .eq('company_id', companyId)
@@ -111,6 +116,7 @@ export async function GET(request: NextRequest) {
       const email = userData.user?.email ?? null;
       return {
         ...member,
+        role: normalizeMemberRole(member.role),
         email,
         display_name: resolveUserDisplayName({
           displayName: displayNameByUserId.get(member.user_id) ?? null,

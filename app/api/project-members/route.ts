@@ -9,6 +9,12 @@ type CompanyMemberRow = Database['public']['Tables']['company_members']['Row'];
 type ProjectMemberRow = Database['public']['Tables']['project_members']['Row'];
 type UserPreferenceRow = Database['public']['Tables']['user_company_preferences']['Row'];
 
+function normalizeMemberRole(role: unknown): 'member' | 'finance' | 'admin' | 'auditor' {
+  if (role === 'employee') return 'member';
+  if (role === 'finance' || role === 'admin' || role === 'auditor' || role === 'member') return role;
+  return 'member';
+}
+
 function parseProfilePreference(value: Json | null | undefined) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return { color: DEFAULT_PROFILE_BADGE_COLOR, avatarPath: null as string | null, emoji: null as string | null, displayName: null as string | null };
@@ -109,6 +115,7 @@ export async function GET(request: NextRequest) {
 
       return {
         ...member,
+        role: normalizeMemberRole(member.role),
         email,
         handle,
         display_name: resolveUserDisplayName({

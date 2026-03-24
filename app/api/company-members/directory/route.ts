@@ -8,6 +8,12 @@ import { resolveUserDisplayName } from '@/lib/users/displayName';
 type CompanyMemberRow = Database['public']['Tables']['company_members']['Row'];
 type UserPreferenceRow = Database['public']['Tables']['user_company_preferences']['Row'];
 
+function normalizeMemberRole(role: unknown): 'member' | 'finance' | 'admin' | 'auditor' {
+  if (role === 'employee') return 'member';
+  if (role === 'finance' || role === 'admin' || role === 'auditor' || role === 'member') return role;
+  return 'member';
+}
+
 async function requireMember(companyId: string) {
   const supabase = createClient();
   const {
@@ -83,6 +89,7 @@ export async function GET(request: NextRequest) {
 
       return {
         ...member,
+        role: normalizeMemberRole(member.role),
         email,
         handle,
         display_name: resolveUserDisplayName({
