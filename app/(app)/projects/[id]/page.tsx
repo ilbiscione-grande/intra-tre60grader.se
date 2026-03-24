@@ -348,14 +348,17 @@ export default function ProjectDetailsPage() {
     }
   });
   const currentUserQuery = useQuery({
-    queryKey: ['current-user-auth-id'],
+    queryKey: ['current-user-identity'],
     queryFn: async () => {
       const {
         data: { user },
         error
       } = await supabase.auth.getUser();
       if (error) throw error;
-      return user?.id ?? '';
+      return {
+        id: user?.id ?? '',
+        email: user?.email ?? null
+      };
     },
     staleTime: 1000 * 60 * 10
   });
@@ -911,6 +914,20 @@ export default function ProjectDetailsPage() {
     );
     const baseMembers = new Map<string, { id: string; company_id: string; user_id: string; role: Role; created_at: string; email: string | null; handle: string | null; display_name: string | null }>();
 
+    for (const member of projectMembersQuery.data?.availableMembers ?? []) {
+      if (!baseMembers.has(member.user_id)) {
+        baseMembers.set(member.user_id, {
+          id: member.id,
+          company_id: member.company_id,
+          user_id: member.user_id,
+          role: member.role,
+          created_at: member.created_at,
+          email: member.email,
+          handle: member.handle,
+          display_name: member.display_name
+        });
+      }
+    }
     for (const member of companyMemberDirectoryQuery.data ?? []) {
       baseMembers.set(member.user_id, member);
     }
@@ -924,6 +941,18 @@ export default function ProjectDetailsPage() {
         });
       }
     }
+    if (currentUserQuery.data?.id && !baseMembers.has(currentUserQuery.data.id)) {
+      baseMembers.set(currentUserQuery.data.id, {
+        id: `self-${currentUserQuery.data.id}`,
+        company_id: companyId,
+        user_id: currentUserQuery.data.id,
+        role: role === 'auditor' ? 'auditor' : role,
+        created_at: '',
+        email: currentUserQuery.data.email,
+        handle: currentUserQuery.data.email?.split('@')[0]?.toLowerCase() ?? null,
+        display_name: null
+      });
+    }
 
     return Array.from(baseMembers.values()).map((member) => {
       const visual = visualsByUserId.get(member.user_id);
@@ -935,8 +964,8 @@ export default function ProjectDetailsPage() {
         emoji: visual?.emoji ?? null
       };
     });
-  }, [adminMembersQuery.data, companyId, companyMemberDirectoryQuery.data, projectMembersQuery.data?.availableMembers]);
-  const currentUserId = currentUserQuery.data ?? '';
+  }, [adminMembersQuery.data, companyId, companyMemberDirectoryQuery.data, currentUserQuery.data, projectMembersQuery.data?.availableMembers, role]);
+  const currentUserId = currentUserQuery.data?.id ?? '';
   const assignedMembers = useMemo(
     () =>
       (projectMembersQuery.data?.assignments ?? [])
@@ -1625,8 +1654,9 @@ export default function ProjectDetailsPage() {
             <div className="rounded-lg border p-3">
               <p className="text-sm text-foreground/70">Projektansvarig</p>
               <p className="mt-1 font-medium">
-                {responsibleMember
-                  ? memberLabelByUserId.get(responsibleMember.user_id) ?? responsibleMember.email ?? responsibleMember.user_id
+                {project.responsible_user_id
+                  ? memberLabelByUserId.get(project.responsible_user_id) ??
+                    (project.responsible_user_id === currentUserId ? currentUserQuery.data?.email ?? 'Du' : project.responsible_user_id)
                   : 'Ingen ansvarig'}
               </p>
               {role !== 'auditor' ? (

@@ -536,7 +536,7 @@ export default function CreateProjectEntry({ companyId, mode }: { companyId: str
   });
   const projectTemplatesQuery = useProjectTemplates(companyId);
   const currentUserQuery = useQuery({
-    queryKey: ['current-user-auth-id'],
+    queryKey: ['current-user-identity'],
     queryFn: async () => {
       const supabase = createClient();
       const {
@@ -545,7 +545,10 @@ export default function CreateProjectEntry({ companyId, mode }: { companyId: str
       } = await supabase.auth.getUser();
 
       if (error) throw error;
-      return user?.id ?? '';
+      return {
+        id: user?.id ?? '',
+        email: user?.email ?? null
+      };
     },
     staleTime: 1000 * 60 * 10
   });
@@ -574,6 +577,20 @@ export default function CreateProjectEntry({ companyId, mode }: { companyId: str
     );
     const baseMembers = new Map<string, { id: string; company_id: string; user_id: string; role: ProjectMemberVisual['role']; created_at: string; email: string | null; handle: string | null; display_name: string | null }>();
 
+    for (const member of projectMembersQuery.data?.availableMembers ?? []) {
+      if (!baseMembers.has(member.user_id)) {
+        baseMembers.set(member.user_id, {
+          id: member.id,
+          company_id: member.company_id,
+          user_id: member.user_id,
+          role: member.role,
+          created_at: member.created_at,
+          email: member.email,
+          handle: member.handle,
+          display_name: member.display_name
+        });
+      }
+    }
     for (const member of companyMemberDirectoryQuery.data ?? []) {
       baseMembers.set(member.user_id, member);
     }
@@ -587,6 +604,18 @@ export default function CreateProjectEntry({ companyId, mode }: { companyId: str
         });
       }
     }
+    if (currentUserQuery.data?.id && !baseMembers.has(currentUserQuery.data.id)) {
+      baseMembers.set(currentUserQuery.data.id, {
+        id: `self-${currentUserQuery.data.id}`,
+        company_id: companyId,
+        user_id: currentUserQuery.data.id,
+        role: 'member',
+        created_at: '',
+        email: currentUserQuery.data.email,
+        handle: currentUserQuery.data.email?.split('@')[0]?.toLowerCase() ?? null,
+        display_name: null
+      });
+    }
 
     return Array.from(baseMembers.values()).map((member) => {
       const visual = visualsByUserId.get(member.user_id);
@@ -598,7 +627,7 @@ export default function CreateProjectEntry({ companyId, mode }: { companyId: str
         emoji: visual?.emoji ?? null
       };
     });
-  }, [adminMembersQuery.data, companyId, companyMemberDirectoryQuery.data, projectMembersQuery.data?.availableMembers]);
+  }, [adminMembersQuery.data, companyId, companyMemberDirectoryQuery.data, currentUserQuery.data, projectMembersQuery.data?.availableMembers]);
 
   useEffect(() => {
     if (pathname !== '/projects') return;
@@ -628,7 +657,7 @@ export default function CreateProjectEntry({ companyId, mode }: { companyId: str
     const customerId = data.customerSelect && data.customerSelect !== NEW_CUSTOMER_VALUE ? data.customerSelect : null;
     const customerName = data.customerSelect === NEW_CUSTOMER_VALUE ? data.newCustomerName?.trim() ?? '' : null;
     const template = (projectTemplatesQuery.data ?? []).find((item) => item.id === data.templateId) ?? null;
-    const responsibleUserId = data.responsibleUserId?.trim() || currentUserQuery.data || null;
+    const responsibleUserId = data.responsibleUserId?.trim() || currentUserQuery.data?.id || null;
     const memberIds = responsibleUserId
       ? Array.from(new Set([...(data.memberIds ?? []), responsibleUserId]))
       : data.memberIds;
@@ -653,7 +682,7 @@ export default function CreateProjectEntry({ companyId, mode }: { companyId: str
   }
 
   const customers = customersQuery.data ?? [];
-  const currentUserId = currentUserQuery.data ?? '';
+  const currentUserId = currentUserQuery.data?.id ?? '';
 
   if (mode === 'mobile') {
     return (
