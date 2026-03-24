@@ -102,8 +102,14 @@ export async function GET(request: NextRequest) {
 
   const memberRecords = await Promise.all(
     (members ?? []).map(async (member) => {
-      const { data: userData } = await admin.auth.admin.getUserById(member.user_id);
-      const email = userData.user?.email ?? null;
+      let userData: Awaited<ReturnType<typeof admin.auth.admin.getUserById>>['data'] | null = null;
+      try {
+        const result = await admin.auth.admin.getUserById(member.user_id);
+        userData = result.data;
+      } catch {
+        userData = null;
+      }
+      const email = userData?.user?.email ?? null;
       const handle = email?.split('@')[0]?.toLowerCase() ?? null;
       const pref = prefByUserId.get(member.user_id) ?? { color: DEFAULT_PROFILE_BADGE_COLOR, avatarPath: null, emoji: null, displayName: null };
       let avatarUrl: string | null = null;
@@ -120,7 +126,7 @@ export async function GET(request: NextRequest) {
         handle,
         display_name: resolveUserDisplayName({
           displayName: pref.displayName,
-          metadata: userData.user?.user_metadata,
+          metadata: userData?.user?.user_metadata,
           email,
           handle,
           userId: member.user_id

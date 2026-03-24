@@ -112,15 +112,21 @@ export async function GET(request: NextRequest) {
 
   const enriched = await Promise.all(
     (members ?? []).map(async (member) => {
-      const { data: userData } = await admin.auth.admin.getUserById(member.user_id);
-      const email = userData.user?.email ?? null;
+      let userData: Awaited<ReturnType<typeof admin.auth.admin.getUserById>>['data'] | null = null;
+      try {
+        const result = await admin.auth.admin.getUserById(member.user_id);
+        userData = result.data;
+      } catch {
+        userData = null;
+      }
+      const email = userData?.user?.email ?? null;
       return {
         ...member,
         role: normalizeMemberRole(member.role),
         email,
         display_name: resolveUserDisplayName({
           displayName: displayNameByUserId.get(member.user_id) ?? null,
-          metadata: userData.user?.user_metadata,
+          metadata: userData?.user?.user_metadata,
           email,
           handle: email?.split('@')[0]?.toLowerCase() ?? null,
           userId: member.user_id
