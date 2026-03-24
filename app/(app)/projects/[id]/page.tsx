@@ -439,6 +439,16 @@ export default function ProjectDetailsPage() {
 
   const projectMembersQuery = useProjectMembers(companyId);
   const companyMemberDirectoryQuery = useCompanyMemberDirectory(companyId);
+  const adminMembersQuery = useQuery<Array<{ id: string; user_id: string; role: Role; email: string | null; display_name: string | null }>>({
+    queryKey: ['admin-members-lite', companyId],
+    queryFn: async () => {
+      const res = await fetch(`/api/admin/members?companyId=${companyId}`);
+      if (!res.ok) return [];
+      const body = (await res.json().catch(() => null)) as { members?: Array<{ id: string; user_id: string; role: Role; email: string | null; display_name: string | null }> } | null;
+      return body?.members ?? [];
+    },
+    staleTime: 1000 * 60 * 5
+  });
   const projectUpdatesActivityQuery = useQuery<ProjectUpdateActivityRow[]>({
     queryKey: ['project-updates-activity', companyId, projectId],
     queryFn: async () => {
@@ -899,8 +909,23 @@ export default function ProjectDetailsPage() {
     const visualsByUserId = new Map(
       (projectMembersQuery.data?.availableMembers ?? []).map((member) => [member.user_id, member] as const)
     );
+    const baseMembers = new Map<string, { id: string; company_id: string; user_id: string; role: Role; created_at: string; email: string | null; handle: string | null; display_name: string | null }>();
 
-    return (companyMemberDirectoryQuery.data ?? []).map((member) => {
+    for (const member of companyMemberDirectoryQuery.data ?? []) {
+      baseMembers.set(member.user_id, member);
+    }
+    for (const member of adminMembersQuery.data ?? []) {
+      if (!baseMembers.has(member.user_id)) {
+        baseMembers.set(member.user_id, {
+          ...member,
+          company_id: companyId,
+          created_at: '',
+          handle: member.email?.split('@')[0]?.toLowerCase() ?? null
+        });
+      }
+    }
+
+    return Array.from(baseMembers.values()).map((member) => {
       const visual = visualsByUserId.get(member.user_id);
       return {
         ...member,
@@ -910,7 +935,7 @@ export default function ProjectDetailsPage() {
         emoji: visual?.emoji ?? null
       };
     });
-  }, [companyMemberDirectoryQuery.data, projectMembersQuery.data?.availableMembers]);
+  }, [adminMembersQuery.data, companyId, companyMemberDirectoryQuery.data, projectMembersQuery.data?.availableMembers]);
   const currentUserId = currentUserQuery.data ?? '';
   const assignedMembers = useMemo(
     () =>
@@ -958,7 +983,10 @@ export default function ProjectDetailsPage() {
         throw new Error(body?.error ?? 'Kunde inte uppdatera ansvarig');
       }
     },
-    onSuccess: async () => {
+    onSuccess: async (_, responsibleUserId) => {
+      await queryClient.setQueryData<ProjectRow | null>(['project', companyId, projectId], (current) =>
+        current ? { ...current, responsible_user_id: responsibleUserId } : current
+      );
       await queryClient.invalidateQueries({ queryKey: ['project', companyId, projectId] });
       await queryClient.invalidateQueries({ queryKey: ['project-members', companyId] });
       await queryClient.invalidateQueries({ queryKey: ['projects', companyId] });

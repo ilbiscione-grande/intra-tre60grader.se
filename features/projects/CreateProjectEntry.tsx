@@ -524,6 +524,16 @@ export default function CreateProjectEntry({ companyId, mode }: { companyId: str
   const columnsQuery = useProjectColumns(companyId);
   const projectMembersQuery = useProjectMembers(companyId);
   const companyMemberDirectoryQuery = useCompanyMemberDirectory(companyId);
+  const adminMembersQuery = useQuery<Array<{ id: string; user_id: string; role: ProjectMemberVisual['role']; email: string | null; display_name: string | null }>>({
+    queryKey: ['admin-members-lite', companyId],
+    queryFn: async () => {
+      const res = await fetch(`/api/admin/members?companyId=${companyId}`);
+      if (!res.ok) return [];
+      const body = (await res.json().catch(() => null)) as { members?: Array<{ id: string; user_id: string; role: ProjectMemberVisual['role']; email: string | null; display_name: string | null }> } | null;
+      return body?.members ?? [];
+    },
+    staleTime: 1000 * 60 * 5
+  });
   const projectTemplatesQuery = useProjectTemplates(companyId);
   const currentUserQuery = useQuery({
     queryKey: ['current-user-auth-id'],
@@ -562,8 +572,23 @@ export default function CreateProjectEntry({ companyId, mode }: { companyId: str
     const visualsByUserId = new Map(
       (projectMembersQuery.data?.availableMembers ?? []).map((member) => [member.user_id, member] as const)
     );
+    const baseMembers = new Map<string, { id: string; company_id: string; user_id: string; role: ProjectMemberVisual['role']; created_at: string; email: string | null; handle: string | null; display_name: string | null }>();
 
-    return (companyMemberDirectoryQuery.data ?? []).map((member) => {
+    for (const member of companyMemberDirectoryQuery.data ?? []) {
+      baseMembers.set(member.user_id, member);
+    }
+    for (const member of adminMembersQuery.data ?? []) {
+      if (!baseMembers.has(member.user_id)) {
+        baseMembers.set(member.user_id, {
+          ...member,
+          company_id: companyId,
+          created_at: '',
+          handle: member.email?.split('@')[0]?.toLowerCase() ?? null
+        });
+      }
+    }
+
+    return Array.from(baseMembers.values()).map((member) => {
       const visual = visualsByUserId.get(member.user_id);
       return {
         ...member,
@@ -573,7 +598,7 @@ export default function CreateProjectEntry({ companyId, mode }: { companyId: str
         emoji: visual?.emoji ?? null
       };
     });
-  }, [companyMemberDirectoryQuery.data, projectMembersQuery.data?.availableMembers]);
+  }, [adminMembersQuery.data, companyId, companyMemberDirectoryQuery.data, projectMembersQuery.data?.availableMembers]);
 
   useEffect(() => {
     if (pathname !== '/projects') return;
