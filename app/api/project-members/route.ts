@@ -16,7 +16,12 @@ function normalizeMemberRole(role: unknown): 'member' | 'finance' | 'admin' | 'a
 }
 
 async function listAuthUsersById() {
-  const admin = createAdminClient();
+  let admin: ReturnType<typeof createAdminClient>;
+  try {
+    admin = createAdminClient();
+  } catch {
+    return new Map<string, { email: string | null; user_metadata: Record<string, unknown> | null }>();
+  }
   const usersById = new Map<string, { email: string | null; user_metadata: Record<string, unknown> | null }>();
   let page = 1;
   const perPage = 200;
@@ -90,23 +95,21 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: actor.error }, { status: actor.status });
   }
 
-  const admin = createAdminClient();
-
   const [{ data: assignments, error: assignmentError }, { data: members, error: membersError }, { data: preferences, error: prefError }, authUsersById] =
     await Promise.all([
-      admin
+      actor.supabase
         .from('project_members')
         .select('id,company_id,project_id,user_id,created_by,created_at')
         .eq('company_id', companyId)
         .order('created_at', { ascending: true })
         .returns<ProjectMemberRow[]>(),
-      admin
+      actor.supabase
         .from('company_members')
         .select('id,company_id,user_id,role,created_at')
         .eq('company_id', companyId)
         .order('created_at', { ascending: true })
         .returns<CompanyMemberRow[]>(),
-      admin
+      actor.supabase
         .from('user_company_preferences')
         .select('user_id,preference_value')
         .eq('company_id', companyId)
@@ -135,8 +138,13 @@ export async function GET(request: NextRequest) {
       let avatarUrl: string | null = null;
 
       if (pref.avatarPath) {
-        const { data: signed } = await admin.storage.from(PROFILE_AVATAR_BUCKET).createSignedUrl(pref.avatarPath, 60 * 60);
-        avatarUrl = signed?.signedUrl ?? null;
+        try {
+          const admin = createAdminClient();
+          const { data: signed } = await admin.storage.from(PROFILE_AVATAR_BUCKET).createSignedUrl(pref.avatarPath, 60 * 60);
+          avatarUrl = signed?.signedUrl ?? null;
+        } catch {
+          avatarUrl = null;
+        }
       }
 
       return {

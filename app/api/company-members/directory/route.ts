@@ -15,7 +15,12 @@ function normalizeMemberRole(role: unknown): 'member' | 'finance' | 'admin' | 'a
 }
 
 async function listAuthUsersById() {
-  const admin = createAdminClient();
+  let admin: ReturnType<typeof createAdminClient>;
+  try {
+    admin = createAdminClient();
+  } catch {
+    return new Map<string, { email: string | null; user_metadata: Record<string, unknown> | null }>();
+  }
   const usersById = new Map<string, { email: string | null; user_metadata: Record<string, unknown> | null }>();
   let page = 1;
   const perPage = 200;
@@ -75,15 +80,15 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: auth.message }, { status: auth.status });
   }
 
-  const admin = createAdminClient();
+  const supabase = createClient();
   const [{ data: members, error }, { data: preferences, error: preferencesError }, authUsersById] = await Promise.all([
-    admin
+    supabase
       .from('company_members')
       .select('id,company_id,user_id,role,created_at')
       .eq('company_id', companyId)
       .order('created_at', { ascending: true })
       .returns<Array<Pick<CompanyMemberRow, 'id' | 'company_id' | 'user_id' | 'role' | 'created_at'>>>(),
-    admin
+    supabase
       .from('user_company_preferences')
       .select('user_id,preference_value')
       .eq('company_id', companyId)
