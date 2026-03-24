@@ -15,6 +15,31 @@ function normalizeMemberRole(role: unknown): 'member' | 'finance' | 'admin' | 'a
   return 'member';
 }
 
+async function listAuthUsersById() {
+  const admin = createAdminClient();
+  const usersById = new Map<string, { email: string | null; user_metadata: Record<string, unknown> | null }>();
+  let page = 1;
+  const perPage = 200;
+
+  while (true) {
+    const { data, error } = await admin.auth.admin.listUsers({ page, perPage });
+    if (error) throw error;
+
+    const users = data.users ?? [];
+    for (const user of users) {
+      usersById.set(user.id, {
+        email: user.email ?? null,
+        user_metadata: (user.user_metadata as Record<string, unknown> | null) ?? null
+      });
+    }
+
+    if (users.length < perPage) break;
+    page += 1;
+  }
+
+  return usersById;
+}
+
 function parseProfilePreference(value: Json | null | undefined) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return { color: DEFAULT_PROFILE_BADGE_COLOR, avatarPath: null as string | null, emoji: null as string | null, displayName: null as string | null };
@@ -67,7 +92,7 @@ export async function GET(request: NextRequest) {
 
   const admin = createAdminClient();
 
-  const [{ data: assignments, error: assignmentError }, { data: members, error: membersError }, { data: preferences, error: prefError }] =
+  const [{ data: assignments, error: assignmentError }, { data: members, error: membersError }, { data: preferences, error: prefError }, authUsersById] =
     await Promise.all([
       admin
         .from('project_members')
@@ -86,7 +111,8 @@ export async function GET(request: NextRequest) {
         .select('user_id,preference_value')
         .eq('company_id', companyId)
         .eq('preference_key', PROFILE_BADGE_PREFERENCE_KEY)
-        .returns<Array<Pick<UserPreferenceRow, 'user_id' | 'preference_value'>>>()
+        .returns<Array<Pick<UserPreferenceRow, 'user_id' | 'preference_value'>>>(),
+      listAuthUsersById()
     ]);
 
   if (assignmentError || membersError || prefError) {
@@ -102,14 +128,8 @@ export async function GET(request: NextRequest) {
 
   const memberRecords = await Promise.all(
     (members ?? []).map(async (member) => {
-      let userData: Awaited<ReturnType<typeof admin.auth.admin.getUserById>>['data'] | null = null;
-      try {
-        const result = await admin.auth.admin.getUserById(member.user_id);
-        userData = result.data;
-      } catch {
-        userData = null;
-      }
-      const email = userData?.user?.email ?? null;
+      const authUser = authUsersById.get(member.user_id) ?? null;
+      const email = authUser?.email ?? null;
       const handle = email?.split('@')[0]?.toLowerCase() ?? null;
       const pref = prefByUserId.get(member.user_id) ?? { color: DEFAULT_PROFILE_BADGE_COLOR, avatarPath: null, emoji: null, displayName: null };
       let avatarUrl: string | null = null;
@@ -126,7 +146,7 @@ export async function GET(request: NextRequest) {
         handle,
         display_name: resolveUserDisplayName({
           displayName: pref.displayName,
-          metadata: userData?.user?.user_metadata,
+          metadata: authUser?.user_metadata ?? null,
           email,
           handle,
           userId: member.user_id

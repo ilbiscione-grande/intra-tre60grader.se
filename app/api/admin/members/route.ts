@@ -19,6 +19,31 @@ function normalizeMemberRole(role: unknown): Role {
   return 'member';
 }
 
+async function listAuthUsersById() {
+  const admin = createAdminClient();
+  const usersById = new Map<string, { email: string | null; user_metadata: Record<string, unknown> | null }>();
+  let page = 1;
+  const perPage = 200;
+
+  while (true) {
+    const { data, error } = await admin.auth.admin.listUsers({ page, perPage });
+    if (error) throw error;
+
+    const users = data.users ?? [];
+    for (const user of users) {
+      usersById.set(user.id, {
+        email: user.email ?? null,
+        user_metadata: (user.user_metadata as Record<string, unknown> | null) ?? null
+      });
+    }
+
+    if (users.length < perPage) break;
+    page += 1;
+  }
+
+  return usersById;
+}
+
 function isAllowedRole(value: unknown): value is Role {
   return typeof value === 'string' && allowedRoles.includes(value as Role);
 }
@@ -80,7 +105,7 @@ export async function GET(request: NextRequest) {
   }
 
   const admin = createAdminClient();
-  const [{ data: members, error }, { data: preferences, error: preferencesError }] = await Promise.all([
+  const [{ data: members, error }, { data: preferences, error: preferencesError }, authUsersById] = await Promise.all([
     admin
       .from('company_members')
       .select('id,company_id,user_id,role,created_at')
@@ -92,7 +117,8 @@ export async function GET(request: NextRequest) {
       .select('user_id,preference_value')
       .eq('company_id', companyId)
       .eq('preference_key', PROFILE_BADGE_PREFERENCE_KEY)
-      .returns<Array<Pick<UserPreferenceRow, 'user_id' | 'preference_value'>>>()
+      .returns<Array<Pick<UserPreferenceRow, 'user_id' | 'preference_value'>>>(),
+    listAuthUsersById()
   ]);
 
   if (error || preferencesError) {
@@ -112,21 +138,15 @@ export async function GET(request: NextRequest) {
 
   const enriched = await Promise.all(
     (members ?? []).map(async (member) => {
-      let userData: Awaited<ReturnType<typeof admin.auth.admin.getUserById>>['data'] | null = null;
-      try {
-        const result = await admin.auth.admin.getUserById(member.user_id);
-        userData = result.data;
-      } catch {
-        userData = null;
-      }
-      const email = userData?.user?.email ?? null;
+      const authUser = authUsersById.get(member.user_id) ?? null;
+      const email = authUser?.email ?? null;
       return {
         ...member,
         role: normalizeMemberRole(member.role),
         email,
         display_name: resolveUserDisplayName({
           displayName: displayNameByUserId.get(member.user_id) ?? null,
-          metadata: userData?.user?.user_metadata,
+          metadata: authUser?.user_metadata ?? null,
           email,
           handle: email?.split('@')[0]?.toLowerCase() ?? null,
           userId: member.user_id
