@@ -8,7 +8,7 @@ import { useOfflineStore } from '@/features/offline/offlineStore';
 import { applyProjectStatusAutomation, maybeCreateWatchedStatusTask, maybeCreateWorkflowStatusUpdate } from '@/features/projects/projectAutomation';
 import { createProjectWithOrder, moveProject, setProjectStatus } from '@/lib/rpc';
 import { resolveCustomerForPayload, type ProjectCreatePayload } from '@/features/projects/customerResolver';
-import type { TableRow as DbRow } from '@/lib/supabase/database.types';
+import type { Database, TableRow as DbRow } from '@/lib/supabase/database.types';
 import type { Project, ProjectColumn, ProjectStatus, Role } from '@/lib/types';
 
 const projectKey = (companyId: string) => ['projects', companyId] as const;
@@ -33,6 +33,8 @@ export type ProjectMemberVisual = CompanyMemberDirectoryEntry & {
   avatar_url: string | null;
   emoji: string | null;
 };
+
+type CompanyMemberOptionRpc = Database['public']['Functions']['list_company_member_options']['Returns'][number];
 
 export type ProjectMemberAssignment = {
   id: string;
@@ -117,6 +119,36 @@ export function useCompanyMemberDirectory(companyId: string) {
       return body.members ?? [];
     },
     staleTime: 1000 * 60 * 10
+  });
+}
+
+export function useCompanyMemberOptions(companyId: string) {
+  return useQuery<ProjectMemberVisual[]>({
+    queryKey: ['company-member-options', companyId],
+    staleTime: 1000 * 60 * 5,
+    queryFn: async () => {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .rpc('list_company_member_options', { p_company_id: companyId })
+        .returns<CompanyMemberOptionRpc[]>();
+
+      if (error) throw error;
+
+      return (data ?? []).map((member) => ({
+        id: member.id,
+        company_id: member.company_id,
+        user_id: member.user_id,
+        role: (member.role === 'finance' || member.role === 'admin' || member.role === 'auditor' || member.role === 'member' ? member.role : 'member') as Role,
+        created_at: member.created_at,
+        email: member.email,
+        handle: member.handle,
+        display_name: member.display_name,
+        color: member.color ?? '#3b82f6',
+        avatar_path: member.avatar_path,
+        avatar_url: null,
+        emoji: member.emoji
+      }));
+    }
   });
 }
 

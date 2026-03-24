@@ -1680,6 +1680,22 @@ export type Database = {
           source_position: number
         }[]
       }
+      list_company_member_options: {
+        Args: { p_company_id: string }
+        Returns: {
+          avatar_path: string | null
+          color: string | null
+          company_id: string
+          created_at: string
+          display_name: string | null
+          email: string | null
+          emoji: string | null
+          handle: string | null
+          id: string
+          role: string
+          user_id: string
+        }[]
+      }
       trial_balance_report: {
         Args: { p_as_of: string; p_company_id: string }
         Returns: Json

@@ -12,7 +12,7 @@ import ProfileBadge from '@/components/common/ProfileBadge';
 import { getUserDisplayName } from '@/features/profile/profileBadge';
 import { createClient } from '@/lib/supabase/client';
 import {
-  useCompanyMemberDirectory,
+  useCompanyMemberOptions,
   useCreateProject,
   useProjectColumns,
   useProjectMembers,
@@ -523,17 +523,7 @@ export default function CreateProjectEntry({ companyId, mode }: { companyId: str
   const createMutation = useCreateProject(companyId);
   const columnsQuery = useProjectColumns(companyId);
   const projectMembersQuery = useProjectMembers(companyId);
-  const companyMemberDirectoryQuery = useCompanyMemberDirectory(companyId);
-  const adminMembersQuery = useQuery<Array<{ id: string; user_id: string; role: ProjectMemberVisual['role']; email: string | null; display_name: string | null }>>({
-    queryKey: ['admin-members-lite', companyId],
-    queryFn: async () => {
-      const res = await fetch(`/api/admin/members?companyId=${companyId}`);
-      if (!res.ok) return [];
-      const body = (await res.json().catch(() => null)) as { members?: Array<{ id: string; user_id: string; role: ProjectMemberVisual['role']; email: string | null; display_name: string | null }> } | null;
-      return body?.members ?? [];
-    },
-    staleTime: 1000 * 60 * 5
-  });
+  const companyMemberOptionsQuery = useCompanyMemberOptions(companyId);
   const projectTemplatesQuery = useProjectTemplates(companyId);
   const currentUserQuery = useQuery({
     queryKey: ['current-user-identity'],
@@ -577,7 +567,7 @@ export default function CreateProjectEntry({ companyId, mode }: { companyId: str
     );
     const baseMembers = new Map<string, { id: string; company_id: string; user_id: string; role: ProjectMemberVisual['role']; created_at: string; email: string | null; handle: string | null; display_name: string | null }>();
 
-    for (const member of projectMembersQuery.data?.availableMembers ?? []) {
+    for (const member of companyMemberOptionsQuery.data ?? []) {
       if (!baseMembers.has(member.user_id)) {
         baseMembers.set(member.user_id, {
           id: member.id,
@@ -588,19 +578,6 @@ export default function CreateProjectEntry({ companyId, mode }: { companyId: str
           email: member.email,
           handle: member.handle,
           display_name: member.display_name
-        });
-      }
-    }
-    for (const member of companyMemberDirectoryQuery.data ?? []) {
-      baseMembers.set(member.user_id, member);
-    }
-    for (const member of adminMembersQuery.data ?? []) {
-      if (!baseMembers.has(member.user_id)) {
-        baseMembers.set(member.user_id, {
-          ...member,
-          company_id: companyId,
-          created_at: '',
-          handle: member.email?.split('@')[0]?.toLowerCase() ?? null
         });
       }
     }
@@ -627,7 +604,7 @@ export default function CreateProjectEntry({ companyId, mode }: { companyId: str
         emoji: visual?.emoji ?? null
       };
     });
-  }, [adminMembersQuery.data, companyId, companyMemberDirectoryQuery.data, currentUserQuery.data, projectMembersQuery.data?.availableMembers]);
+  }, [companyId, companyMemberOptionsQuery.data, currentUserQuery.data, projectMembersQuery.data?.availableMembers]);
 
   useEffect(() => {
     if (pathname !== '/projects') return;

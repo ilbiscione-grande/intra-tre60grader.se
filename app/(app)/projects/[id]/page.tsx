@@ -24,7 +24,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { createInvoiceFromOrder } from '@/lib/rpc';
-import { useCompanyMemberDirectory, useProjectColumns, useProjectMembers, type ProjectMemberVisual } from '@/features/projects/projectQueries';
+import { useCompanyMemberOptions, useProjectColumns, useProjectMembers, type ProjectMemberVisual } from '@/features/projects/projectQueries';
 import { applyProjectStatusAutomation } from '@/features/projects/projectAutomation';
 import ProjectFinancePanel from '@/features/projects/ProjectFinancePanel';
 import ProjectFilesPanel from '@/features/projects/ProjectFilesPanel';
@@ -441,17 +441,7 @@ export default function ProjectDetailsPage() {
   });
 
   const projectMembersQuery = useProjectMembers(companyId);
-  const companyMemberDirectoryQuery = useCompanyMemberDirectory(companyId);
-  const adminMembersQuery = useQuery<Array<{ id: string; user_id: string; role: Role; email: string | null; display_name: string | null }>>({
-    queryKey: ['admin-members-lite', companyId],
-    queryFn: async () => {
-      const res = await fetch(`/api/admin/members?companyId=${companyId}`);
-      if (!res.ok) return [];
-      const body = (await res.json().catch(() => null)) as { members?: Array<{ id: string; user_id: string; role: Role; email: string | null; display_name: string | null }> } | null;
-      return body?.members ?? [];
-    },
-    staleTime: 1000 * 60 * 5
-  });
+  const companyMemberOptionsQuery = useCompanyMemberOptions(companyId);
   const projectUpdatesActivityQuery = useQuery<ProjectUpdateActivityRow[]>({
     queryKey: ['project-updates-activity', companyId, projectId],
     queryFn: async () => {
@@ -914,7 +904,7 @@ export default function ProjectDetailsPage() {
     );
     const baseMembers = new Map<string, { id: string; company_id: string; user_id: string; role: Role; created_at: string; email: string | null; handle: string | null; display_name: string | null }>();
 
-    for (const member of projectMembersQuery.data?.availableMembers ?? []) {
+    for (const member of companyMemberOptionsQuery.data ?? []) {
       if (!baseMembers.has(member.user_id)) {
         baseMembers.set(member.user_id, {
           id: member.id,
@@ -925,19 +915,6 @@ export default function ProjectDetailsPage() {
           email: member.email,
           handle: member.handle,
           display_name: member.display_name
-        });
-      }
-    }
-    for (const member of companyMemberDirectoryQuery.data ?? []) {
-      baseMembers.set(member.user_id, member);
-    }
-    for (const member of adminMembersQuery.data ?? []) {
-      if (!baseMembers.has(member.user_id)) {
-        baseMembers.set(member.user_id, {
-          ...member,
-          company_id: companyId,
-          created_at: '',
-          handle: member.email?.split('@')[0]?.toLowerCase() ?? null
         });
       }
     }
@@ -964,7 +941,7 @@ export default function ProjectDetailsPage() {
         emoji: visual?.emoji ?? null
       };
     });
-  }, [adminMembersQuery.data, companyId, companyMemberDirectoryQuery.data, currentUserQuery.data, projectMembersQuery.data?.availableMembers, role]);
+  }, [companyId, companyMemberOptionsQuery.data, currentUserQuery.data, projectMembersQuery.data?.availableMembers, role]);
   const currentUserId = currentUserQuery.data?.id ?? '';
   const assignedMembers = useMemo(
     () =>

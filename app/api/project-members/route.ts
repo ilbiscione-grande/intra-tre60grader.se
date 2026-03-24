@@ -27,10 +27,16 @@ async function listAuthUsersById() {
   const perPage = 200;
 
   while (true) {
-    const { data, error } = await admin.auth.admin.listUsers({ page, perPage });
-    if (error) throw error;
+    let data: Awaited<ReturnType<typeof admin.auth.admin.listUsers>>['data'] | null = null;
+    try {
+      const result = await admin.auth.admin.listUsers({ page, perPage });
+      if (result.error) break;
+      data = result.data;
+    } catch {
+      break;
+    }
 
-    const users = data.users ?? [];
+    const users = data?.users ?? [];
     for (const user of users) {
       usersById.set(user.id, {
         email: user.email ?? null,
