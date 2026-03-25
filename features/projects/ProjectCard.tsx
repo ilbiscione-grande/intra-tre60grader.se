@@ -86,6 +86,13 @@ export default function ProjectCard({
   const [mobileProjectMenuPlacement, setMobileProjectMenuPlacement] = useState<'down' | 'up'>('down');
   const [mobileProjectMenuMaxHeight, setMobileProjectMenuMaxHeight] = useState<number>(320);
   const canManageMembers = role !== 'auditor';
+  const responsibleMember = useMemo(
+    () =>
+      availableMembers.find((member) => member.user_id === project.responsible_user_id) ??
+      members.find((member) => member.user_id === project.responsible_user_id) ??
+      null,
+    [availableMembers, members, project.responsible_user_id]
+  );
   const milestones = normalizeMilestones(project.milestones);
   const completedMilestones = milestones.filter((milestone) => milestone.completed).length;
   const totalMilestones = milestones.length;
@@ -148,7 +155,7 @@ export default function ProjectCard({
   const memberLabels = useMemo(
     () =>
       new Map(
-        members.map((member) => [
+        [...members, ...(responsibleMember ? [responsibleMember] : [])].map((member) => [
           member.id,
           getUserDisplayName({
             displayName: member.display_name,
@@ -158,8 +165,34 @@ export default function ProjectCard({
           })
         ])
       ),
-    [members]
+    [members, responsibleMember]
   );
+  const responsibleLabel = useMemo(() => {
+    if (!responsibleMember) return null;
+    return (
+      memberLabels.get(responsibleMember.id) ??
+      getUserDisplayName({
+        displayName: responsibleMember.display_name,
+        email: responsibleMember.email,
+        handle: responsibleMember.handle,
+        userId: responsibleMember.user_id
+      })
+    );
+  }, [memberLabels, responsibleMember]);
+  const visibleMemberBadges = useMemo(() => {
+    const ordered: Array<ProjectMemberVisual & { isResponsible?: boolean }> = [];
+
+    if (responsibleMember) {
+      ordered.push({ ...responsibleMember, isResponsible: true });
+    }
+
+    for (const member of members) {
+      if (member.user_id === responsibleMember?.user_id) continue;
+      ordered.push(member);
+    }
+
+    return ordered;
+  }, [members, responsibleMember]);
 
   const addMemberMutation = useMutation({
     mutationFn: async (userId: string) => {
@@ -489,18 +522,24 @@ export default function ProjectCard({
             </div>
           ) : null}
         </div>
-        {members.length > 0 ? (
+        {visibleMemberBadges.length > 0 ? (
           <div className="relative z-20 mt-3 flex flex-wrap gap-1.5">
-            {members.map((member) => {
+            {responsibleLabel ? (
+              <span className="inline-flex h-7 items-center rounded-full border border-primary/20 bg-primary/5 px-2.5 text-[11px] font-medium text-foreground/75">
+                Ansvarig: <span className="ml-1 text-foreground">{responsibleLabel}</span>
+              </span>
+            ) : null}
+            {visibleMemberBadges.map((member) => {
               const label = memberLabels.get(member.id) ?? member.user_id;
               const isActive = activeMemberId === member.id;
+              const tooltipLabel = member.isResponsible ? `Ansvarig: ${label}` : label;
 
               return (
                 <div key={member.id} className="group/member relative" data-project-member-avatar="true">
                   <button
                     type="button"
                     className="rounded-full"
-                    aria-label={label}
+                    aria-label={tooltipLabel}
                     onClick={(event) => {
                       event.preventDefault();
                       event.stopPropagation();
@@ -512,7 +551,9 @@ export default function ProjectCard({
                       color={member.color}
                       avatarUrl={member.avatar_url}
                       emoji={member.emoji}
-                      className="h-7 w-7 border border-background shadow-sm transition group-hover/member:scale-[1.03]"
+                      className={`h-7 w-7 border shadow-sm transition group-hover/member:scale-[1.03] ${
+                        member.isResponsible ? 'border-primary ring-2 ring-primary/25' : 'border-background'
+                      }`}
                       textClassName="text-[10px] font-semibold text-white"
                     />
                   </button>
@@ -521,7 +562,7 @@ export default function ProjectCard({
                       isActive ? 'opacity-100 translate-y-0' : 'translate-y-1 opacity-0 group-hover/member:translate-y-0 group-hover/member:opacity-100 group-focus-within/member:translate-y-0 group-focus-within/member:opacity-100'
                     }`}
                   >
-                    {label}
+                    {tooltipLabel}
                   </div>
                 </div>
               );
