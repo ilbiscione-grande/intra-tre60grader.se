@@ -6,10 +6,20 @@ on:
     paths:
       - 'supabase/migrations/**'
       - 'supabase/tests/**'
+      - 'scripts/run-finance-sql-test.mjs'
       - 'lib/rpc/**'
-      - 'app/api/**'
-      - 'app/(app)/**'
+      - 'features/finance/**'
+      - 'app/api/finance/**'
+      - 'app/api/verifications/**'
+      - 'app/api/project-verifications/**'
+      - 'app/api/reports/finance-audit-chain/**'
+      - 'app/api/admin/period-lock/**'
+      - 'app/(app)/finance/**'
+      - 'app/(app)/payables/**'
+      - 'app/(app)/receivables/**'
+      - 'app/(app)/invoices/**'
       - 'package.json'
+      - 'package-lock.json'
       - '.github/workflows/finance-smoke.yml'
 
 jobs:

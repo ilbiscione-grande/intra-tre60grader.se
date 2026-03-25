@@ -275,7 +275,7 @@ export default function ProjectDetailsPage() {
   const [memberRoleFilter, setMemberRoleFilter] = useState<'all' | Role>('all');
   const [optimisticAssignedUserIds, setOptimisticAssignedUserIds] = useState<string[] | null>(null);
   const hasAutoOpenedPlanningRef = useRef(false);
-  const queuedAssignedUserIdsRef = useRef<string[] | null>(null);
+  const lastSubmittedAssignedUserIdsRef = useRef<string[] | null>(null);
   const swipeHandlers = useSwipeTabs({
     tabs: projectTabs.map((tab) => tab.id),
     activeTab,
@@ -807,24 +807,9 @@ export default function ProjectDetailsPage() {
     },
     onSuccess: async (assignments) => {
       queryClient.setQueryData<ProjectMemberAssignmentRow[]>(['project-member-assignments', companyId, projectId], assignments);
-      const assignmentUserIds = normalizeUserIdList(assignments.map((assignment) => assignment.user_id));
-      const nextQueued = queuedAssignedUserIdsRef.current;
-
-      if (nextQueued && !sameUserIdList(nextQueued, assignmentUserIds)) {
-        queuedAssignedUserIdsRef.current = null;
-        setOptimisticAssignedUserIds(nextQueued);
-        saveProjectMembersMutation.mutate(nextQueued);
-        return;
-      }
-
-      queuedAssignedUserIdsRef.current = null;
-      setOptimisticAssignedUserIds(null);
       await queryClient.invalidateQueries({ queryKey: ['project-member-assignments', companyId, projectId] });
-      toast.success('Projektmedlemmar uppdaterade');
     },
     onError: (error) => {
-      queuedAssignedUserIdsRef.current = null;
-      setOptimisticAssignedUserIds(null);
       toast.error(getErrorMessage(error, 'Kunde inte uppdatera projektmedlemmar'));
     }
   });
@@ -929,23 +914,33 @@ export default function ProjectDetailsPage() {
   }, [availableMembers]);
 
   useEffect(() => {
+    const desiredAssignedUserIds = optimisticAssignedUserIds;
+
+    if (!desiredAssignedUserIds) {
+      lastSubmittedAssignedUserIdsRef.current = null;
+      return;
+    }
+
+    if (sameUserIdList(desiredAssignedUserIds, serverAssignedUserIds)) {
+      lastSubmittedAssignedUserIdsRef.current = null;
+      setOptimisticAssignedUserIds(null);
+      return;
+    }
+
     if (saveProjectMembersMutation.isPending) return;
-    setOptimisticAssignedUserIds((current) => {
-      if (!current) return current;
-      return sameUserIdList(current, serverAssignedUserIds) ? null : current;
+    if (lastSubmittedAssignedUserIdsRef.current && sameUserIdList(lastSubmittedAssignedUserIdsRef.current, desiredAssignedUserIds)) return;
+
+    lastSubmittedAssignedUserIdsRef.current = desiredAssignedUserIds;
+    saveProjectMembersMutation.mutate(desiredAssignedUserIds, {
+      onSuccess: () => {
+        toast.success('Projektmedlemmar uppdaterade');
+      }
     });
-  }, [saveProjectMembersMutation.isPending, serverAssignedUserIds]);
+  }, [optimisticAssignedUserIds, saveProjectMembersMutation, serverAssignedUserIds]);
 
   function submitProjectMemberSelection(nextUserIds: string[]) {
     const normalized = normalizeUserIdList(nextUserIds);
     setOptimisticAssignedUserIds(normalized);
-
-    if (saveProjectMembersMutation.isPending) {
-      queuedAssignedUserIdsRef.current = normalized;
-      return;
-    }
-
-    saveProjectMembersMutation.mutate(normalized);
   }
   const activity = useMemo(() => {
     const items: ActivityItem[] = [...localActivity];
