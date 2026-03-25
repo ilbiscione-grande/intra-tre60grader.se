@@ -206,6 +206,15 @@ function todayIsoDate() {
   return new Date().toLocaleDateString('sv-CA');
 }
 
+function normalizeUserIdList(userIds: Iterable<string>) {
+  return Array.from(new Set(userIds)).sort((a, b) => a.localeCompare(b));
+}
+
+function sameUserIdList(a: string[], b: string[]) {
+  if (a.length !== b.length) return false;
+  return a.every((value, index) => value === b[index]);
+}
+
 function ProjectSummaryCard({
   icon: Icon,
   label,
@@ -264,7 +273,9 @@ export default function ProjectDetailsPage() {
   const [activeTab, setActiveTab] = useState<ProjectTab>('overview');
   const [memberSearch, setMemberSearch] = useState('');
   const [memberRoleFilter, setMemberRoleFilter] = useState<'all' | Role>('all');
+  const [optimisticAssignedUserIds, setOptimisticAssignedUserIds] = useState<string[] | null>(null);
   const hasAutoOpenedPlanningRef = useRef(false);
+  const queuedAssignedUserIdsRef = useRef<string[] | null>(null);
   const swipeHandlers = useSwipeTabs({
     tabs: projectTabs.map((tab) => tab.id),
     activeTab,
@@ -796,10 +807,24 @@ export default function ProjectDetailsPage() {
     },
     onSuccess: async (assignments) => {
       queryClient.setQueryData<ProjectMemberAssignmentRow[]>(['project-member-assignments', companyId, projectId], assignments);
+      const assignmentUserIds = normalizeUserIdList(assignments.map((assignment) => assignment.user_id));
+      const nextQueued = queuedAssignedUserIdsRef.current;
+
+      if (nextQueued && !sameUserIdList(nextQueued, assignmentUserIds)) {
+        queuedAssignedUserIdsRef.current = null;
+        setOptimisticAssignedUserIds(nextQueued);
+        saveProjectMembersMutation.mutate(nextQueued);
+        return;
+      }
+
+      queuedAssignedUserIdsRef.current = null;
+      setOptimisticAssignedUserIds(null);
       await queryClient.invalidateQueries({ queryKey: ['project-member-assignments', companyId, projectId] });
       toast.success('Projektmedlemmar uppdaterade');
     },
     onError: (error) => {
+      queuedAssignedUserIdsRef.current = null;
+      setOptimisticAssignedUserIds(null);
       toast.error(getErrorMessage(error, 'Kunde inte uppdatera projektmedlemmar'));
     }
   });
@@ -875,7 +900,9 @@ export default function ProjectDetailsPage() {
     () => availableMembers.find((member) => member.user_id === projectQuery.data?.responsible_user_id) ?? null,
     [availableMembers, projectQuery.data?.responsible_user_id]
   );
-  const assignedUserIds = useMemo(() => new Set(assignedMembers.map((member) => member.user_id)), [assignedMembers]);
+  const serverAssignedUserIds = useMemo(() => normalizeUserIdList(assignedMembers.map((member) => member.user_id)), [assignedMembers]);
+  const effectiveAssignedUserIds = optimisticAssignedUserIds ?? serverAssignedUserIds;
+  const assignedUserIds = useMemo(() => new Set(effectiveAssignedUserIds), [effectiveAssignedUserIds]);
   const filteredAvailableMembers = useMemo(() => {
     const query = memberSearch.trim().toLowerCase();
     const roleFiltered = memberRoleFilter === 'all' ? availableMembers : availableMembers.filter((member) => member.role === memberRoleFilter);
@@ -900,6 +927,26 @@ export default function ProjectDetailsPage() {
     }
     return map;
   }, [availableMembers]);
+
+  useEffect(() => {
+    if (saveProjectMembersMutation.isPending) return;
+    setOptimisticAssignedUserIds((current) => {
+      if (!current) return current;
+      return sameUserIdList(current, serverAssignedUserIds) ? null : current;
+    });
+  }, [saveProjectMembersMutation.isPending, serverAssignedUserIds]);
+
+  function submitProjectMemberSelection(nextUserIds: string[]) {
+    const normalized = normalizeUserIdList(nextUserIds);
+    setOptimisticAssignedUserIds(normalized);
+
+    if (saveProjectMembersMutation.isPending) {
+      queuedAssignedUserIdsRef.current = normalized;
+      return;
+    }
+
+    saveProjectMembersMutation.mutate(normalized);
+  }
   const activity = useMemo(() => {
     const items: ActivityItem[] = [...localActivity];
 
@@ -1805,8 +1852,7 @@ export default function ProjectDetailsPage() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    disabled={saveProjectMembersMutation.isPending}
-                    onClick={() => saveProjectMembersMutation.mutate(filteredAvailableMembers.map((member) => member.user_id))}
+                    onClick={() => submitProjectMemberSelection(filteredAvailableMembers.map((member) => member.user_id))}
                   >
                     Markera alla
                   </Button>
@@ -1814,8 +1860,7 @@ export default function ProjectDetailsPage() {
                     type="button"
                     variant="ghost"
                     size="sm"
-                    disabled={saveProjectMembersMutation.isPending}
-                    onClick={() => saveProjectMembersMutation.mutate([])}
+                    onClick={() => submitProjectMemberSelection([])}
                   >
                     Rensa
                   </Button>
@@ -1836,12 +1881,11 @@ export default function ProjectDetailsPage() {
                         className={`flex w-[84px] flex-col items-center gap-1.5 rounded-2xl px-1 py-1.5 text-center transition ${
                           isAssigned ? 'bg-primary/8 text-foreground' : 'text-foreground/80 hover:bg-muted/40'
                         }`}
-                        disabled={saveProjectMembersMutation.isPending}
                         onClick={() => {
                           const next = new Set(assignedUserIds);
                           if (isAssigned) next.delete(member.user_id);
                           else next.add(member.user_id);
-                          saveProjectMembersMutation.mutate(Array.from(next));
+                          submitProjectMemberSelection(Array.from(next));
                         }}
                         title={label}
                       >
