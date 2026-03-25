@@ -7,6 +7,7 @@ import { enqueueAction, getQueueCounts, processQueue } from '@/features/offline/
 import { useOfflineStore } from '@/features/offline/offlineStore';
 import { applyProjectStatusAutomation, maybeCreateWatchedStatusTask, maybeCreateWorkflowStatusUpdate } from '@/features/projects/projectAutomation';
 import { createProjectWithOrder, moveProject, setProjectStatus } from '@/lib/rpc';
+import { PROFILE_AVATAR_BUCKET } from '@/lib/profile/constants';
 import { resolveCustomerForPayload, type ProjectCreatePayload } from '@/features/projects/customerResolver';
 import type { Database, TableRow as DbRow } from '@/lib/supabase/database.types';
 import type { Project, ProjectColumn, ProjectStatus, Role } from '@/lib/types';
@@ -134,7 +135,7 @@ export function useCompanyMemberOptions(companyId: string) {
 
       if (error) throw error;
 
-      return (data ?? []).map((member) => ({
+      const baseMembers = (data ?? []).map((member) => ({
         id: member.id,
         company_id: member.company_id,
         user_id: member.user_id,
@@ -148,6 +149,25 @@ export function useCompanyMemberOptions(companyId: string) {
         avatar_url: null,
         emoji: member.emoji
       }));
+
+      return Promise.all(
+        baseMembers.map(async (member) => {
+          if (!member.avatar_path) return member;
+
+          const { data: signed, error: signedError } = await supabase.storage
+            .from(PROFILE_AVATAR_BUCKET)
+            .createSignedUrl(member.avatar_path, 60 * 60);
+
+          if (signedError) {
+            return member;
+          }
+
+          return {
+            ...member,
+            avatar_url: signed?.signedUrl ?? null
+          };
+        })
+      );
     }
   });
 }
