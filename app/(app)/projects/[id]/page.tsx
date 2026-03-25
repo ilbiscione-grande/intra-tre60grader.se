@@ -71,6 +71,10 @@ type ProjectMilestone = {
   date: string;
   completed: boolean;
 };
+type ProjectMemberOperation = {
+  action: 'add' | 'remove';
+  userId: string;
+};
 
 const orderStatuses = ['draft', 'sent', 'paid', 'cancelled', 'invoiced'] as const;
 type OrderStatus = (typeof orderStatuses)[number];
@@ -215,6 +219,13 @@ function sameUserIdList(a: string[], b: string[]) {
   return a.every((value, index) => value === b[index]);
 }
 
+function applyMemberOperation(userIds: string[], operation: ProjectMemberOperation) {
+  const next = new Set(userIds);
+  if (operation.action === 'add') next.add(operation.userId);
+  else next.delete(operation.userId);
+  return normalizeUserIdList(next);
+}
+
 function ProjectSummaryCard({
   icon: Icon,
   label,
@@ -275,6 +286,8 @@ export default function ProjectDetailsPage() {
   const [memberRoleFilter, setMemberRoleFilter] = useState<'all' | Role>('all');
   const [optimisticAssignedUserIds, setOptimisticAssignedUserIds] = useState<string[] | null>(null);
   const hasAutoOpenedPlanningRef = useRef(false);
+  const pendingMemberOperationsRef = useRef<ProjectMemberOperation[]>([]);
+  const activeMemberOperationRef = useRef<ProjectMemberOperation | null>(null);
   const swipeHandlers = useSwipeTabs({
     tabs: projectTabs.map((tab) => tab.id),
     activeTab,
@@ -923,35 +936,40 @@ export default function ProjectDetailsPage() {
   }, [availableMembers]);
 
   useEffect(() => {
-    const desiredAssignedUserIds = optimisticAssignedUserIds;
-
-    if (!desiredAssignedUserIds) {
+    if (activeMemberOperationRef.current) {
       return;
     }
+    setOptimisticAssignedUserIds((current) => {
+      if (!current) return current;
+      return sameUserIdList(current, serverAssignedUserIds) ? null : current;
+    });
+  }, [serverAssignedUserIds]);
 
-    if (sameUserIdList(desiredAssignedUserIds, serverAssignedUserIds)) {
-      setOptimisticAssignedUserIds(null);
-      return;
-    }
-
-    if (syncProjectMemberMutation.isPending) return;
-
-    const nextAdd = desiredAssignedUserIds.find((userId) => !serverAssignedUserIds.includes(userId));
-    const nextRemove = serverAssignedUserIds.find((userId) => !desiredAssignedUserIds.includes(userId));
-    const nextOperation = nextAdd ? { action: 'add' as const, userId: nextAdd } : nextRemove ? { action: 'remove' as const, userId: nextRemove } : null;
-
+  function processNextMemberOperation() {
+    if (activeMemberOperationRef.current || syncProjectMemberMutation.isPending) return;
+    const nextOperation = pendingMemberOperationsRef.current.shift() ?? null;
     if (!nextOperation) return;
 
+    activeMemberOperationRef.current = nextOperation;
     syncProjectMemberMutation.mutate(nextOperation, {
       onSuccess: () => {
         toast.success('Projektmedlemmar uppdaterade');
+      },
+      onError: () => {
+        pendingMemberOperationsRef.current = [];
+        setOptimisticAssignedUserIds(null);
+      },
+      onSettled: () => {
+        activeMemberOperationRef.current = null;
+        processNextMemberOperation();
       }
     });
-  }, [optimisticAssignedUserIds, serverAssignedUserIds, syncProjectMemberMutation]);
+  }
 
-  function submitProjectMemberSelection(nextUserIds: string[]) {
-    const normalized = normalizeUserIdList(nextUserIds);
-    setOptimisticAssignedUserIds(normalized);
+  function queueProjectMemberOperation(operation: ProjectMemberOperation) {
+    setOptimisticAssignedUserIds((current) => applyMemberOperation(current ?? serverAssignedUserIds, operation));
+    pendingMemberOperationsRef.current.push(operation);
+    processNextMemberOperation();
   }
   const activity = useMemo(() => {
     const items: ActivityItem[] = [...localActivity];
@@ -1865,10 +1883,10 @@ export default function ProjectDetailsPage() {
                           isAssigned ? 'bg-primary/8 text-foreground' : 'text-foreground/80 hover:bg-muted/40'
                         }`}
                         onClick={() => {
-                          const next = new Set(assignedUserIds);
-                          if (isAssigned) next.delete(member.user_id);
-                          else next.add(member.user_id);
-                          submitProjectMemberSelection(Array.from(next));
+                          queueProjectMemberOperation({
+                            action: isAssigned ? 'remove' : 'add',
+                            userId: member.user_id
+                          });
                         }}
                         title={label}
                       >
