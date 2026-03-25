@@ -1729,24 +1729,9 @@ export default function ProjectDetailsPage() {
 
       {activeTab === 'members' && (
         <Card {...swipeHandlers}>
-          <CardContent className="space-y-3">
-            <div className="grid gap-3 md:grid-cols-3">
-              <div className="rounded-lg border p-3">
-                <p className="text-sm text-foreground/70">Projektmodell</p>
-                <p className="mt-1 font-medium">Tilldelade projektmedlemmar</p>
-              </div>
-              <div className="rounded-lg border p-3">
-                <p className="text-sm text-foreground/70">Tillgängliga medlemmar</p>
-                <p className="mt-1 font-medium">{availableMembers.length}</p>
-              </div>
-              <div className="rounded-lg border p-3">
-                <p className="text-sm text-foreground/70">Tilldelade i projektet</p>
-                <p className="mt-1 font-medium">{assignedMembers.length}</p>
-              </div>
-            </div>
-
+          <CardContent className="space-y-4">
             <div className="rounded-lg border p-3">
-              <p className="text-sm text-foreground/70">Projektansvarig</p>
+              <p className="text-sm font-medium text-foreground/80">Projektansvarig</p>
               <p className="mt-1 font-medium">
                 {project.responsible_user_id
                   ? memberLabelByUserId.get(project.responsible_user_id) ??
@@ -1794,6 +1779,10 @@ export default function ProjectDetailsPage() {
 
             {assignedMembers.length > 0 ? (
               <div className="space-y-3">
+                <div>
+                  <p className="text-sm font-medium text-foreground/80">Tilldelade medlemmar</p>
+                  <p className="text-xs text-foreground/60">De här personerna är just nu kopplade till projektet.</p>
+                </div>
                 {assignedMembers.map((member) => (
                   <div key={member.id} className="flex items-center justify-between gap-3 rounded-lg border p-3">
                     <div className="min-w-0">
@@ -1815,13 +1804,19 @@ export default function ProjectDetailsPage() {
                 ))}
               </div>
             ) : (
-              <p className="text-sm text-foreground/70">Inga medlemmar är tilldelade ännu.</p>
+              <div className="space-y-1">
+                <p className="text-sm font-medium text-foreground/80">Tilldelade medlemmar</p>
+                <p className="text-sm text-foreground/70">Inga medlemmar är tilldelade ännu.</p>
+              </div>
             )}
 
             {role !== 'auditor' ? (
               <div className="space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-sm font-medium text-foreground/80">Tilldela medlemmar</p>
+                  <div>
+                    <p className="text-sm font-medium text-foreground/80">Medlemmar att lägga till</p>
+                    <p className="text-xs text-foreground/60">Tryck på en profil för att lägga till eller ta bort den från projektet.</p>
+                  </div>
                   <div className="flex flex-wrap gap-2">
                     {(['all', 'member', 'finance', 'admin', 'auditor'] as const).map((filter) => (
                       <button
@@ -1842,24 +1837,6 @@ export default function ProjectDetailsPage() {
                   value={memberSearch}
                   onChange={(event) => setMemberSearch(event.target.value)}
                 />
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => submitProjectMemberSelection(filteredAvailableMembers.map((member) => member.user_id))}
-                  >
-                    Markera alla
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => submitProjectMemberSelection([])}
-                  >
-                    Rensa
-                  </Button>
-                </div>
                 <div className="flex flex-wrap gap-3">
                   {filteredAvailableMembers.map((member) => {
                     const isAssigned = assignedUserIds.has(member.user_id);
