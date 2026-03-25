@@ -1181,150 +1181,177 @@ export default function ProjectDetailsPage() {
 
       {activeTab === 'overview' && (
         <div className="space-y-4" {...swipeHandlers}>
-          <Card>
-            <CardContent className="space-y-4">
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                <ProjectSummaryCard
-                  icon={Users}
-                  label="Kund"
-                  value={currentCustomer?.name ?? 'Ingen kund'}
-                  helper={currentCustomer ? 'kopplad till projektet' : 'kan läggas till i översikten'}
-                />
-                <ProjectSummaryCard
-                  icon={ReceiptText}
-                  label="Orderrader"
-                  value={String(lines.length)}
-                  helper={orderId ? 'kopplade till projektets order' : 'ingen order skapad ännu'}
-                />
-                <ProjectSummaryCard
-                  icon={CircleDollarSign}
-                  label="Ordertotal"
-                  value={`${Number(orderQuery.data?.total ?? 0).toFixed(2)} kr`}
-                  helper={latestInvoice ? `senaste faktura ${latestInvoice.invoice_no}` : 'ingen faktura skapad ännu'}
-                />
-                <ProjectSummaryCard
-                  icon={FolderKanban}
-                  label="Senaste aktivitet"
-                  value={latestActivityItem ? latestActivityItem.text : 'Ingen aktivitet ännu'}
-                  helper={
-                    latestActivityItem
-                      ? `${new Date(latestActivityItem.at).toLocaleString('sv-SE')}${latestActivityActorLabel ? ` • ${latestActivityActorLabel}` : ''}`
-                      : 'projektet väntar på första aktivitet'
-                  }
-                />
-              </div>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <ProjectSummaryCard
+              icon={FolderKanban}
+              label="Projektstatus"
+              value={projectStatusLabel}
+              helper={project.status && project.status !== draftWorkflowStatus ? `kolumn: ${projectColumnTitle(project.status, statusColumns)}` : 'uppdatera status vid behov'}
+            />
+            <ProjectSummaryCard
+              icon={CircleDollarSign}
+              label="Ekonomi"
+              value={`${Number(orderQuery.data?.total ?? 0).toFixed(2)} kr`}
+              helper={
+                orderId
+                  ? `${lines.length} orderrader • ${invoicesQuery.data?.length ?? 0} fakturor`
+                  : 'ingen order kopplad ännu'
+              }
+            />
+            <ProjectSummaryCard
+              icon={ReceiptText}
+              label="Tidsplan"
+              value={nextMilestone?.title || formatProjectDate(draftEndDate)}
+              helper={nextMilestone?.date ? `nästa delmål ${formatProjectDate(nextMilestone.date)}` : `slutdatum ${formatProjectDate(draftEndDate)}`}
+            />
+            <ProjectSummaryCard
+              icon={Users}
+              label="Senaste aktivitet"
+              value={latestActivityItem ? latestActivityItem.text : 'Ingen aktivitet ännu'}
+              helper={
+                latestActivityItem
+                  ? `${new Date(latestActivityItem.at).toLocaleString('sv-SE')}${latestActivityActorLabel ? ` • ${latestActivityActorLabel}` : ''}`
+                  : 'projektet väntar på första aktivitet'
+              }
+            />
+          </div>
 
-              <div className="flex flex-wrap items-center gap-2">
-                {orderId ? (
-                  <Button asChild variant="outline">
-                    <Link href={`/orders/${orderId}`}>
-                      <span>Öppna order</span>
-                      <ArrowUpRight className="ml-2 h-4 w-4" />
-                    </Link>
-                  </Button>
-                ) : null}
-                {currentCustomer ? (
-                  <Button asChild variant="outline">
-                    <Link href={`/customers/${currentCustomer.id}` as Route}>
-                      <span>Öppna kund</span>
-                      <ArrowUpRight className="ml-2 h-4 w-4" />
-                    </Link>
-                  </Button>
-                ) : null}
-              </div>
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.9fr)]">
+            <Card>
+              <CardHeader className="space-y-1">
+                <CardTitle>Grundinfo</CardTitle>
+                <p className="text-sm text-foreground/65">Redigera projektets titel, status och kund utan att behöva gå mellan flera block.</p>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid gap-3 md:grid-cols-2">
+                  <label className="space-y-1 md:col-span-2">
+                    <span className="text-sm">Titel</span>
+                    <Input value={draftTitle} onChange={(event) => setDraftTitle(event.target.value)} disabled={isProjectMetaBusy} />
+                  </label>
 
-              <div className="grid gap-3 md:grid-cols-2">
-                <label className="space-y-1">
-                  <span className="text-sm">Titel</span>
-                  <Input value={draftTitle} onChange={(event) => setDraftTitle(event.target.value)} disabled={isProjectMetaBusy} />
-                </label>
+                  <label className="space-y-1">
+                    <span className="text-sm">Projektstatus</span>
+                    <Select value={draftWorkflowStatus} onValueChange={(value) => setDraftWorkflowStatus(value as ProjectStatus)}>
+                      <SelectTrigger disabled={isProjectMetaBusy}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {statusColumns.map((column) => (
+                          <SelectItem key={column.key} value={column.key}>
+                            {column.title}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </label>
 
-                <label className="space-y-1">
-                  <span className="text-sm">Projektstatus</span>
-                  <Select value={draftWorkflowStatus} onValueChange={(value) => setDraftWorkflowStatus(value as ProjectStatus)}>
-                    <SelectTrigger disabled={isProjectMetaBusy}>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {statusColumns.map((column) => (
-                        <SelectItem key={column.key} value={column.key}>
-                          {column.title}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </label>
-
-                <label className="space-y-1 md:col-span-2">
-                  <span className="text-sm">Kund</span>
-                  <Select value={draftCustomerId} onValueChange={setDraftCustomerId}>
-                    <SelectTrigger disabled={isProjectMetaBusy}>
-                      <SelectValue placeholder="Välj kund" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">Ingen kund</SelectItem>
-                      {(customersQuery.data ?? []).map((customer) => (
-                        <SelectItem key={customer.id} value={customer.id}>
-                          {customer.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </label>
-
-              </div>
-
-              <div className="grid gap-3 md:grid-cols-4">
-                <div className="rounded-lg border p-3">
-                  <p className="text-sm text-foreground/70">Kund</p>
-                  <p className="mt-1 font-medium">{currentCustomer?.name ?? 'Ingen kund'}</p>
+                  <label className="space-y-1">
+                    <span className="text-sm">Kund</span>
+                    <Select value={draftCustomerId} onValueChange={setDraftCustomerId}>
+                      <SelectTrigger disabled={isProjectMetaBusy}>
+                        <SelectValue placeholder="Välj kund" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Ingen kund</SelectItem>
+                        {(customersQuery.data ?? []).map((customer) => (
+                          <SelectItem key={customer.id} value={customer.id}>
+                            {customer.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </label>
                 </div>
-                <div className="rounded-lg border p-3">
-                  <p className="text-sm text-foreground/70">Orderrader</p>
-                  <p className="mt-1 font-medium">{lines.length}</p>
-                </div>
-                <div className="rounded-lg border p-3">
-                  <p className="text-sm text-foreground/70">Fakturor</p>
-                  <p className="mt-1 font-medium">{invoicesQuery.data?.length ?? 0}</p>
-                  {latestInvoice && (invoiceSourceCounts.get(latestInvoice.id) ?? 0) > 1 ? (
-                    <p className="mt-1 text-xs text-primary">Minst en samlingsfaktura ingår</p>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button onClick={() => saveProjectMutation.mutate()} disabled={saveProjectMutation.isPending}>
+                    {saveProjectMutation.isPending ? 'Sparar...' : 'Spara projekt'}
+                  </Button>
+                  {orderId ? (
+                    <Button asChild variant="outline">
+                      <Link href={`/orders/${orderId}`}>
+                        <span>Öppna order</span>
+                        <ArrowUpRight className="ml-2 h-4 w-4" />
+                      </Link>
+                    </Button>
+                  ) : null}
+                  {currentCustomer ? (
+                    <Button asChild variant="outline">
+                      <Link href={`/customers/${currentCustomer.id}` as Route}>
+                        <span>Öppna kund</span>
+                        <ArrowUpRight className="ml-2 h-4 w-4" />
+                      </Link>
+                    </Button>
                   ) : null}
                 </div>
-                <div className="rounded-lg border p-3">
-                  <p className="text-sm text-foreground/70">Tilldelade</p>
-                  <p className="mt-1 font-medium">{assignedMembers.length}</p>
-                </div>
-                <div className="rounded-lg border p-3">
-                  <p className="text-sm text-foreground/70">Ordertotal</p>
-                  <p className="mt-1 font-medium">{Number(orderQuery.data?.total ?? 0).toFixed(2)} kr</p>
-                </div>
-                <div className="rounded-lg border p-3">
-                  <p className="text-sm text-foreground/70">Startdatum</p>
-                  <p className="mt-1 font-medium">{formatProjectDate(draftStartDate)}</p>
-                </div>
-                <div className="rounded-lg border p-3">
-                  <p className="text-sm text-foreground/70">Nästa delmål</p>
-                  <p className="mt-1 font-medium">{nextMilestone?.title || 'Inget satt'}</p>
-                  <p className="mt-1 text-xs text-foreground/55">{nextMilestone?.date ? formatProjectDate(nextMilestone.date) : 'Lägg till ett delmål'}</p>
-                </div>
-                <div className="rounded-lg border p-3">
-                  <p className="text-sm text-foreground/70">Slutdatum</p>
-                  <p className="mt-1 font-medium">{formatProjectDate(draftEndDate)}</p>
-                </div>
-              </div>
+              </CardContent>
+            </Card>
 
-              <div className="flex flex-wrap items-center gap-2">
-                <Button onClick={() => saveProjectMutation.mutate()} disabled={saveProjectMutation.isPending}>
-                  {saveProjectMutation.isPending ? 'Sparar...' : 'Spara projekt'}
-                </Button>
-                {orderId ? (
-                  <Button asChild variant="outline">
-                    <Link href={`/orders/${orderId}`}>Öppna order</Link>
-                  </Button>
-                ) : null}
-              </div>
-            </CardContent>
-          </Card>
+            <div className="space-y-4">
+              <Card>
+                <CardHeader className="space-y-1">
+                  <CardTitle>Projektfakta</CardTitle>
+                  <p className="text-sm text-foreground/65">Det viktigaste om projektets kund, ekonomi och bemanning.</p>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-xl border border-border/70 bg-muted/10 p-3 sm:col-span-2">
+                      <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Kund</p>
+                      <p className="mt-1 font-medium">{currentCustomer?.name ?? 'Ingen kund kopplad'}</p>
+                      <p className="mt-1 text-sm text-foreground/65">
+                        {currentCustomer ? 'Kundrelation kopplad till projektet.' : 'Välj kund i grundinfo när projektet ska knytas till en kund.'}
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-border/70 p-3">
+                      <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Tilldelade</p>
+                      <p className="mt-1 text-2xl font-semibold">{assignedMembers.length}</p>
+                    </div>
+                    <div className="rounded-xl border border-border/70 p-3">
+                      <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Fakturor</p>
+                      <p className="mt-1 text-2xl font-semibold">{invoicesQuery.data?.length ?? 0}</p>
+                      {latestInvoice && (invoiceSourceCounts.get(latestInvoice.id) ?? 0) > 1 ? (
+                        <p className="mt-1 text-xs text-primary">Samlingsfaktura finns</p>
+                      ) : null}
+                    </div>
+                    <div className="rounded-xl border border-border/70 p-3">
+                      <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Orderrader</p>
+                      <p className="mt-1 text-2xl font-semibold">{lines.length}</p>
+                    </div>
+                    <div className="rounded-xl border border-border/70 p-3">
+                      <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Ordertotal</p>
+                      <p className="mt-1 text-2xl font-semibold">{Number(orderQuery.data?.total ?? 0).toFixed(2)} kr</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="space-y-1">
+                  <CardTitle>Tidsplan</CardTitle>
+                  <p className="text-sm text-foreground/65">Datum och nästa hållpunkt utan att behöva hoppa till planeringsfliken.</p>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-xl border border-border/70 p-3">
+                      <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Startdatum</p>
+                      <p className="mt-1 font-medium">{formatProjectDate(draftStartDate)}</p>
+                    </div>
+                    <div className="rounded-xl border border-border/70 p-3">
+                      <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Slutdatum</p>
+                      <p className="mt-1 font-medium">{formatProjectDate(draftEndDate)}</p>
+                    </div>
+                    <div className="rounded-xl border border-border/70 bg-muted/10 p-3 sm:col-span-2">
+                      <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Nästa delmål</p>
+                      <p className="mt-1 font-medium">{nextMilestone?.title || 'Inget delmål satt'}</p>
+                      <p className="mt-1 text-sm text-foreground/65">
+                        {nextMilestone?.date ? formatProjectDate(nextMilestone.date) : 'Gå till Tidsplan för att lägga till nästa delmål.'}
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
         </div>
       )}
 
