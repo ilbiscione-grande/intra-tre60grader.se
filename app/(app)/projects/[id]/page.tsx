@@ -446,16 +446,23 @@ export default function ProjectDetailsPage() {
   const projectMemberAssignmentsQuery = useQuery<ProjectMemberAssignmentRow[]>({
     queryKey: ['project-member-assignments', companyId, projectId],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('project_members')
-        .select('id,company_id,project_id,user_id,created_by,created_at')
-        .eq('company_id', companyId)
-        .eq('project_id', projectId)
-        .order('created_at', { ascending: true })
-        .returns<ProjectMemberAssignmentRow[]>();
-
-      if (error) throw error;
-      return data ?? [];
+      const res = await fetch(
+        `/api/project-members?companyId=${encodeURIComponent(companyId)}&projectId=${encodeURIComponent(projectId)}`
+      );
+      const body = (await res.json().catch(() => null)) as
+        | { error?: string; assignments?: Array<ProjectMemberAssignmentRow & { member?: ProjectMemberVisual | null }> }
+        | null;
+      if (!res.ok) {
+        throw new Error(body?.error ?? 'Kunde inte läsa projektmedlemmar');
+      }
+      return (body?.assignments ?? []).map((assignment) => ({
+        id: assignment.id,
+        company_id: assignment.company_id,
+        project_id: assignment.project_id,
+        user_id: assignment.user_id,
+        created_by: assignment.created_by,
+        created_at: assignment.created_at
+      }));
     }
   });
   const projectUpdatesActivityQuery = useQuery<ProjectUpdateActivityRow[]>({
@@ -768,41 +775,24 @@ export default function ProjectDetailsPage() {
 
   const saveProjectMembersMutation = useMutation({
     mutationFn: async (userIds: string[]) => {
-      const currentAssignments = projectMemberAssignmentsQuery.data ?? [];
-      const currentUserIds = new Set(currentAssignments.map((assignment) => assignment.user_id));
-      const nextUserIds = new Set(userIds);
-      const toDelete = currentAssignments.filter((assignment) => !nextUserIds.has(assignment.user_id));
-      const toInsert = userIds.filter((userId) => !currentUserIds.has(userId));
-
-      if (toDelete.length > 0) {
-        const { error } = await supabase
-          .from('project_members')
-          .delete()
-          .in('id', toDelete.map((row) => row.id));
-        if (error) throw error;
+      const res = await fetch('/api/project-members', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          companyId,
+          projectId,
+          userIds
+        })
+      });
+      const body = (await res.json().catch(() => null)) as
+        | { error?: string; assignments?: ProjectMemberAssignmentRow[] }
+        | null;
+      if (!res.ok) {
+        throw new Error(body?.error ?? 'Kunde inte uppdatera projektmedlemmar');
       }
-
-      if (toInsert.length > 0) {
-        const { error } = await supabase.from('project_members').insert(
-          toInsert.map((userId) => ({
-            company_id: companyId,
-            project_id: projectId,
-            user_id: userId
-          }))
-        );
-        if (error) throw error;
-      }
-
-      const { data, error } = await supabase
-        .from('project_members')
-        .select('id,company_id,project_id,user_id,created_by,created_at')
-        .eq('company_id', companyId)
-        .eq('project_id', projectId)
-        .order('created_at', { ascending: true })
-        .returns<ProjectMemberAssignmentRow[]>();
-
-      if (error) throw error;
-      return data ?? [];
+      return body?.assignments ?? [];
     },
     onSuccess: async (assignments) => {
       queryClient.setQueryData<ProjectMemberAssignmentRow[]>(['project-member-assignments', companyId, projectId], assignments);

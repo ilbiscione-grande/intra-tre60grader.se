@@ -51,6 +51,27 @@ async function listAuthUsersById() {
   return usersById;
 }
 
+async function listProfilesById() {
+  const admin = createAdminClient();
+  const { data, error } = await (admin as any)
+    .from('profiles')
+    .select('id,full_name,email');
+
+  if (error) {
+    return new Map<string, { full_name: string | null; email: string | null }>();
+  }
+
+  return new Map(
+    ((data ?? []) as Array<{ id: string; full_name: string | null; email: string | null }>).map((profile) => [
+      profile.id,
+      {
+        full_name: typeof profile.full_name === 'string' && profile.full_name.trim() ? profile.full_name.trim() : null,
+        email: typeof profile.email === 'string' && profile.email.trim() ? profile.email.trim() : null
+      }
+    ])
+  );
+}
+
 function parseProfilePreference(value: Json | null | undefined) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return { color: DEFAULT_PROFILE_BADGE_COLOR, avatarPath: null as string | null, emoji: null as string | null, displayName: null as string | null };
@@ -92,6 +113,7 @@ async function getActor(companyId: string) {
 
 export async function GET(request: NextRequest) {
   const companyId = request.nextUrl.searchParams.get('companyId');
+  const projectId = request.nextUrl.searchParams.get('projectId');
   if (!companyId) {
     return NextResponse.json({ error: 'companyId required' }, { status: 400 });
   }
@@ -102,14 +124,15 @@ export async function GET(request: NextRequest) {
   }
 
   const admin = createAdminClient();
-  const [{ data: assignments, error: assignmentError }, { data: members, error: membersError }, { data: preferences, error: prefError }, authUsersById] =
+  const assignmentQuery = admin
+    .from('project_members')
+    .select('id,company_id,project_id,user_id,created_by,created_at')
+    .eq('company_id', companyId)
+    .order('created_at', { ascending: true });
+
+  const [{ data: assignments, error: assignmentError }, { data: members, error: membersError }, { data: preferences, error: prefError }, authUsersById, profilesById] =
     await Promise.all([
-      admin
-        .from('project_members')
-        .select('id,company_id,project_id,user_id,created_by,created_at')
-        .eq('company_id', companyId)
-        .order('created_at', { ascending: true })
-        .returns<ProjectMemberRow[]>(),
+      (projectId ? assignmentQuery.eq('project_id', projectId) : assignmentQuery).returns<ProjectMemberRow[]>(),
       admin
         .from('company_members')
         .select('id,company_id,user_id,role,created_at')
@@ -122,7 +145,8 @@ export async function GET(request: NextRequest) {
         .eq('company_id', companyId)
         .eq('preference_key', PROFILE_BADGE_PREFERENCE_KEY)
         .returns<Array<Pick<UserPreferenceRow, 'user_id' | 'preference_value'>>>(),
-      listAuthUsersById()
+      listAuthUsersById(),
+      listProfilesById()
     ]);
 
   if (assignmentError || membersError || prefError) {
@@ -139,7 +163,8 @@ export async function GET(request: NextRequest) {
   const memberRecords = await Promise.all(
     (members ?? []).map(async (member) => {
       const authUser = authUsersById.get(member.user_id) ?? null;
-      const email = authUser?.email ?? null;
+      const profile = profilesById.get(member.user_id) ?? null;
+      const email = profile?.email ?? authUser?.email ?? null;
       const handle = email?.split('@')[0]?.toLowerCase() ?? null;
       const pref = prefByUserId.get(member.user_id) ?? { color: DEFAULT_PROFILE_BADGE_COLOR, avatarPath: null, emoji: null, displayName: null };
       let avatarUrl: string | null = null;
@@ -160,7 +185,7 @@ export async function GET(request: NextRequest) {
         email,
         handle,
         display_name: resolveUserDisplayName({
-          displayName: pref.displayName,
+          displayName: profile?.full_name ?? pref.displayName,
           metadata: authUser?.user_metadata ?? null,
           email,
           handle,

@@ -50,6 +50,27 @@ async function listAuthUsersById() {
   return usersById;
 }
 
+async function listProfilesById() {
+  const admin = createAdminClient();
+  const { data, error } = await (admin as any)
+    .from('profiles')
+    .select('id,full_name,email');
+
+  if (error) {
+    return new Map<string, { full_name: string | null; email: string | null }>();
+  }
+
+  return new Map(
+    ((data ?? []) as Array<{ id: string; full_name: string | null; email: string | null }>).map((profile) => [
+      profile.id,
+      {
+        full_name: typeof profile.full_name === 'string' && profile.full_name.trim() ? profile.full_name.trim() : null,
+        email: typeof profile.email === 'string' && profile.email.trim() ? profile.email.trim() : null
+      }
+    ])
+  );
+}
+
 async function requireMember(companyId: string) {
   const supabase = createClient();
   const {
@@ -87,7 +108,7 @@ export async function GET(request: NextRequest) {
   }
 
   const admin = createAdminClient();
-  const [{ data: members, error }, { data: preferences, error: preferencesError }, authUsersById] = await Promise.all([
+  const [{ data: members, error }, { data: preferences, error: preferencesError }, authUsersById, profilesById] = await Promise.all([
     admin
       .from('company_members')
       .select('id,company_id,user_id,role,created_at')
@@ -100,7 +121,8 @@ export async function GET(request: NextRequest) {
       .eq('company_id', companyId)
       .eq('preference_key', PROFILE_BADGE_PREFERENCE_KEY)
       .returns<Array<Pick<UserPreferenceRow, 'user_id' | 'preference_value'>>>(),
-    listAuthUsersById()
+    listAuthUsersById(),
+    listProfilesById()
   ]);
 
   if (error || preferencesError) {
@@ -121,7 +143,8 @@ export async function GET(request: NextRequest) {
   const enriched = await Promise.all(
     (members ?? []).map(async (member) => {
       const authUser = authUsersById.get(member.user_id) ?? null;
-      const email = authUser?.email ?? null;
+      const profile = profilesById.get(member.user_id) ?? null;
+      const email = profile?.email ?? authUser?.email ?? null;
       const handle = email?.split('@')[0]?.toLowerCase() ?? null;
 
       return {
@@ -130,7 +153,7 @@ export async function GET(request: NextRequest) {
         email,
         handle,
         display_name: resolveUserDisplayName({
-          displayName: displayNameByUserId.get(member.user_id) ?? null,
+          displayName: profile?.full_name ?? displayNameByUserId.get(member.user_id) ?? null,
           metadata: authUser?.user_metadata ?? null,
           email,
           handle,
