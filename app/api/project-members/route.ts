@@ -200,12 +200,13 @@ export async function POST(request: NextRequest) {
   if (!actor.ok) {
     return NextResponse.json({ error: actor.error }, { status: actor.status });
   }
+  const admin = createAdminClient();
 
   if (!['admin', 'member', 'finance'].includes(actor.member.role)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const { data: project, error: projectError } = await actor.supabase
+  const { data: project, error: projectError } = await admin
     .from('projects')
     .select('id')
     .eq('company_id', companyId)
@@ -217,7 +218,7 @@ export async function POST(request: NextRequest) {
   }
 
   if (userIds.length > 0) {
-    const { data: existingMembers, error: existingMembersError } = await actor.supabase
+    const { data: existingMembers, error: existingMembersError } = await admin
       .from('company_members')
       .select('user_id')
       .eq('company_id', companyId)
@@ -235,7 +236,7 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  const { data: currentAssignments, error: currentError } = await actor.supabase
+  const { data: currentAssignments, error: currentError } = await admin
     .from('project_members')
     .select('id,user_id')
     .eq('company_id', companyId)
@@ -252,14 +253,14 @@ export async function POST(request: NextRequest) {
   const toInsert = userIds.filter((userId) => !currentUserIds.has(userId));
 
   if (toDelete.length > 0) {
-    const { error } = await actor.supabase.from('project_members').delete().in('id', toDelete.map((row) => row.id));
+    const { error } = await admin.from('project_members').delete().in('id', toDelete.map((row) => row.id));
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
   }
 
   if (toInsert.length > 0) {
-    const { error } = await actor.supabase.from('project_members').insert(
+    const { error } = await admin.from('project_members').insert(
       toInsert.map((userId) => ({
         company_id: companyId,
         project_id: projectId,
@@ -272,5 +273,23 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  return NextResponse.json({ ok: true });
+  const { data: updatedAssignments, error: updatedAssignmentsError } = await admin
+    .from('project_members')
+    .select('id,company_id,project_id,user_id,created_by,created_at')
+    .eq('company_id', companyId)
+    .eq('project_id', projectId)
+    .order('created_at', { ascending: true })
+    .returns<ProjectMemberRow[]>();
+
+  if (updatedAssignmentsError) {
+    return NextResponse.json({ error: updatedAssignmentsError.message }, { status: 500 });
+  }
+
+  return NextResponse.json({
+    ok: true,
+    assignments: (updatedAssignments ?? []).map((assignment) => ({
+      ...assignment,
+      member: null
+    }))
+  });
 }

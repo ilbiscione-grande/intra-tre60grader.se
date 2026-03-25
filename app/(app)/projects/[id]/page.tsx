@@ -24,7 +24,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { createInvoiceFromOrder } from '@/lib/rpc';
-import { useCompanyMemberOptions, useProjectColumns, useProjectMembers, type ProjectMemberVisual } from '@/features/projects/projectQueries';
+import { useCompanyMemberOptions, useProjectColumns, useProjectMembers, type ProjectMemberAssignment, type ProjectMemberVisual, type ProjectMembersPayload } from '@/features/projects/projectQueries';
 import { applyProjectStatusAutomation } from '@/features/projects/projectAutomation';
 import ProjectFinancePanel from '@/features/projects/ProjectFinancePanel';
 import ProjectFilesPanel from '@/features/projects/ProjectFilesPanel';
@@ -884,12 +884,23 @@ export default function ProjectDetailsPage() {
         body: JSON.stringify({ companyId, projectId, userIds })
       });
 
-      const body = (await res.json().catch(() => null)) as { error?: string } | null;
+      const body = (await res.json().catch(() => null)) as { error?: string; assignments?: ProjectMemberAssignment[] } | null;
       if (!res.ok) {
         throw new Error(body?.error ?? 'Kunde inte uppdatera projektmedlemmar');
       }
+      return body;
     },
-    onSuccess: async () => {
+    onSuccess: async (body) => {
+      if (body?.assignments) {
+        queryClient.setQueryData<ProjectMembersPayload | undefined>(['project-members', companyId], (current) =>
+          current
+            ? {
+                ...current,
+                assignments: body.assignments ?? current.assignments
+              }
+            : current
+        );
+      }
       await queryClient.invalidateQueries({ queryKey: ['project-members', companyId] });
       toast.success('Projektmedlemmar uppdaterade');
     },
