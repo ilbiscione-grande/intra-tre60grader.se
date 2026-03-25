@@ -1,5 +1,3 @@
-import { getUserDisplayName } from '@/features/profile/profileBadge';
-
 type RawMetadata = Record<string, unknown> | null | undefined;
 
 export function getMetadataDisplayName(metadata: RawMetadata) {
@@ -20,11 +18,34 @@ export function resolveUserDisplayName(input: {
   handle?: string | null;
   userId?: string | null;
 }) {
-  return getUserDisplayName({
-    displayName: input.displayName,
-    fullName: getMetadataDisplayName(input.metadata),
-    email: input.email,
-    handle: input.handle,
-    userId: input.userId
-  });
+  const explicitName = typeof input.displayName === 'string' && input.displayName.trim() ? input.displayName.trim() : null;
+  if (explicitName) return explicitName;
+
+  const metadataName = getMetadataDisplayName(input.metadata);
+  if (metadataName) return metadataName;
+
+  if (typeof input.handle === 'string' && input.handle.trim()) {
+    const formatted = input.handle
+      .trim()
+      .split(/[._-]+/)
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ');
+    if (formatted) return formatted;
+  }
+
+  if (typeof input.email === 'string' && input.email.trim()) {
+    const localPart = input.email.trim().split('@')[0]?.trim() ?? '';
+    if (localPart) {
+      const formatted = localPart
+        .split(/[._-]+/)
+        .filter(Boolean)
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(' ');
+      return formatted || localPart;
+    }
+  }
+
+  if (typeof input.userId === 'string' && input.userId.trim()) return input.userId.trim();
+  return 'Okänd användare';
 }
