@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { getUserDisplayName } from '@/features/profile/profileBadge';
 import { createInvoiceFromOrder } from '@/lib/rpc';
 import { createClient } from '@/lib/supabase/client';
 import type { Json, TableRow as DbRow } from '@/lib/supabase/database.types';
@@ -35,6 +36,7 @@ type MemberView = {
   role: Role;
   created_at: string;
   email: string | null;
+  display_name: string | null;
 };
 type OrderTab = 'overview' | 'updates' | 'economy' | 'attachments' | 'members' | 'logs';
 
@@ -752,13 +754,25 @@ export default function OrderDetailsPage() {
                 {members.slice(0, 6).map((member) => (
                   <div key={member.id} className="flex items-center justify-between gap-3 rounded-lg border p-3">
                     <div className="min-w-0">
+                      {(() => {
+                        const memberLabel = getUserDisplayName({
+                          displayName: member.display_name,
+                          email: member.email,
+                          userId: member.user_id
+                        });
+                        return (
+                          <>
                       <div className="flex items-center gap-2">
                         <Users className="h-4 w-4 text-foreground/55" />
-                        <p className="truncate text-sm font-medium">{member.email ?? member.user_id}</p>
+                        <p className="truncate text-sm font-medium">{memberLabel}</p>
                       </div>
+                      {member.email && member.email !== memberLabel ? <p className="mt-1 text-xs text-foreground/55">{member.email}</p> : null}
                       <p className="mt-1 text-xs text-foreground/55">
                         Tillagd {new Date(member.created_at).toLocaleDateString('sv-SE')}
                       </p>
+                          </>
+                        );
+                      })()}
                     </div>
                     <Badge>{roleLabel(member.role)}</Badge>
                   </div>

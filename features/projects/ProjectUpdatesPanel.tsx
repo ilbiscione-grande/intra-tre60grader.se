@@ -40,7 +40,14 @@ function emptyComposer(): ComposerState {
 
 function authorLabel(update: ProjectUpdateRow, currentUserId: string | null, author?: ProjectMemberVisual | null) {
   if (update.created_by && currentUserId && update.created_by === currentUserId) return 'Du';
-  if (author?.email) return author.email;
+  if (author) {
+    return getUserDisplayName({
+      displayName: author.display_name,
+      email: author.email,
+      handle: author.handle,
+      userId: author.user_id
+    });
+  }
   if (update.parent_id) return 'Svar';
   return 'Intern användare';
 }
@@ -564,6 +571,14 @@ export default function ProjectUpdatesPanel({
       signedUrl: attachmentUrlsQuery.data?.[attachment.path]
     }));
     const author = update.created_by ? memberByUserId.get(update.created_by) ?? null : null;
+    const authorBadgeLabel = author
+      ? getUserDisplayName({
+          displayName: author.display_name,
+          email: author.email,
+          handle: author.handle,
+          userId: author.user_id
+        })
+      : update.created_by ?? 'Intern användare';
 
     return (
       <div key={update.id} className={`space-y-3 ${indentClass}`}>
@@ -576,7 +591,7 @@ export default function ProjectUpdatesPanel({
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <ProfileBadge
-                label={author?.email ?? update.created_by ?? 'Intern användare'}
+                label={authorBadgeLabel}
                 color={author?.color}
                 avatarUrl={author?.avatar_url}
                 emoji={author?.emoji}
@@ -688,8 +703,13 @@ export default function ProjectUpdatesPanel({
                         }
                       >
                         <div className="flex min-w-0 items-center gap-2">
-                            <ProfileBadge
-                            label={member.display_name ?? member.email ?? member.user_id}
+                          <ProfileBadge
+                            label={getUserDisplayName({
+                              displayName: member.display_name,
+                              email: member.email,
+                              handle: member.handle,
+                              userId: member.user_id
+                            })}
                             color={member.color}
                             avatarUrl={member.avatar_url}
                             emoji={member.emoji}
@@ -931,8 +951,13 @@ export default function ProjectUpdatesPanel({
                     }
                   >
                     <div className="flex min-w-0 items-center gap-2">
-                        <ProfileBadge
-                        label={member.display_name ?? member.email ?? member.user_id}
+                      <ProfileBadge
+                        label={getUserDisplayName({
+                          displayName: member.display_name,
+                          email: member.email,
+                          handle: member.handle,
+                          userId: member.user_id
+                        })}
                         color={member.color}
                         avatarUrl={member.avatar_url}
                         emoji={member.emoji}

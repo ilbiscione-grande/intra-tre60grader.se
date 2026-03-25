@@ -503,18 +503,24 @@ export default function ProjectTimePanel({
           {hoursByMember.length === 0 ? <p className="text-sm text-foreground/65">Inga timmar ännu.</p> : null}
           {hoursByMember.map(([memberUserId, memberHours]) => {
             const member = memberByUserId.get(memberUserId) ?? null;
+            const memberLabel = getUserDisplayName({
+              displayName: member?.display_name,
+              email: member?.email,
+              handle: member?.handle,
+              userId: memberUserId
+            });
             return (
               <div key={`hours-${memberUserId}`} className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2">
                 <div className="flex min-w-0 items-center gap-2">
                   <ProfileBadge
-                    label={member?.email ?? memberUserId}
+                    label={memberLabel}
                     color={member?.color}
                     avatarUrl={member?.avatar_url}
                     emoji={member?.emoji}
                     className="h-6 w-6 shrink-0"
                     textClassName="text-[10px] font-semibold text-white"
                   />
-                  <p className="truncate text-sm font-medium">{member?.handle ?? member?.email ?? memberUserId}</p>
+                  <p className="truncate text-sm font-medium">{memberLabel}</p>
                 </div>
                 <Badge>{memberHours.toFixed(2)} h</Badge>
               </div>
@@ -534,6 +540,12 @@ export default function ProjectTimePanel({
             const member = memberByUserId.get(entry.user_id) ?? null;
             const task = entry.task_id ? taskById.get(entry.task_id) ?? null : null;
             const canDelete = canManageOthers(role) || entry.user_id === currentUserId;
+            const memberLabel = getUserDisplayName({
+              displayName: member?.display_name,
+              email: member?.email,
+              handle: member?.handle,
+              userId: entry.user_id
+            });
 
             return (
               <div key={entry.id} className="rounded-xl border p-3">
@@ -551,21 +563,14 @@ export default function ProjectTimePanel({
                     </div>
                     <div className="flex items-center gap-2">
                       <ProfileBadge
-                        label={member?.display_name ?? member?.email ?? entry.user_id}
+                        label={memberLabel}
                         color={member?.color}
                         avatarUrl={member?.avatar_url}
                         emoji={member?.emoji}
                         className="h-6 w-6 shrink-0"
                         textClassName="text-[10px] font-semibold text-white"
                       />
-                      <p className="text-sm font-medium">
-                        {getUserDisplayName({
-                          displayName: member?.display_name,
-                          email: member?.email,
-                          handle: member?.handle,
-                          userId: entry.user_id
-                        })}
-                      </p>
+                      <p className="text-sm font-medium">{memberLabel}</p>
                     </div>
                     {entry.note ? <p className="text-sm text-foreground/70">{entry.note}</p> : null}
                   </div>

@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { useProjectColumns, useProjectMembers, useProjectTemplates, type ProjectMemberVisual, type ProjectTemplate } from '@/features/projects/projectQueries';
+import { getUserDisplayName } from '@/features/profile/profileBadge';
 import { createClient } from '@/lib/supabase/client';
 
 type TemplateMilestoneDraft = {
@@ -438,6 +439,12 @@ export default function ProjectTemplatesCard({ companyId }: { companyId: string 
               <div className="grid max-h-56 gap-2 overflow-y-auto rounded-lg border p-2">
                 {filteredMembers.map((member) => {
                   const isSelected = draft.member_user_ids.includes(member.user_id);
+                  const memberLabel = getUserDisplayName({
+                    displayName: member.display_name,
+                    email: member.email,
+                    handle: member.handle,
+                    userId: member.user_id
+                  });
                   return (
                     <button
                       key={member.id}
@@ -456,7 +463,7 @@ export default function ProjectTemplatesCard({ companyId }: { companyId: string 
                     >
                       <div className="flex min-w-0 items-center gap-3">
                         <ProfileBadge
-                          label={member.email ?? member.user_id}
+                          label={memberLabel}
                           color={member.color}
                           avatarUrl={member.avatar_url}
                           emoji={member.emoji}
@@ -464,8 +471,11 @@ export default function ProjectTemplatesCard({ companyId }: { companyId: string 
                           textClassName="text-xs font-semibold text-white"
                         />
                         <div className="min-w-0">
-                          <p className="truncate text-sm font-medium">{member.email ?? member.user_id}</p>
-                          <p className="text-xs text-foreground/55">{member.role}</p>
+                          <p className="truncate text-sm font-medium">{memberLabel}</p>
+                          <p className="text-xs text-foreground/55">
+                            {member.role}
+                            {member.email && member.email !== memberLabel ? ` • ${member.email}` : ''}
+                          </p>
                         </div>
                       </div>
                       <span className="text-xs font-medium text-foreground/70">{isSelected ? 'Vald' : 'Lägg till'}</span>
@@ -618,7 +628,14 @@ export default function ProjectTemplatesCard({ companyId }: { companyId: string 
                           <SelectContent>
                             <SelectItem value="none">Ingen ansvarig</SelectItem>
                             {availableMembers.map((member) => (
-                              <SelectItem key={member.user_id} value={member.user_id}>{member.email ?? member.user_id}</SelectItem>
+                              <SelectItem key={member.user_id} value={member.user_id}>
+                                {getUserDisplayName({
+                                  displayName: member.display_name,
+                                  email: member.email,
+                                  handle: member.handle,
+                                  userId: member.user_id
+                                })}
+                              </SelectItem>
                             ))}
                           </SelectContent>
                         </Select>

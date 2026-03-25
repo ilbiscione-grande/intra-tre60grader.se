@@ -1796,7 +1796,12 @@ export default function ProjectDetailsPage() {
                 <div className="flex flex-wrap gap-3">
                   {filteredAvailableMembers.map((member) => {
                     const isAssigned = assignedUserIds.has(member.user_id);
-                    const label = member.display_name ?? member.email ?? member.handle ?? member.user_id;
+                    const label = getUserDisplayName({
+                      displayName: member.display_name,
+                      email: member.email,
+                      handle: member.handle,
+                      userId: member.user_id
+                    });
                     return (
                       <button
                         key={member.id}
