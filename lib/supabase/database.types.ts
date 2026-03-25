@@ -1273,6 +1273,76 @@ export type Database = {
           },
         ]
       }
+      project_active_timers: {
+        Row: {
+          accumulated_ms: number
+          company_id: string
+          created_at: string
+          id: string
+          note: string | null
+          paused_at: string | null
+          project_id: string
+          project_title: string
+          started_at: string
+          task_id: string | null
+          task_title: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          accumulated_ms?: number
+          company_id: string
+          created_at?: string
+          id?: string
+          note?: string | null
+          paused_at?: string | null
+          project_id: string
+          project_title: string
+          started_at?: string
+          task_id?: string | null
+          task_title?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          accumulated_ms?: number
+          company_id?: string
+          created_at?: string
+          id?: string
+          note?: string | null
+          paused_at?: string | null
+          project_id?: string
+          project_title?: string
+          started_at?: string
+          task_id?: string | null
+          task_title?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_active_timers_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_active_timers_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_active_timers_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "project_tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       project_templates: {
         Row: {
           company_id: string

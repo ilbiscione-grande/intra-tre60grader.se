@@ -5,6 +5,7 @@ import DesktopShell from '@/components/layout/DesktopShell';
 import MobileShell from '@/components/layout/MobileShell';
 import AutoSync from '@/components/common/AutoSync';
 import { useAppPreferences } from '@/components/providers/AppPreferencesProvider';
+import { TimeTrackerProvider } from '@/components/providers/TimeTrackerProvider';
 import type { Role } from '@/lib/types';
 import { useBreakpointMode } from '@/lib/ui/useBreakpointMode';
 
@@ -35,7 +36,9 @@ export default function AppShell({
     return (
       <>
         <AutoSync />
-        <div className="min-h-screen bg-background">{children}</div>
+        <TimeTrackerProvider>
+          <div className="min-h-screen bg-background">{children}</div>
+        </TimeTrackerProvider>
       </>
     );
   }
@@ -44,9 +47,11 @@ export default function AppShell({
     return (
       <>
         <AutoSync />
-        <MobileShell role={role} companyName={companyName} userEmail={userEmail}>
-          {children}
-        </MobileShell>
+        <TimeTrackerProvider>
+          <MobileShell role={role} companyName={companyName} userEmail={userEmail}>
+            {children}
+          </MobileShell>
+        </TimeTrackerProvider>
       </>
     );
   }
@@ -54,9 +59,11 @@ export default function AppShell({
   return (
     <>
       <AutoSync />
-      <DesktopShell role={role} companyName={companyName} userEmail={userEmail}>
-        {children}
-      </DesktopShell>
+      <TimeTrackerProvider>
+        <DesktopShell role={role} companyName={companyName} userEmail={userEmail}>
+          {children}
+        </DesktopShell>
+      </TimeTrackerProvider>
     </>
   );
 }

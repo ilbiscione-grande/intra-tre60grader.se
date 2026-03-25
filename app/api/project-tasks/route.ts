@@ -228,7 +228,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: taskMembersResult.error }, { status: taskMembersResult.status });
   }
 
-  return NextResponse.json({ ok: true, taskMembers: taskMembersResult.assignments ?? [] });
+  return NextResponse.json({
+    ok: true,
+    task: {
+      id: task.id,
+      title
+    },
+    taskMembers: taskMembersResult.assignments ?? []
+  });
 }
 
 export async function PATCH(request: NextRequest) {

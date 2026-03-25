@@ -3,9 +3,10 @@
 import Link from 'next/link';
 import type { Route } from 'next';
 import { useRouter } from 'next/navigation';
-import { FilePlus2, FolderPlus, Plus, UserPlus } from 'lucide-react';
+import { FilePlus2, FolderPlus, Plus, Timer, UserPlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { useTimeTracker } from '@/components/providers/TimeTrackerProvider';
 import { canAccessCustomers } from '@/lib/auth/navigation';
 import { canWriteFinance } from '@/lib/auth/capabilities';
 import type { Capability, Role } from '@/lib/types';
@@ -49,6 +50,7 @@ export default function QuickCreateMenu({
 }) {
   const visibleItems = items.filter((item) => item.visible(role, capabilities));
   const router = useRouter();
+  const { openStartDialog } = useTimeTracker();
 
   return (
     <DropdownMenu modal={false}>
@@ -70,6 +72,17 @@ export default function QuickCreateMenu({
         collisionPadding={12}
         className="z-[1000] w-[220px]"
       >
+        <DropdownMenuItem
+          onSelect={(event) => {
+            event.preventDefault();
+            openStartDialog();
+          }}
+        >
+          <div className="flex items-center gap-2">
+            <Timer className="h-4 w-4" />
+            <span>Ny tidrapportering</span>
+          </div>
+        </DropdownMenuItem>
         {visibleItems.length === 0 ? (
           <div className="px-2 py-3 text-sm text-foreground/65">Inga genvägar tillgängliga.</div>
         ) : null}
