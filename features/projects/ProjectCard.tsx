@@ -513,20 +513,37 @@ export default function ProjectCard({
                   >
                     <div className="flex min-w-0 items-center gap-2">
                       <ProfileBadge
-                        label={member.display_name ?? member.email ?? member.user_id}
+                        label={getUserDisplayName({
+                          displayName: member.display_name,
+                          email: member.email,
+                          handle: member.handle,
+                          userId: member.user_id
+                        })}
                         color={member.color}
                         avatarUrl={member.avatar_url}
                         emoji={member.emoji}
                         className="h-6 w-6 shrink-0"
                         textClassName="text-[10px] font-semibold text-white"
                       />
-                      <span className="truncate text-xs text-foreground">{member.display_name ?? member.email ?? member.handle ?? member.user_id}</span>
+                      <span className="truncate text-xs text-foreground">
+                        {getUserDisplayName({
+                          displayName: member.display_name,
+                          email: member.email,
+                          handle: member.handle,
+                          userId: member.user_id
+                        })}
+                      </span>
                     </div>
                     {canManageMembers ? (
                       <button
                         type="button"
                         className="inline-flex h-7 w-7 items-center justify-center rounded-md text-foreground/55 transition hover:bg-muted hover:text-foreground disabled:opacity-50"
-                        aria-label={`Ta bort ${member.display_name ?? member.email ?? member.user_id}`}
+                        aria-label={`Ta bort ${getUserDisplayName({
+                          displayName: member.display_name,
+                          email: member.email,
+                          handle: member.handle,
+                          userId: member.user_id
+                        })}`}
                         disabled={removeMemberMutation.isPending}
                         onClick={(event) => {
                           event.preventDefault();
@@ -560,14 +577,26 @@ export default function ProjectCard({
                       >
                         <div className="flex min-w-0 items-center gap-2">
                           <ProfileBadge
-                            label={member.display_name ?? member.email ?? member.user_id}
+                            label={getUserDisplayName({
+                              displayName: member.display_name,
+                              email: member.email,
+                              handle: member.handle,
+                              userId: member.user_id
+                            })}
                             color={member.color}
                             avatarUrl={member.avatar_url}
                             emoji={member.emoji}
                             className="h-6 w-6 shrink-0"
                             textClassName="text-[10px] font-semibold text-white"
                           />
-                          <span className="truncate text-xs text-foreground">{member.display_name ?? member.email ?? member.handle ?? member.user_id}</span>
+                          <span className="truncate text-xs text-foreground">
+                            {getUserDisplayName({
+                              displayName: member.display_name,
+                              email: member.email,
+                              handle: member.handle,
+                              userId: member.user_id
+                            })}
+                          </span>
                         </div>
                         <span className="text-xs text-foreground/55">Lägg till</span>
                       </button>

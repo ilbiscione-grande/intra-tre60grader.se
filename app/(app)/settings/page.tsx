@@ -255,24 +255,38 @@ export default function SettingsPage() {
         await removeProfileAvatar(ownProfileBadgeQuery.data.avatarPath);
       }
 
-      const { error } = await supabase.from('user_company_preferences').upsert(
-        {
-          company_id: companyId,
-          user_id: user.id,
-          preference_key: PROFILE_BADGE_PREFERENCE_KEY,
-          preference_value: {
-            color: profileColor,
-            avatar_path: avatarPath,
-            emoji: profileEmoji,
-            display_name: profileDisplayName.trim() || null
-          }
-        },
-        {
-          onConflict: 'company_id,user_id,preference_key'
-        }
-      );
+      const trimmedDisplayName = profileDisplayName.trim() || null;
 
-      if (error) throw error;
+      const [preferenceResult, profileResult] = await Promise.all([
+        supabase.from('user_company_preferences').upsert(
+          {
+            company_id: companyId,
+            user_id: user.id,
+            preference_key: PROFILE_BADGE_PREFERENCE_KEY,
+            preference_value: {
+              color: profileColor,
+              avatar_path: avatarPath,
+              emoji: profileEmoji
+            }
+          },
+          {
+            onConflict: 'company_id,user_id,preference_key'
+          }
+        ),
+        (supabase as any).from('profiles').upsert(
+          {
+            id: user.id,
+            email: currentUserQuery.data?.email ?? null,
+            full_name: trimmedDisplayName
+          },
+          {
+            onConflict: 'id'
+          }
+        )
+      ]);
+
+      if (preferenceResult.error) throw preferenceResult.error;
+      if (profileResult.error) throw profileResult.error;
     },
     onSuccess: async () => {
       setProfileFile(null);

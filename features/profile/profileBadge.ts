@@ -105,17 +105,25 @@ export function useOwnProfileBadge(companyId: string) {
         return { color: DEFAULT_PROFILE_BADGE_COLOR, avatarPath: null, avatarUrl: null, emoji: null, displayName: null };
       }
 
-      const { data, error } = await supabase
-        .from('user_company_preferences')
-        .select('preference_value')
-        .eq('company_id', companyId)
-        .eq('user_id', user.id)
-        .eq('preference_key', PROFILE_BADGE_PREFERENCE_KEY)
-        .maybeSingle<{ preference_value: Json }>();
+      const [prefResult, profileResult] = await Promise.all([
+        supabase
+          .from('user_company_preferences')
+          .select('preference_value')
+          .eq('company_id', companyId)
+          .eq('user_id', user.id)
+          .eq('preference_key', PROFILE_BADGE_PREFERENCE_KEY)
+          .maybeSingle<{ preference_value: Json }>(),
+        (supabase as any).from('profiles').select('full_name').eq('id', user.id).maybeSingle()
+      ]);
 
-      if (error) throw error;
+      if (prefResult.error) throw prefResult.error;
+      if (profileResult.error) throw profileResult.error;
 
-      const pref = parsePreference(data?.preference_value);
+      const pref = parsePreference(prefResult.data?.preference_value);
+      const profileFullName =
+        typeof profileResult.data?.full_name === 'string' && profileResult.data.full_name.trim()
+          ? profileResult.data.full_name.trim()
+          : null;
       let avatarUrl: string | null = null;
 
       if (pref.avatarPath) {
@@ -132,7 +140,7 @@ export function useOwnProfileBadge(companyId: string) {
         avatarPath: pref.avatarPath,
         avatarUrl,
         emoji: pref.emoji,
-        displayName: pref.displayName
+        displayName: profileFullName ?? pref.displayName
       };
     },
     staleTime: 1000 * 60 * 15
