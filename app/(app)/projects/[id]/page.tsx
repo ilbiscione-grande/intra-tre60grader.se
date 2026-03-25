@@ -312,6 +312,8 @@ export default function ProjectDetailsPage() {
 
   const projectQuery = useQuery<ProjectRow | null>({
     queryKey: ['project', companyId, projectId],
+    refetchInterval: activeTab === 'members' ? 10000 : false,
+    refetchIntervalInBackground: false,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('projects')
@@ -469,6 +471,8 @@ export default function ProjectDetailsPage() {
   const companyMemberOptionsQuery = useCompanyMemberOptions(companyId);
   const projectMemberAssignmentsQuery = useQuery<ProjectMemberAssignmentRow[]>({
     queryKey: ['project-member-assignments', companyId, projectId],
+    refetchInterval: activeTab === 'members' ? 8000 : false,
+    refetchIntervalInBackground: false,
     queryFn: async () => {
       const res = await fetch(
         `/api/project-members?companyId=${encodeURIComponent(companyId)}&projectId=${encodeURIComponent(projectId)}`
