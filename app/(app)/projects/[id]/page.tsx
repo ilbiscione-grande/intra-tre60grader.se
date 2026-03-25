@@ -275,7 +275,6 @@ export default function ProjectDetailsPage() {
   const [memberRoleFilter, setMemberRoleFilter] = useState<'all' | Role>('all');
   const [optimisticAssignedUserIds, setOptimisticAssignedUserIds] = useState<string[] | null>(null);
   const hasAutoOpenedPlanningRef = useRef(false);
-  const lastSubmittedAssignedUserIdsRef = useRef<string[] | null>(null);
   const swipeHandlers = useSwipeTabs({
     tabs: projectTabs.map((tab) => tab.id),
     activeTab,
@@ -784,19 +783,28 @@ export default function ProjectDetailsPage() {
     return counts;
   }, [invoiceSourceCountsQuery.data]);
 
-  const saveProjectMembersMutation = useMutation({
-    mutationFn: async (userIds: string[]) => {
-      const res = await fetch('/api/project-members', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          companyId,
-          projectId,
-          userIds
-        })
-      });
+  const syncProjectMemberMutation = useMutation({
+    mutationFn: async ({ action, userId }: { action: 'add' | 'remove'; userId: string }) => {
+      const res = await fetch(
+        action === 'add'
+          ? '/api/project-members'
+          : `/api/project-members?companyId=${encodeURIComponent(companyId)}&projectId=${encodeURIComponent(projectId)}&userId=${encodeURIComponent(userId)}`,
+        action === 'add'
+          ? {
+              method: 'PATCH',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                companyId,
+                projectId,
+                userId
+              })
+            }
+          : {
+              method: 'DELETE'
+            }
+      );
       const body = (await res.json().catch(() => null)) as
         | { error?: string; assignments?: ProjectMemberAssignmentRow[] }
         | null;
@@ -808,6 +816,7 @@ export default function ProjectDetailsPage() {
     onSuccess: async (assignments) => {
       queryClient.setQueryData<ProjectMemberAssignmentRow[]>(['project-member-assignments', companyId, projectId], assignments);
       await queryClient.invalidateQueries({ queryKey: ['project-member-assignments', companyId, projectId] });
+      await queryClient.invalidateQueries({ queryKey: ['project-members', companyId] });
     },
     onError: (error) => {
       toast.error(getErrorMessage(error, 'Kunde inte uppdatera projektmedlemmar'));
@@ -917,26 +926,28 @@ export default function ProjectDetailsPage() {
     const desiredAssignedUserIds = optimisticAssignedUserIds;
 
     if (!desiredAssignedUserIds) {
-      lastSubmittedAssignedUserIdsRef.current = null;
       return;
     }
 
     if (sameUserIdList(desiredAssignedUserIds, serverAssignedUserIds)) {
-      lastSubmittedAssignedUserIdsRef.current = null;
       setOptimisticAssignedUserIds(null);
       return;
     }
 
-    if (saveProjectMembersMutation.isPending) return;
-    if (lastSubmittedAssignedUserIdsRef.current && sameUserIdList(lastSubmittedAssignedUserIdsRef.current, desiredAssignedUserIds)) return;
+    if (syncProjectMemberMutation.isPending) return;
 
-    lastSubmittedAssignedUserIdsRef.current = desiredAssignedUserIds;
-    saveProjectMembersMutation.mutate(desiredAssignedUserIds, {
+    const nextAdd = desiredAssignedUserIds.find((userId) => !serverAssignedUserIds.includes(userId));
+    const nextRemove = serverAssignedUserIds.find((userId) => !desiredAssignedUserIds.includes(userId));
+    const nextOperation = nextAdd ? { action: 'add' as const, userId: nextAdd } : nextRemove ? { action: 'remove' as const, userId: nextRemove } : null;
+
+    if (!nextOperation) return;
+
+    syncProjectMemberMutation.mutate(nextOperation, {
       onSuccess: () => {
         toast.success('Projektmedlemmar uppdaterade');
       }
     });
-  }, [optimisticAssignedUserIds, saveProjectMembersMutation, serverAssignedUserIds]);
+  }, [optimisticAssignedUserIds, serverAssignedUserIds, syncProjectMemberMutation]);
 
   function submitProjectMemberSelection(nextUserIds: string[]) {
     const normalized = normalizeUserIdList(nextUserIds);

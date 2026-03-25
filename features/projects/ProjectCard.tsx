@@ -123,16 +123,10 @@ export default function ProjectCard({
 
   const removeMemberMutation = useMutation({
     mutationFn: async (userId: string) => {
-      const nextUserIds = members.filter((member) => member.user_id !== userId).map((member) => member.user_id);
-      const res = await fetch('/api/project-members', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          companyId: project.company_id,
-          projectId: project.id,
-          userIds: nextUserIds
-        })
-      });
+      const res = await fetch(
+        `/api/project-members?companyId=${encodeURIComponent(project.company_id)}&projectId=${encodeURIComponent(project.id)}&userId=${encodeURIComponent(userId)}`,
+        { method: 'DELETE' }
+      );
 
       const body = (await res.json().catch(() => null)) as { error?: string } | null;
       if (!res.ok) {
@@ -169,14 +163,13 @@ export default function ProjectCard({
 
   const addMemberMutation = useMutation({
     mutationFn: async (userId: string) => {
-      const nextUserIds = Array.from(new Set([...members.map((member) => member.user_id), userId]));
       const res = await fetch('/api/project-members', {
-        method: 'POST',
+        method: 'PATCH',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           companyId: project.company_id,
           projectId: project.id,
-          userIds: nextUserIds
+          userId
         })
       });
 

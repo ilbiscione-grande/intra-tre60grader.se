@@ -143,6 +143,29 @@ async function buildMemberRecords(companyId: string) {
   );
 }
 
+async function listAssignmentsWithMembers(companyId: string, projectId: string) {
+  const admin = createAdminClient();
+  const [{ data: assignments, error: assignmentError }, memberRecords] = await Promise.all([
+    admin
+      .from('project_members')
+      .select('id,company_id,project_id,user_id,created_by,created_at')
+      .eq('company_id', companyId)
+      .eq('project_id', projectId)
+      .order('created_at', { ascending: true })
+      .returns<ProjectMemberRow[]>(),
+    buildMemberRecords(companyId)
+  ]);
+
+  if (assignmentError) {
+    throw new Error(assignmentError.message);
+  }
+
+  return (assignments ?? []).map((assignment) => ({
+    ...assignment,
+    member: memberRecords.find((member) => member.user_id === assignment.user_id) ?? null
+  }));
+}
+
 function parseProfilePreference(value: Json | null | undefined) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return { color: DEFAULT_PROFILE_BADGE_COLOR, avatarPath: null as string | null, emoji: null as string | null, displayName: null as string | null };
@@ -207,20 +230,18 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: assignmentError.message ?? 'Kunde inte läsa projektmedlemmar' }, { status: 500 });
   }
 
-  let memberRecords;
   try {
-    memberRecords = await buildMemberRecords(companyId);
+    const memberRecords = await buildMemberRecords(companyId);
+    return NextResponse.json({
+      availableMembers: memberRecords,
+      assignments: (assignments ?? []).map((assignment) => ({
+        ...assignment,
+        member: memberRecords.find((member) => member.user_id === assignment.user_id) ?? null
+      }))
+    });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Kunde inte läsa projektmedlemmar' }, { status: 500 });
   }
-
-  return NextResponse.json({
-    availableMembers: memberRecords,
-    assignments: (assignments ?? []).map((assignment) => ({
-      ...assignment,
-      member: memberRecords.find((member) => member.user_id === assignment.user_id) ?? null
-    }))
-  });
 }
 
 export async function POST(request: NextRequest) {
@@ -313,30 +334,122 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  const { data: updatedAssignments, error: updatedAssignmentsError } = await admin
-    .from('project_members')
-    .select('id,company_id,project_id,user_id,created_by,created_at')
-    .eq('company_id', companyId)
-    .eq('project_id', projectId)
-    .order('created_at', { ascending: true })
-    .returns<ProjectMemberRow[]>();
-
-  if (updatedAssignmentsError) {
-    return NextResponse.json({ error: updatedAssignmentsError.message }, { status: 500 });
-  }
-
-  let memberRecords;
   try {
-    memberRecords = await buildMemberRecords(companyId);
+    const assignmentsWithMembers = await listAssignmentsWithMembers(companyId, projectId);
+    return NextResponse.json({
+      ok: true,
+      assignments: assignmentsWithMembers
+    });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Kunde inte läsa projektmedlemmar' }, { status: 500 });
   }
+}
 
-  return NextResponse.json({
-    ok: true,
-    assignments: (updatedAssignments ?? []).map((assignment) => ({
-      ...assignment,
-      member: memberRecords.find((member) => member.user_id === assignment.user_id) ?? null
-    }))
-  });
+export async function PATCH(request: NextRequest) {
+  const body = (await request.json().catch(() => null)) as
+    | { companyId?: string; projectId?: string; userId?: string }
+    | null;
+
+  const companyId = body?.companyId;
+  const projectId = body?.projectId;
+  const userId = body?.userId;
+
+  if (!companyId || !projectId || !userId) {
+    return NextResponse.json({ error: 'companyId, projectId and userId required' }, { status: 400 });
+  }
+
+  const actor = await getActor(companyId);
+  if (!actor.ok) {
+    return NextResponse.json({ error: actor.error }, { status: actor.status });
+  }
+
+  if (!['admin', 'member', 'finance'].includes(actor.member.role)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
+  const admin = createAdminClient();
+
+  const { data: existingMember, error: existingMemberError } = await admin
+    .from('company_members')
+    .select('user_id')
+    .eq('company_id', companyId)
+    .eq('user_id', userId)
+    .maybeSingle<Pick<CompanyMemberRow, 'user_id'>>();
+
+  if (existingMemberError) {
+    return NextResponse.json({ error: existingMemberError.message }, { status: 500 });
+  }
+  if (!existingMember) {
+    return NextResponse.json({ error: 'Användaren saknas i bolaget' }, { status: 400 });
+  }
+
+  const { data: existingAssignment, error: existingAssignmentError } = await admin
+    .from('project_members')
+    .select('id')
+    .eq('company_id', companyId)
+    .eq('project_id', projectId)
+    .eq('user_id', userId)
+    .maybeSingle<Pick<ProjectMemberRow, 'id'>>();
+
+  if (existingAssignmentError) {
+    return NextResponse.json({ error: existingAssignmentError.message }, { status: 500 });
+  }
+
+  if (!existingAssignment) {
+    const { error } = await admin.from('project_members').insert({
+      company_id: companyId,
+      project_id: projectId,
+      user_id: userId,
+      created_by: actor.user.id
+    });
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+  }
+
+  try {
+    const assignmentsWithMembers = await listAssignmentsWithMembers(companyId, projectId);
+    return NextResponse.json({ ok: true, assignments: assignmentsWithMembers });
+  } catch (readError) {
+    return NextResponse.json({ error: readError instanceof Error ? readError.message : 'Kunde inte läsa projektmedlemmar' }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  const companyId = request.nextUrl.searchParams.get('companyId');
+  const projectId = request.nextUrl.searchParams.get('projectId');
+  const userId = request.nextUrl.searchParams.get('userId');
+
+  if (!companyId || !projectId || !userId) {
+    return NextResponse.json({ error: 'companyId, projectId and userId required' }, { status: 400 });
+  }
+
+  const actor = await getActor(companyId);
+  if (!actor.ok) {
+    return NextResponse.json({ error: actor.error }, { status: actor.status });
+  }
+
+  if (!['admin', 'member', 'finance'].includes(actor.member.role)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
+  const admin = createAdminClient();
+  const { error } = await admin
+    .from('project_members')
+    .delete()
+    .eq('company_id', companyId)
+    .eq('project_id', projectId)
+    .eq('user_id', userId);
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  try {
+    const assignmentsWithMembers = await listAssignmentsWithMembers(companyId, projectId);
+    return NextResponse.json({ ok: true, assignments: assignmentsWithMembers });
+  } catch (readError) {
+    return NextResponse.json({ error: readError instanceof Error ? readError.message : 'Kunde inte läsa projektmedlemmar' }, { status: 500 });
+  }
 }
