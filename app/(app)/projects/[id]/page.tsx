@@ -1792,15 +1792,16 @@ export default function ProjectDetailsPage() {
                     Rensa
                   </Button>
                 </div>
-                <div className="grid gap-2 md:grid-cols-2">
+                <div className="flex flex-wrap gap-3">
                   {filteredAvailableMembers.map((member) => {
                     const isAssigned = assignedUserIds.has(member.user_id);
+                    const label = member.display_name ?? member.email ?? member.handle ?? member.user_id;
                     return (
                       <button
                         key={member.id}
                         type="button"
-                        className={`flex items-center justify-between gap-3 rounded-lg border p-3 text-left transition ${
-                          isAssigned ? 'border-primary bg-primary/5' : 'border-border'
+                        className={`flex w-[84px] flex-col items-center gap-1.5 rounded-2xl px-1 py-1.5 text-center transition ${
+                          isAssigned ? 'bg-primary/8 text-foreground' : 'text-foreground/80 hover:bg-muted/40'
                         }`}
                         disabled={saveProjectMembersMutation.isPending}
                         onClick={() => {
@@ -1809,22 +1810,29 @@ export default function ProjectDetailsPage() {
                           else next.add(member.user_id);
                           saveProjectMembersMutation.mutate(Array.from(next));
                         }}
+                        title={label}
                       >
-                        <div className="flex min-w-0 items-center gap-3">
+                        <div className="relative">
                           <ProfileBadge
-                            label={member.email ?? member.user_id}
+                            label={label}
                             color={member.color}
                             avatarUrl={member.avatar_url}
                             emoji={member.emoji}
-                            className="h-8 w-8 shrink-0"
+                            className={`h-11 w-11 shrink-0 ring-2 transition ${
+                              isAssigned ? 'ring-primary' : 'ring-transparent'
+                            }`}
                             textClassName="text-xs font-semibold text-white"
                           />
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-medium">{member.email ?? member.user_id}</p>
-                            <p className="text-xs text-foreground/55">{roleLabel(member.role)}</p>
-                          </div>
+                          <span
+                            className={`absolute -right-1 -top-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full border border-background text-[10px] font-semibold ${
+                              isAssigned ? 'bg-primary text-primary-foreground' : 'bg-muted text-foreground/55'
+                            }`}
+                          >
+                            {isAssigned ? '✓' : '+'}
+                          </span>
                         </div>
-                        <Badge>{isAssigned ? 'Tilldelad' : 'Lägg till'}</Badge>
+                        <span className="line-clamp-2 text-[11px] font-medium leading-tight">{label}</span>
+                        <span className="text-[10px] uppercase tracking-[0.12em] text-foreground/45">{roleLabel(member.role)}</span>
                       </button>
                     );
                   })}

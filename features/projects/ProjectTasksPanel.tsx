@@ -133,15 +133,21 @@ function TaskMemberPicker({
         <p className="text-xs text-foreground/60">Välj en eller flera medlemmar som ska vara kopplade till uppgiften.</p>
         <Badge>{selectedUserIds.length} valda</Badge>
       </div>
-      <div className="grid gap-2 md:grid-cols-2">
+      <div className="flex flex-wrap gap-3">
         {members.map((member) => {
           const selected = selectedUserIdSet.has(member.user_id);
+          const label = getUserDisplayName({
+            displayName: member.display_name,
+            email: member.email,
+            handle: member.handle,
+            userId: member.user_id
+          });
           return (
             <button
               key={member.user_id}
               type="button"
-              className={`flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left transition ${
-                selected ? 'border-primary bg-primary/5' : 'border-border bg-background'
+              className={`flex w-[72px] flex-col items-center gap-1.5 rounded-2xl px-1 py-1.5 text-center transition ${
+                selected ? 'bg-primary/8 text-foreground' : 'text-foreground/80 hover:bg-muted/40'
               }`}
               onClick={() => {
                 const next = new Set(selectedUserIds);
@@ -149,29 +155,28 @@ function TaskMemberPicker({
                 else next.add(member.user_id);
                 onChange(Array.from(next));
               }}
+              title={label}
             >
-              <div className="flex min-w-0 items-center gap-3">
+              <div className="relative">
                 <ProfileBadge
-                  label={member.display_name ?? member.email ?? member.user_id}
+                  label={label}
                   color={member.color}
                   avatarUrl={member.avatar_url}
                   emoji={member.emoji}
-                  className="h-8 w-8 shrink-0"
+                  className={`h-11 w-11 shrink-0 ring-2 transition ${
+                    selected ? 'ring-primary' : 'ring-transparent'
+                  }`}
                   textClassName="text-xs font-semibold text-white"
                 />
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">
-                    {getUserDisplayName({
-                      displayName: member.display_name,
-                      email: member.email,
-                      handle: member.handle,
-                      userId: member.user_id
-                    })}
-                  </p>
-                  <p className="text-xs text-foreground/55">{member.role}</p>
-                </div>
+                <span
+                  className={`absolute -right-1 -top-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full border border-background text-[10px] font-semibold ${
+                    selected ? 'bg-primary text-primary-foreground' : 'bg-muted text-foreground/55'
+                  }`}
+                >
+                  {selected ? '✓' : '+'}
+                </span>
               </div>
-              <Badge>{selected ? 'Tillagd' : 'Lägg till'}</Badge>
+              <span className="line-clamp-2 text-[11px] font-medium leading-tight">{label}</span>
             </button>
           );
         })}
