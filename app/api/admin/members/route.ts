@@ -168,10 +168,11 @@ export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => null);
   const companyId = body?.companyId as string | undefined;
   const email = body?.email as string | undefined;
+  const displayName = body?.displayName as string | undefined;
   const role = body?.role;
 
-  if (!companyId || !email || !isAllowedRole(role)) {
-    return NextResponse.json({ error: 'companyId, email and valid role are required' }, { status: 400 });
+  if (!companyId || !email || !displayName?.trim() || !isAllowedRole(role)) {
+    return NextResponse.json({ error: 'companyId, displayName, email and valid role are required' }, { status: 400 });
   }
 
   const auth = await requireTeamManager(companyId);
@@ -200,13 +201,19 @@ export async function POST(request: NextRequest) {
   }
 
   const normalizedEmail = email.trim().toLowerCase();
+  const normalizedDisplayName = displayName.trim();
   let user = await findUserByEmail(normalizedEmail);
   let invited = false;
 
   if (!user) {
     const admin = createAdminClient();
     const { data: inviteData, error: inviteError } = await admin.auth.admin.inviteUserByEmail(normalizedEmail, {
-      redirectTo: `${request.nextUrl.origin}/auth/callback`
+      redirectTo: `${request.nextUrl.origin}/auth/callback`,
+      data: {
+        display_name: normalizedDisplayName,
+        full_name: normalizedDisplayName,
+        name: normalizedDisplayName
+      }
     });
 
     if (inviteError) {
@@ -233,6 +240,37 @@ export async function POST(request: NextRequest) {
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  const { data: existingPreference } = await supabase
+    .from('user_company_preferences')
+    .select('id,preference_value')
+    .eq('company_id', companyId)
+    .eq('user_id', user.id)
+    .eq('preference_key', PROFILE_BADGE_PREFERENCE_KEY)
+    .maybeSingle<Pick<UserPreferenceRow, 'id' | 'preference_value'>>();
+
+  const basePreference =
+    existingPreference?.preference_value && typeof existingPreference.preference_value === 'object' && !Array.isArray(existingPreference.preference_value)
+      ? (existingPreference.preference_value as Record<string, unknown>)
+      : {};
+
+  const { error: preferenceError } = await supabase.from('user_company_preferences').upsert(
+    {
+      id: existingPreference?.id,
+      company_id: companyId,
+      user_id: user.id,
+      preference_key: PROFILE_BADGE_PREFERENCE_KEY,
+      preference_value: {
+        ...basePreference,
+        display_name: normalizedDisplayName
+      }
+    },
+    { onConflict: 'company_id,user_id,preference_key' }
+  );
+
+  if (preferenceError) {
+    return NextResponse.json({ error: preferenceError.message }, { status: 500 });
   }
 
   await safeLogSecurityEvent({

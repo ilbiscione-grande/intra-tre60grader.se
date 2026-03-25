@@ -65,6 +65,7 @@ function accessSummary(role: Role, capabilities: Capability[]) {
 export default function TeamPage() {
   const { role, companyId, userEmail, capabilities } = useAppContext();
   const queryClient = useQueryClient();
+  const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
   const [newRole, setNewRole] = useState<Role>('member');
   const [pendingCapabilityByUser, setPendingCapabilityByUser] = useState<Record<string, Capability>>({});
@@ -114,13 +115,15 @@ export default function TeamPage() {
 
   const addMutation = useMutation({
     mutationFn: async () => {
+      const cleanName = displayName.trim();
       const cleanEmail = email.trim().toLowerCase();
+      if (!cleanName) throw new Error('Namn krävs');
       if (!cleanEmail) throw new Error('E-post krävs');
 
       const res = await fetch('/api/admin/members', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ companyId, email: cleanEmail, role: newRole })
+        body: JSON.stringify({ companyId, email: cleanEmail, displayName: cleanName, role: newRole })
       });
 
       if (!res.ok) {
@@ -131,6 +134,7 @@ export default function TeamPage() {
       return (await res.json()) as { ok: boolean; invited?: boolean };
     },
     onSuccess: async (result) => {
+      setDisplayName('');
       setEmail('');
       setNewRole('member');
       await queryClient.invalidateQueries({ queryKey: ['team-members', companyId] });
@@ -290,7 +294,13 @@ export default function TeamPage() {
           </CardHeader>
           <CardContent className="space-y-3">
             <p className="text-sm text-foreground/70">Lägg till medlem via e-post och välj roll. Om användaren inte finns skickas en inbjudan automatiskt.</p>
-            <div className="grid gap-2 md:grid-cols-3">
+            <div className="grid gap-2 md:grid-cols-4">
+              <Input
+                placeholder="Fullständigt namn"
+                value={displayName}
+                onChange={(event) => setDisplayName(event.target.value)}
+                className="md:col-span-1"
+              />
               <Input
                 placeholder="user@company.com"
                 type="email"
