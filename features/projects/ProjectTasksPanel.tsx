@@ -356,7 +356,8 @@ export default function ProjectTasksPanel({
   const updateTaskMutation = useMutation({
     mutationFn: async ({
       taskId,
-      patch
+      patch,
+      memberUserIds
     }: {
       taskId: string;
       patch: Partial<Pick<ProjectTaskRow, 'status' | 'priority' | 'due_date' | 'assignee_user_id' | 'milestone_id' | 'subtasks'>>;
@@ -367,12 +368,23 @@ export default function ProjectTasksPanel({
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ companyId, taskId, patch, memberUserIds })
       });
-      const body = (await res.json().catch(() => null)) as { error?: string } | null;
+      const body = (await res.json().catch(() => null)) as { error?: string; taskMembers?: ProjectTaskMemberRow[] } | null;
       if (!res.ok) throw new Error(body?.error ?? 'Kunde inte uppdatera uppgift');
+      return { body, taskId, memberUserIds };
     },
-    onSuccess: async () => {
+    onSuccess: async ({ body, taskId, memberUserIds }) => {
+      const nextTaskMembers = Array.isArray(body?.taskMembers) ? body.taskMembers : null;
+      if (Array.isArray(memberUserIds) && nextTaskMembers) {
+        queryClient.setQueryData<ProjectTaskMemberRow[]>(['project-task-members', companyId, projectId], (current) => {
+          const rest = (current ?? []).filter((assignment) => assignment.task_id !== taskId);
+          return [...rest, ...nextTaskMembers];
+        });
+      }
       await queryClient.invalidateQueries({ queryKey: ['project-tasks', companyId, projectId] });
       await queryClient.invalidateQueries({ queryKey: ['project-task-members', companyId, projectId] });
+      if (Array.isArray(memberUserIds)) {
+        toast.success('Uppgiftsmedlemmar uppdaterade');
+      }
     },
     onError: (error) => {
       toast.error(message(error, 'Kunde inte uppdatera uppgift'));

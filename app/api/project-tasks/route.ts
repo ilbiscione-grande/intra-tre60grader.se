@@ -148,7 +148,19 @@ async function syncTaskMembers(
     if (error) return { ok: false as const, status: 500, error: error.message };
   }
 
-  return { ok: true as const };
+  const { data: assignments, error: assignmentsError } = await admin
+    .from('project_task_members')
+    .select('id,company_id,project_id,task_id,user_id,created_by,created_at')
+    .eq('company_id', companyId)
+    .eq('task_id', taskId)
+    .order('created_at', { ascending: true })
+    .returns<ProjectTaskMemberRow[]>();
+
+  if (assignmentsError) {
+    return { ok: false as const, status: 500, error: assignmentsError.message };
+  }
+
+  return { ok: true as const, assignments: assignments ?? [] };
 }
 
 export async function POST(request: NextRequest) {
@@ -216,7 +228,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: taskMembersResult.error }, { status: taskMembersResult.status });
   }
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, taskMembers: taskMembersResult.assignments ?? [] });
 }
 
 export async function PATCH(request: NextRequest) {
@@ -302,7 +314,19 @@ export async function PATCH(request: NextRequest) {
     }
   }
 
-  return NextResponse.json({ ok: true });
+  const { data: latestAssignments, error: latestAssignmentsError } = await admin
+    .from('project_task_members')
+    .select('id,company_id,project_id,task_id,user_id,created_by,created_at')
+    .eq('company_id', companyId)
+    .eq('task_id', taskId)
+    .order('created_at', { ascending: true })
+    .returns<ProjectTaskMemberRow[]>();
+
+  if (latestAssignmentsError) {
+    return NextResponse.json({ error: latestAssignmentsError.message }, { status: 500 });
+  }
+
+  return NextResponse.json({ ok: true, taskMembers: latestAssignments ?? [] });
 }
 
 export async function DELETE(request: NextRequest) {
