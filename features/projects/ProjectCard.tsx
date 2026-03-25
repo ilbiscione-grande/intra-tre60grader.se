@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, MoreHorizontal, Trash2 } from 'lucide-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -79,13 +79,12 @@ export default function ProjectCard({
   const breakpointMode = useBreakpointMode();
   const queryClient = useQueryClient();
   const [mobileProjectMenuOpen, setMobileProjectMenuOpen] = useState(false);
+  const [activeMemberId, setActiveMemberId] = useState<string | null>(null);
   const mobileProjectMenuRef = useRef<HTMLDivElement | null>(null);
   const mobileProjectMenuPanelRef = useRef<HTMLDivElement | null>(null);
   const mobileProjectMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
   const [mobileProjectMenuPlacement, setMobileProjectMenuPlacement] = useState<'down' | 'up'>('down');
   const [mobileProjectMenuMaxHeight, setMobileProjectMenuMaxHeight] = useState<number>(320);
-  const visibleMembers = members.slice(0, 3);
-  const hiddenCount = Math.max(0, members.length - visibleMembers.length);
   const canManageMembers = role !== 'auditor';
   const milestones = normalizeMilestones(project.milestones);
   const completedMilestones = milestones.filter((milestone) => milestone.completed).length;
@@ -152,6 +151,21 @@ export default function ProjectCard({
   const addableMembers = availableMembers.filter(
     (candidate) => !members.some((member) => member.user_id === candidate.user_id)
   );
+  const memberLabels = useMemo(
+    () =>
+      new Map(
+        members.map((member) => [
+          member.id,
+          getUserDisplayName({
+            displayName: member.display_name,
+            email: member.email,
+            handle: member.handle,
+            userId: member.user_id
+          })
+        ])
+      ),
+    [members]
+  );
 
   const addMemberMutation = useMutation({
     mutationFn: async (userId: string) => {
@@ -203,6 +217,28 @@ export default function ProjectCard({
       document.removeEventListener('keydown', handleEscape);
     };
   }, [mobileProjectMenuOpen]);
+
+  useEffect(() => {
+    if (!activeMemberId) return;
+
+    function handlePointerDown(event: PointerEvent) {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if ((target as HTMLElement).closest('[data-project-member-avatar="true"]')) return;
+      setActiveMemberId(null);
+    }
+
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === 'Escape') setActiveMemberId(null);
+    }
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [activeMemberId]);
 
   useLayoutEffect(() => {
     if (!mobileProjectMenuOpen || breakpointMode !== 'mobile') return;
@@ -461,44 +497,57 @@ export default function ProjectCard({
           ) : null}
         </div>
         {members.length > 0 ? (
+          <div className="relative z-20 mt-3 flex flex-wrap gap-1.5">
+            {members.map((member) => {
+              const label = memberLabels.get(member.id) ?? member.user_id;
+              const isActive = activeMemberId === member.id;
+
+              return (
+                <div key={member.id} className="group/member relative" data-project-member-avatar="true">
+                  <button
+                    type="button"
+                    className="rounded-full"
+                    aria-label={label}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      setActiveMemberId((current) => (current === member.id ? null : member.id));
+                    }}
+                  >
+                    <ProfileBadge
+                      label={label}
+                      color={member.color}
+                      avatarUrl={member.avatar_url}
+                      emoji={member.emoji}
+                      className="h-7 w-7 border border-background shadow-sm transition group-hover/member:scale-[1.03]"
+                      textClassName="text-[10px] font-semibold text-white"
+                    />
+                  </button>
+                  <div
+                    className={`pointer-events-none absolute bottom-[calc(100%+0.45rem)] left-1/2 z-30 -translate-x-1/2 whitespace-nowrap rounded-md border border-border/70 bg-card px-2 py-1 text-[11px] font-medium text-foreground shadow-md transition ${
+                      isActive ? 'opacity-100 translate-y-0' : 'translate-y-1 opacity-0 group-hover/member:translate-y-0 group-hover/member:opacity-100 group-focus-within/member:translate-y-0 group-focus-within/member:opacity-100'
+                    }`}
+                  >
+                    {label}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : null}
+        {members.length > 0 ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
-                className="absolute bottom-3 right-3 z-20 rounded-full"
-                aria-label="Visa projektmedlemmar"
+                className="absolute bottom-3 right-3 z-20 inline-flex h-8 w-8 items-center justify-center rounded-full border bg-background/95 text-foreground shadow-sm transition hover:bg-muted"
+                aria-label="Hantera projektmedlemmar"
                 onClick={(event) => {
                   event.preventDefault();
                   event.stopPropagation();
                 }}
               >
-                <div className="flex items-center -space-x-2 rounded-full bg-background/85 pl-1 pr-1.5 shadow-sm ring-1 ring-border/70 backdrop-blur-sm">
-                  {visibleMembers.map((member) => {
-                    const label = getUserDisplayName({
-                      displayName: member.display_name,
-                      email: member.email,
-                      handle: member.handle,
-                      userId: member.user_id
-                    });
-
-                    return (
-                      <ProfileBadge
-                        key={member.id}
-                        label={label}
-                        color={member.color}
-                        avatarUrl={member.avatar_url}
-                        emoji={member.emoji}
-                        className="h-6 w-6 border border-background"
-                        textClassName="text-[10px] font-semibold text-white"
-                      />
-                    );
-                  })}
-                  {hiddenCount > 0 ? (
-                    <span className="ml-1 inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-muted px-1.5 text-[10px] font-semibold text-foreground">
-                      +{hiddenCount}
-                    </span>
-                  ) : null}
-                </div>
+                <MoreHorizontal className="h-4 w-4" />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-64">
