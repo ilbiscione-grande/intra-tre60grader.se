@@ -72,6 +72,77 @@ async function listProfilesById() {
   );
 }
 
+async function buildMemberRecords(companyId: string) {
+  const admin = createAdminClient();
+  const [{ data: members, error: membersError }, { data: preferences, error: prefError }, authUsersById, profilesById] =
+    await Promise.all([
+      admin
+        .from('company_members')
+        .select('id,company_id,user_id,role,created_at')
+        .eq('company_id', companyId)
+        .order('created_at', { ascending: true })
+        .returns<CompanyMemberRow[]>(),
+      admin
+        .from('user_company_preferences')
+        .select('user_id,preference_value')
+        .eq('company_id', companyId)
+        .eq('preference_key', PROFILE_BADGE_PREFERENCE_KEY)
+        .returns<Array<Pick<UserPreferenceRow, 'user_id' | 'preference_value'>>>(),
+      listAuthUsersById(),
+      listProfilesById()
+    ]);
+
+  if (membersError || prefError) {
+    throw new Error(membersError?.message ?? prefError?.message ?? 'Kunde inte läsa projektmedlemmar');
+  }
+
+  const prefByUserId = new Map(
+    (preferences ?? []).map((pref) => {
+      const parsed = parseProfilePreference(pref.preference_value);
+      return [pref.user_id, parsed] as const;
+    })
+  );
+
+  return Promise.all(
+    (members ?? []).map(async (member) => {
+      const authUser = authUsersById.get(member.user_id) ?? null;
+      const profile = profilesById.get(member.user_id) ?? null;
+      const email = profile?.email ?? authUser?.email ?? null;
+      const handle = email?.split('@')[0]?.toLowerCase() ?? null;
+      const pref = prefByUserId.get(member.user_id) ?? { color: DEFAULT_PROFILE_BADGE_COLOR, avatarPath: null, emoji: null, displayName: null };
+      let avatarUrl: string | null = null;
+
+      if (pref.avatarPath) {
+        try {
+          const storageAdmin = createAdminClient();
+          const { data: signed } = await storageAdmin.storage.from(PROFILE_AVATAR_BUCKET).createSignedUrl(pref.avatarPath, 60 * 60);
+          avatarUrl = signed?.signedUrl ?? null;
+        } catch {
+          avatarUrl = null;
+        }
+      }
+
+      return {
+        ...member,
+        role: normalizeMemberRole(member.role),
+        email,
+        handle,
+        display_name: resolveUserDisplayName({
+          displayName: profile?.full_name ?? pref.displayName,
+          metadata: authUser?.user_metadata ?? null,
+          email,
+          handle,
+          userId: member.user_id
+        }),
+        color: pref.color,
+        avatar_path: pref.avatarPath,
+        avatar_url: avatarUrl,
+        emoji: pref.emoji
+      };
+    })
+  );
+}
+
 function parseProfilePreference(value: Json | null | undefined) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return { color: DEFAULT_PROFILE_BADGE_COLOR, avatarPath: null as string | null, emoji: null as string | null, displayName: null as string | null };
@@ -130,74 +201,18 @@ export async function GET(request: NextRequest) {
     .eq('company_id', companyId)
     .order('created_at', { ascending: true });
 
-  const [{ data: assignments, error: assignmentError }, { data: members, error: membersError }, { data: preferences, error: prefError }, authUsersById, profilesById] =
-    await Promise.all([
-      (projectId ? assignmentQuery.eq('project_id', projectId) : assignmentQuery).returns<ProjectMemberRow[]>(),
-      admin
-        .from('company_members')
-        .select('id,company_id,user_id,role,created_at')
-        .eq('company_id', companyId)
-        .order('created_at', { ascending: true })
-        .returns<CompanyMemberRow[]>(),
-      admin
-        .from('user_company_preferences')
-        .select('user_id,preference_value')
-        .eq('company_id', companyId)
-        .eq('preference_key', PROFILE_BADGE_PREFERENCE_KEY)
-        .returns<Array<Pick<UserPreferenceRow, 'user_id' | 'preference_value'>>>(),
-      listAuthUsersById(),
-      listProfilesById()
-    ]);
+  const { data: assignments, error: assignmentError } = await (projectId ? assignmentQuery.eq('project_id', projectId) : assignmentQuery).returns<ProjectMemberRow[]>();
 
-  if (assignmentError || membersError || prefError) {
-    return NextResponse.json({ error: assignmentError?.message ?? membersError?.message ?? prefError?.message ?? 'Kunde inte läsa projektmedlemmar' }, { status: 500 });
+  if (assignmentError) {
+    return NextResponse.json({ error: assignmentError.message ?? 'Kunde inte läsa projektmedlemmar' }, { status: 500 });
   }
 
-  const prefByUserId = new Map(
-    (preferences ?? []).map((pref) => {
-      const parsed = parseProfilePreference(pref.preference_value);
-      return [pref.user_id, parsed] as const;
-    })
-  );
-
-  const memberRecords = await Promise.all(
-    (members ?? []).map(async (member) => {
-      const authUser = authUsersById.get(member.user_id) ?? null;
-      const profile = profilesById.get(member.user_id) ?? null;
-      const email = profile?.email ?? authUser?.email ?? null;
-      const handle = email?.split('@')[0]?.toLowerCase() ?? null;
-      const pref = prefByUserId.get(member.user_id) ?? { color: DEFAULT_PROFILE_BADGE_COLOR, avatarPath: null, emoji: null, displayName: null };
-      let avatarUrl: string | null = null;
-
-      if (pref.avatarPath) {
-        try {
-          const admin = createAdminClient();
-          const { data: signed } = await admin.storage.from(PROFILE_AVATAR_BUCKET).createSignedUrl(pref.avatarPath, 60 * 60);
-          avatarUrl = signed?.signedUrl ?? null;
-        } catch {
-          avatarUrl = null;
-        }
-      }
-
-      return {
-        ...member,
-        role: normalizeMemberRole(member.role),
-        email,
-        handle,
-        display_name: resolveUserDisplayName({
-          displayName: profile?.full_name ?? pref.displayName,
-          metadata: authUser?.user_metadata ?? null,
-          email,
-          handle,
-          userId: member.user_id
-        }),
-        color: pref.color,
-        avatar_path: pref.avatarPath,
-        avatar_url: avatarUrl,
-        emoji: pref.emoji
-      };
-    })
-  );
+  let memberRecords;
+  try {
+    memberRecords = await buildMemberRecords(companyId);
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Kunde inte läsa projektmedlemmar' }, { status: 500 });
+  }
 
   return NextResponse.json({
     availableMembers: memberRecords,
@@ -310,11 +325,18 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: updatedAssignmentsError.message }, { status: 500 });
   }
 
+  let memberRecords;
+  try {
+    memberRecords = await buildMemberRecords(companyId);
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Kunde inte läsa projektmedlemmar' }, { status: 500 });
+  }
+
   return NextResponse.json({
     ok: true,
     assignments: (updatedAssignments ?? []).map((assignment) => ({
       ...assignment,
-      member: null
+      member: memberRecords.find((member) => member.user_id === assignment.user_id) ?? null
     }))
   });
 }
