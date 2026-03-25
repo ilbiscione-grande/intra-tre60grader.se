@@ -75,7 +75,17 @@ export function getUserDisplayName({
     if (formatted) return formatted;
   }
 
-  if (typeof email === 'string' && email.trim()) return email.trim();
+  if (typeof email === 'string' && email.trim()) {
+    const localPart = email.trim().split('@')[0]?.trim() ?? '';
+    if (localPart) {
+      const formatted = localPart
+        .split(/[._-]+/)
+        .filter(Boolean)
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(' ');
+      return formatted || localPart;
+    }
+  }
   if (typeof userId === 'string' && userId.trim()) return userId.trim();
   return 'Okänd användare';
 }

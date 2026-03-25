@@ -31,6 +31,7 @@ import ProjectFilesPanel from '@/features/projects/ProjectFilesPanel';
 import ProjectTasksPanel from '@/features/projects/ProjectTasksPanel';
 import ProjectTimePanel from '@/features/projects/ProjectTimePanel';
 import ProjectUpdatesPanel from '@/features/projects/ProjectUpdatesPanel';
+import { getUserDisplayName } from '@/features/profile/profileBadge';
 import { createClient } from '@/lib/supabase/client';
 import type { Json, TableRow as DbRow } from '@/lib/supabase/database.types';
 import type { ProjectStatus, Role } from '@/lib/types';
@@ -899,7 +900,12 @@ export default function ProjectDetailsPage() {
     for (const member of availableMembers) {
       map.set(
         member.user_id,
-        member.display_name ?? member.email ?? member.handle ?? member.user_id
+        getUserDisplayName({
+          displayName: member.display_name,
+          email: member.email,
+          handle: member.handle,
+          userId: member.user_id
+        })
       );
     }
     return map;
@@ -1685,7 +1691,12 @@ export default function ProjectDetailsPage() {
               <p className="mt-1 font-medium">
                 {project.responsible_user_id
                   ? memberLabelByUserId.get(project.responsible_user_id) ??
-                    (project.responsible_user_id === currentUserId ? currentUserQuery.data?.email ?? 'Du' : project.responsible_user_id)
+                    (project.responsible_user_id === currentUserId
+                      ? getUserDisplayName({
+                          email: currentUserQuery.data?.email,
+                          userId: currentUserId
+                        })
+                      : project.responsible_user_id)
                   : 'Ingen ansvarig'}
               </p>
               {role !== 'auditor' ? (
@@ -1702,7 +1713,7 @@ export default function ProjectDetailsPage() {
                       <SelectItem value="none">Ingen ansvarig</SelectItem>
                       {availableMembers.map((member) => (
                         <SelectItem key={member.id} value={member.user_id}>
-                          {memberLabelByUserId.get(member.user_id) ?? member.email ?? member.user_id}
+                          {memberLabelByUserId.get(member.user_id) ?? member.user_id}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -1729,14 +1740,14 @@ export default function ProjectDetailsPage() {
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
                         <ProfileBadge
-                          label={member.email ?? member.user_id}
+                          label={memberLabelByUserId.get(member.user_id) ?? member.user_id}
                           color={member.color}
                           avatarUrl={member.avatar_url}
                           emoji={member.emoji}
                           className="h-8 w-8 shrink-0"
                           textClassName="text-xs font-semibold text-white"
                         />
-                        <p className="truncate text-sm font-medium">{member.email ?? member.user_id}</p>
+                        <p className="truncate text-sm font-medium">{memberLabelByUserId.get(member.user_id) ?? member.user_id}</p>
                       </div>
                       <p className="mt-1 text-xs text-foreground/55">Tilldelad projektet</p>
                     </div>
