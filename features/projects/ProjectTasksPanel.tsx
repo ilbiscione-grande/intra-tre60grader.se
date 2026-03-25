@@ -775,6 +775,14 @@ export default function ProjectTasksPanel({
                     const taskMembers = (taskMemberUserIdsByTaskId.get(task.id) ?? [])
                       .map((userId) => assigneeByUserId.get(userId) ?? null)
                       .filter((member): member is ProjectMemberVisual => Boolean(member));
+                    const assigneeLabel = assignee
+                      ? getUserDisplayName({
+                          displayName: assignee.display_name,
+                          email: assignee.email,
+                          handle: assignee.handle,
+                          userId: assignee.user_id
+                        })
+                      : null;
                     const isOverdue = Boolean(task.due_date && task.due_date < todayIso() && task.status !== 'done');
                     const linkedMilestone = task.milestone_id ? milestoneById.get(task.milestone_id) ?? null : null;
                     const taskSubtasks = normalizeTaskSubtasks(task.subtasks);
@@ -808,7 +816,7 @@ export default function ProjectTasksPanel({
                         {assignee ? (
                           <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-muted px-2 py-1 text-xs">
                             <ProfileBadge
-                              label={assignee.display_name ?? assignee.email ?? assignee.user_id}
+                              label={assigneeLabel}
                               color={assignee.color}
                               avatarUrl={assignee.avatar_url}
                               emoji={assignee.emoji}
@@ -816,28 +824,31 @@ export default function ProjectTasksPanel({
                               textClassName="text-[9px] font-semibold text-white"
                             />
                             <span className="max-w-[140px] truncate">
-                              {getUserDisplayName({
-                                displayName: assignee.display_name,
-                                email: assignee.email,
-                                handle: assignee.handle,
-                                userId: assignee.user_id
-                              })}
+                              {assigneeLabel}
                             </span>
                           </div>
                         ) : null}
                         {taskMembers.length > 0 ? (
                           <div className="mt-3 flex flex-wrap gap-1.5">
-                            {taskMembers.map((member) => (
-                              <ProfileBadge
-                                key={`${task.id}-${member.user_id}`}
-                                label={member.display_name ?? member.email ?? member.user_id}
-                                color={member.color}
-                                avatarUrl={member.avatar_url}
-                                emoji={member.emoji}
-                                className="h-6 w-6 shrink-0"
-                                textClassName="text-[10px] font-semibold text-white"
-                              />
-                            ))}
+                            {taskMembers.map((member) => {
+                              const label = getUserDisplayName({
+                                displayName: member.display_name,
+                                email: member.email,
+                                handle: member.handle,
+                                userId: member.user_id
+                              });
+                              return (
+                                <ProfileBadge
+                                  key={`${task.id}-${member.user_id}`}
+                                  label={label}
+                                  color={member.color}
+                                  avatarUrl={member.avatar_url}
+                                  emoji={member.emoji}
+                                  className="h-6 w-6 shrink-0"
+                                  textClassName="text-[10px] font-semibold text-white"
+                                />
+                              );
+                            })}
                           </div>
                         ) : null}
                       </div>
@@ -854,6 +865,14 @@ export default function ProjectTasksPanel({
             const taskMembers = taskMemberUserIds
               .map((userId) => assigneeByUserId.get(userId) ?? null)
               .filter((member): member is ProjectMemberVisual => Boolean(member));
+            const assigneeLabel = assignee
+              ? getUserDisplayName({
+                  displayName: assignee.display_name,
+                  email: assignee.email,
+                  handle: assignee.handle,
+                  userId: assignee.user_id
+                })
+              : null;
             const isOverdue = Boolean(task.due_date && task.due_date < todayIso());
             const linkedMilestone = task.milestone_id ? milestoneById.get(task.milestone_id) ?? null : null;
             const taskSubtasks = normalizeTaskSubtasks(task.subtasks);
@@ -891,7 +910,7 @@ export default function ProjectTasksPanel({
                   {assignee ? (
                     <span className="inline-flex items-center gap-2 rounded-full bg-muted px-2 py-1 text-xs">
                       <ProfileBadge
-                        label={assignee.display_name ?? assignee.email ?? assignee.user_id}
+                        label={assigneeLabel}
                         color={assignee.color}
                         avatarUrl={assignee.avatar_url}
                         emoji={assignee.emoji}
@@ -899,12 +918,7 @@ export default function ProjectTasksPanel({
                         textClassName="text-[9px] font-semibold text-white"
                       />
                       <span className="max-w-[140px] truncate">
-                        {getUserDisplayName({
-                          displayName: assignee.display_name,
-                          email: assignee.email,
-                          handle: assignee.handle,
-                          userId: assignee.user_id
-                        })}
+                        {assigneeLabel}
                       </span>
                     </span>
                   ) : (
@@ -1027,26 +1041,27 @@ export default function ProjectTasksPanel({
                 ) : null}
                 {taskMembers.length > 0 ? (
                   <div className="mt-3 flex flex-wrap gap-2">
-                    {taskMembers.map((member) => (
-                      <div key={`${task.id}-${member.user_id}`} className="inline-flex items-center gap-2 rounded-full bg-muted px-2 py-1 text-xs">
-                        <ProfileBadge
-                          label={member.display_name ?? member.email ?? member.user_id}
-                          color={member.color}
-                          avatarUrl={member.avatar_url}
-                          emoji={member.emoji}
-                          className="h-5 w-5 shrink-0"
-                          textClassName="text-[9px] font-semibold text-white"
-                        />
-                        <span className="max-w-[140px] truncate">
-                          {getUserDisplayName({
-                            displayName: member.display_name,
-                            email: member.email,
-                            handle: member.handle,
-                            userId: member.user_id
-                          })}
-                        </span>
-                      </div>
-                    ))}
+                    {taskMembers.map((member) => {
+                      const label = getUserDisplayName({
+                        displayName: member.display_name,
+                        email: member.email,
+                        handle: member.handle,
+                        userId: member.user_id
+                      });
+                      return (
+                        <div key={`${task.id}-${member.user_id}`} className="inline-flex items-center gap-2 rounded-full bg-muted px-2 py-1 text-xs">
+                          <ProfileBadge
+                            label={label}
+                            color={member.color}
+                            avatarUrl={member.avatar_url}
+                            emoji={member.emoji}
+                            className="h-5 w-5 shrink-0"
+                            textClassName="text-[9px] font-semibold text-white"
+                          />
+                          <span className="max-w-[140px] truncate">{label}</span>
+                        </div>
+                      );
+                    })}
                   </div>
                 ) : null}
 
