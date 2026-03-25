@@ -1,16 +1,13 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { DEFAULT_PROFILE_BADGE_COLOR, PROFILE_AVATAR_BUCKET, PROFILE_BADGE_PREFERENCE_KEY } from '@/lib/profile/constants';
 import type { Json, Database } from '@/lib/supabase/database.types';
 import { resolveUserDisplayName } from '@/lib/users/displayName';
 
 type CompanyMemberRow = Database['public']['Tables']['company_members']['Row'];
 type ProjectMemberRow = Database['public']['Tables']['project_members']['Row'];
 type UserPreferenceRow = Database['public']['Tables']['user_company_preferences']['Row'];
-
-const PROFILE_BADGE_PREFERENCE_KEY = 'profile_badge';
-const PROFILE_AVATAR_BUCKET = 'profile-avatars';
-const DEFAULT_PROFILE_BADGE_COLOR = '#3B82F6';
 
 function normalizeMemberRole(role: unknown): 'member' | 'finance' | 'admin' | 'auditor' {
   if (role === 'employee') return 'member';

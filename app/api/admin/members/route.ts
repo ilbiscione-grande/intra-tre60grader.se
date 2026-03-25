@@ -2,10 +2,10 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { requireCompanyPermission, requireElevatedAdminSession, requireRecentSignIn } from '@/lib/auth/companyPermissions';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { PROFILE_BADGE_PREFERENCE_KEY } from '@/lib/profile/constants';
 import { getRequestIp, safeLogSecurityEvent } from '@/lib/security/server';
 import type { Database } from '@/lib/supabase/database.types';
 import type { Role } from '@/lib/types';
-import { PROFILE_BADGE_PREFERENCE_KEY } from '@/features/profile/profileBadge';
 import { resolveUserDisplayName } from '@/lib/users/displayName';
 
 type CompanyMemberRow = Database['public']['Tables']['company_members']['Row'];

@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import type { Database } from '@/lib/supabase/database.types';
-import { PROFILE_BADGE_PREFERENCE_KEY } from '@/features/profile/profileBadge';
+import { PROFILE_BADGE_PREFERENCE_KEY } from '@/lib/profile/constants';
 import { resolveUserDisplayName } from '@/lib/users/displayName';
 
 type CompanyMemberRow = Database['public']['Tables']['company_members']['Row'];

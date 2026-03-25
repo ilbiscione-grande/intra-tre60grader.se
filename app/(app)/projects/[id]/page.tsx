@@ -489,6 +489,51 @@ export default function ProjectDetailsPage() {
       }));
     }
   });
+
+  useEffect(() => {
+    const memberChannel = supabase
+      .channel(`project-members:${companyId}:${projectId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'project_members',
+          filter: `company_id=eq.${companyId}`
+        },
+        (payload) => {
+          const record = (payload.new ?? payload.old) as { project_id?: string } | null;
+          if (record?.project_id !== projectId) return;
+          void queryClient.invalidateQueries({ queryKey: ['project-member-assignments', companyId, projectId] });
+          void queryClient.invalidateQueries({ queryKey: ['project-members', companyId] });
+        }
+      )
+      .subscribe();
+
+    const projectChannel = supabase
+      .channel(`project-details:${companyId}:${projectId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'projects',
+          filter: `company_id=eq.${companyId}`
+        },
+        (payload) => {
+          const record = payload.new as { id?: string } | null;
+          if (record?.id !== projectId) return;
+          void queryClient.invalidateQueries({ queryKey: ['project', companyId, projectId] });
+          void queryClient.invalidateQueries({ queryKey: ['projects', companyId] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(memberChannel);
+      void supabase.removeChannel(projectChannel);
+    };
+  }, [companyId, projectId, queryClient, supabase]);
   const projectUpdatesActivityQuery = useQuery<ProjectUpdateActivityRow[]>({
     queryKey: ['project-updates-activity', companyId, projectId],
     queryFn: async () => {
