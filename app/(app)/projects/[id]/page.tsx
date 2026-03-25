@@ -24,7 +24,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { createInvoiceFromOrder } from '@/lib/rpc';
-import { useCompanyMemberOptions, useProjectColumns, useProjectMembers, type ProjectMemberAssignment, type ProjectMemberVisual, type ProjectMembersPayload } from '@/features/projects/projectQueries';
+import { useCompanyMemberOptions, useProjectColumns, type ProjectMemberVisual } from '@/features/projects/projectQueries';
 import { applyProjectStatusAutomation } from '@/features/projects/projectAutomation';
 import ProjectFinancePanel from '@/features/projects/ProjectFinancePanel';
 import ProjectFilesPanel from '@/features/projects/ProjectFilesPanel';
@@ -51,6 +51,7 @@ type ProjectUpdateActivityRow = Pick<DbRow<'project_updates'>, 'id' | 'project_i
 type ProjectTaskActivityRow = Pick<DbRow<'project_tasks'>, 'id' | 'project_id' | 'title' | 'created_by' | 'assignee_user_id' | 'created_at' | 'updated_at'>;
 type ProjectTimeActivityRow = Pick<DbRow<'project_time_entries'>, 'id' | 'project_id' | 'user_id' | 'hours' | 'entry_date' | 'created_at'>;
 type ProjectFileActivityRow = Pick<DbRow<'project_files'>, 'id' | 'project_id' | 'created_by' | 'created_at' | 'file_name' | 'title' | 'version_no'>;
+type ProjectMemberAssignmentRow = Pick<DbRow<'project_members'>, 'id' | 'company_id' | 'project_id' | 'user_id' | 'created_by' | 'created_at'>;
 type InvoiceRow = Pick<
   DbRow<'invoices'>,
   'id' | 'invoice_no' | 'status' | 'currency' | 'issue_date' | 'due_date' | 'subtotal' | 'vat_total' | 'total' | 'created_at' | 'attachment_path' | 'order_id' | 'project_id'
@@ -440,8 +441,22 @@ export default function ProjectDetailsPage() {
     }
   });
 
-  const projectMembersQuery = useProjectMembers(companyId);
   const companyMemberOptionsQuery = useCompanyMemberOptions(companyId);
+  const projectMemberAssignmentsQuery = useQuery<ProjectMemberAssignmentRow[]>({
+    queryKey: ['project-member-assignments', companyId, projectId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('project_members')
+        .select('id,company_id,project_id,user_id,created_by,created_at')
+        .eq('company_id', companyId)
+        .eq('project_id', projectId)
+        .order('created_at', { ascending: true })
+        .returns<ProjectMemberAssignmentRow[]>();
+
+      if (error) throw error;
+      return data ?? [];
+    }
+  });
   const projectUpdatesActivityQuery = useQuery<ProjectUpdateActivityRow[]>({
     queryKey: ['project-updates-activity', companyId, projectId],
     queryFn: async () => {
@@ -742,6 +757,153 @@ export default function ProjectDetailsPage() {
     }
   });
 
+  const invoiceSourceCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const row of invoiceSourceCountsQuery.data ?? []) {
+      counts.set(row.invoice_id, (counts.get(row.invoice_id) ?? 0) + 1);
+    }
+    return counts;
+  }, [invoiceSourceCountsQuery.data]);
+
+  const saveProjectMembersMutation = useMutation({
+    mutationFn: async (userIds: string[]) => {
+      const currentAssignments = projectMemberAssignmentsQuery.data ?? [];
+      const currentUserIds = new Set(currentAssignments.map((assignment) => assignment.user_id));
+      const nextUserIds = new Set(userIds);
+      const toDelete = currentAssignments.filter((assignment) => !nextUserIds.has(assignment.user_id));
+      const toInsert = userIds.filter((userId) => !currentUserIds.has(userId));
+
+      if (toDelete.length > 0) {
+        const { error } = await supabase
+          .from('project_members')
+          .delete()
+          .in('id', toDelete.map((row) => row.id));
+        if (error) throw error;
+      }
+
+      if (toInsert.length > 0) {
+        const { error } = await supabase.from('project_members').insert(
+          toInsert.map((userId) => ({
+            company_id: companyId,
+            project_id: projectId,
+            user_id: userId
+          }))
+        );
+        if (error) throw error;
+      }
+
+      const { data, error } = await supabase
+        .from('project_members')
+        .select('id,company_id,project_id,user_id,created_by,created_at')
+        .eq('company_id', companyId)
+        .eq('project_id', projectId)
+        .order('created_at', { ascending: true })
+        .returns<ProjectMemberAssignmentRow[]>();
+
+      if (error) throw error;
+      return data ?? [];
+    },
+    onSuccess: async (assignments) => {
+      queryClient.setQueryData<ProjectMemberAssignmentRow[]>(['project-member-assignments', companyId, projectId], assignments);
+      await queryClient.invalidateQueries({ queryKey: ['project-member-assignments', companyId, projectId] });
+      toast.success('Projektmedlemmar uppdaterade');
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error, 'Kunde inte uppdatera projektmedlemmar'));
+    }
+  });
+
+  const availableMembers = useMemo(() => {
+    const baseMembers = new Map<string, { id: string; company_id: string; user_id: string; role: Role; created_at: string; email: string | null; handle: string | null; display_name: string | null }>();
+
+    for (const member of companyMemberOptionsQuery.data ?? []) {
+      if (!baseMembers.has(member.user_id)) {
+        baseMembers.set(member.user_id, {
+          id: member.id,
+          company_id: member.company_id,
+          user_id: member.user_id,
+          role: member.role,
+          created_at: member.created_at,
+          email: member.email,
+          handle: member.handle,
+          display_name: member.display_name
+        });
+      }
+    }
+    if (currentUserQuery.data?.id && !baseMembers.has(currentUserQuery.data.id)) {
+      baseMembers.set(currentUserQuery.data.id, {
+        id: `self-${currentUserQuery.data.id}`,
+        company_id: companyId,
+        user_id: currentUserQuery.data.id,
+        role: role === 'auditor' ? 'auditor' : role,
+        created_at: '',
+        email: currentUserQuery.data.email,
+        handle: currentUserQuery.data.email?.split('@')[0]?.toLowerCase() ?? null,
+        display_name: null
+      });
+    }
+
+    return Array.from(baseMembers.values()).map((member) => {
+      return {
+        ...member,
+        color: '#3b82f6',
+        avatar_path: null,
+        avatar_url: null,
+        emoji: null
+      };
+    });
+  }, [companyId, companyMemberOptionsQuery.data, currentUserQuery.data, role]);
+  const currentUserId = currentUserQuery.data?.id ?? '';
+  const assignedMembers = useMemo(
+    () => {
+      const memberByUserId = new Map(availableMembers.map((member) => [member.user_id, member] as const));
+      return (projectMemberAssignmentsQuery.data ?? [])
+        .map((assignment) => {
+          const member = memberByUserId.get(assignment.user_id);
+          if (member) return member;
+          return {
+            id: assignment.id,
+            company_id: assignment.company_id,
+            user_id: assignment.user_id,
+            role: 'member' as Role,
+            created_at: assignment.created_at,
+            email: null,
+            handle: null,
+            display_name: assignment.user_id,
+            color: '#3b82f6',
+            avatar_path: null,
+            avatar_url: null,
+            emoji: null
+          };
+        });
+    },
+    [availableMembers, projectMemberAssignmentsQuery.data]
+  );
+  const taskAssignableMembers = availableMembers;
+  const responsibleMember = useMemo(
+    () => availableMembers.find((member) => member.user_id === projectQuery.data?.responsible_user_id) ?? null,
+    [availableMembers, projectQuery.data?.responsible_user_id]
+  );
+  const assignedUserIds = useMemo(() => new Set(assignedMembers.map((member) => member.user_id)), [assignedMembers]);
+  const filteredAvailableMembers = useMemo(() => {
+    const query = memberSearch.trim().toLowerCase();
+    const roleFiltered = memberRoleFilter === 'all' ? availableMembers : availableMembers.filter((member) => member.role === memberRoleFilter);
+    if (!query) return roleFiltered;
+    return roleFiltered.filter((member) => {
+      const haystack = [member.email, member.handle, roleLabel(member.role)].filter(Boolean).join(' ').toLowerCase();
+      return haystack.includes(query);
+    });
+  }, [availableMembers, memberRoleFilter, memberSearch]);
+  const memberLabelByUserId = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const member of availableMembers) {
+      map.set(
+        member.user_id,
+        member.display_name ?? member.email ?? member.handle ?? member.user_id
+      );
+    }
+    return map;
+  }, [availableMembers]);
   const activity = useMemo(() => {
     const items: ActivityItem[] = [...localActivity];
 
@@ -832,12 +994,11 @@ export default function ProjectDetailsPage() {
       });
     }
 
-    for (const assignment of projectMembersQuery.data?.assignments ?? []) {
-      if (assignment.project_id !== projectId) continue;
+    for (const assignment of projectMemberAssignmentsQuery.data ?? []) {
       items.push({
         id: `project-member-${assignment.id}`,
         at: assignment.created_at,
-        text: `Medlem tilldelad: ${assignment.member?.email ?? assignment.user_id}`,
+        text: `Medlem tilldelad: ${memberLabelByUserId.get(assignment.user_id) ?? assignment.user_id}`,
         actorUserId: assignment.created_by ?? assignment.user_id,
         source: 'user'
       });
@@ -858,149 +1019,15 @@ export default function ProjectDetailsPage() {
     invoicesQuery.data,
     linesQuery.data,
     localActivity,
+    memberLabelByUserId,
     orderQuery.data,
     projectFilesActivityQuery.data,
-    projectId,
-    projectMembersQuery.data?.assignments,
+    projectMemberAssignmentsQuery.data,
     projectQuery.data,
     projectTasksActivityQuery.data,
     projectTimeActivityQuery.data,
     projectUpdatesActivityQuery.data
   ]);
-
-  const invoiceSourceCounts = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const row of invoiceSourceCountsQuery.data ?? []) {
-      counts.set(row.invoice_id, (counts.get(row.invoice_id) ?? 0) + 1);
-    }
-    return counts;
-  }, [invoiceSourceCountsQuery.data]);
-
-  const saveProjectMembersMutation = useMutation({
-    mutationFn: async (userIds: string[]) => {
-      const res = await fetch('/api/project-members', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ companyId, projectId, userIds })
-      });
-
-      const body = (await res.json().catch(() => null)) as { error?: string; assignments?: ProjectMemberAssignment[] } | null;
-      if (!res.ok) {
-        throw new Error(body?.error ?? 'Kunde inte uppdatera projektmedlemmar');
-      }
-      return body;
-    },
-    onSuccess: async (body) => {
-      if (body?.assignments) {
-        queryClient.setQueryData<ProjectMembersPayload | undefined>(['project-members', companyId], (current) =>
-          current
-            ? {
-                ...current,
-                assignments: body.assignments ?? current.assignments
-              }
-            : current
-        );
-      }
-      await queryClient.invalidateQueries({ queryKey: ['project-members', companyId] });
-      toast.success('Projektmedlemmar uppdaterade');
-    },
-    onError: (error) => {
-      toast.error(getErrorMessage(error, 'Kunde inte uppdatera projektmedlemmar'));
-    }
-  });
-
-  const availableMembers = useMemo(() => {
-    const baseMembers = new Map<string, { id: string; company_id: string; user_id: string; role: Role; created_at: string; email: string | null; handle: string | null; display_name: string | null }>();
-
-    for (const member of companyMemberOptionsQuery.data ?? []) {
-      if (!baseMembers.has(member.user_id)) {
-        baseMembers.set(member.user_id, {
-          id: member.id,
-          company_id: member.company_id,
-          user_id: member.user_id,
-          role: member.role,
-          created_at: member.created_at,
-          email: member.email,
-          handle: member.handle,
-          display_name: member.display_name
-        });
-      }
-    }
-    if (currentUserQuery.data?.id && !baseMembers.has(currentUserQuery.data.id)) {
-      baseMembers.set(currentUserQuery.data.id, {
-        id: `self-${currentUserQuery.data.id}`,
-        company_id: companyId,
-        user_id: currentUserQuery.data.id,
-        role: role === 'auditor' ? 'auditor' : role,
-        created_at: '',
-        email: currentUserQuery.data.email,
-        handle: currentUserQuery.data.email?.split('@')[0]?.toLowerCase() ?? null,
-        display_name: null
-      });
-    }
-
-    return Array.from(baseMembers.values()).map((member) => {
-      return {
-        ...member,
-        color: '#3b82f6',
-        avatar_path: null,
-        avatar_url: null,
-        emoji: null
-      };
-    });
-  }, [companyId, companyMemberOptionsQuery.data, currentUserQuery.data, role]);
-  const currentUserId = currentUserQuery.data?.id ?? '';
-  const assignedMembers = useMemo(
-    () => {
-      const memberByUserId = new Map(availableMembers.map((member) => [member.user_id, member] as const));
-      return (projectMembersQuery.data?.assignments ?? [])
-        .filter((assignment) => assignment.project_id === projectId)
-        .map((assignment) => {
-          const member = memberByUserId.get(assignment.user_id);
-          if (member) return member;
-          return {
-            id: assignment.id,
-            company_id: assignment.company_id,
-            user_id: assignment.user_id,
-            role: 'member' as Role,
-            created_at: assignment.created_at,
-            email: null,
-            handle: null,
-            display_name: assignment.user_id,
-            color: '#3b82f6',
-            avatar_path: null,
-            avatar_url: null,
-            emoji: null
-          };
-        });
-    },
-    [availableMembers, projectId, projectMembersQuery.data?.assignments]
-  );
-  const taskAssignableMembers = availableMembers;
-  const responsibleMember = useMemo(
-    () => availableMembers.find((member) => member.user_id === projectQuery.data?.responsible_user_id) ?? null,
-    [availableMembers, projectQuery.data?.responsible_user_id]
-  );
-  const assignedUserIds = useMemo(() => new Set(assignedMembers.map((member) => member.user_id)), [assignedMembers]);
-  const filteredAvailableMembers = useMemo(() => {
-    const query = memberSearch.trim().toLowerCase();
-    const roleFiltered = memberRoleFilter === 'all' ? availableMembers : availableMembers.filter((member) => member.role === memberRoleFilter);
-    if (!query) return roleFiltered;
-    return roleFiltered.filter((member) => {
-      const haystack = [member.email, member.handle, roleLabel(member.role)].filter(Boolean).join(' ').toLowerCase();
-      return haystack.includes(query);
-    });
-  }, [availableMembers, memberRoleFilter, memberSearch]);
-  const memberLabelByUserId = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const member of availableMembers) {
-      map.set(
-        member.user_id,
-        member.display_name ?? member.email ?? member.handle ?? member.user_id
-      );
-    }
-    return map;
-  }, [availableMembers]);
   const setResponsibleMutation = useMutation({
     mutationFn: async (responsibleUserId: string | null) => {
       const res = await fetch('/api/project-responsible', {
@@ -1019,7 +1046,7 @@ export default function ProjectDetailsPage() {
         current ? { ...current, responsible_user_id: responsibleUserId } : current
       );
       await queryClient.invalidateQueries({ queryKey: ['project', companyId, projectId] });
-      await queryClient.invalidateQueries({ queryKey: ['project-members', companyId] });
+      await queryClient.invalidateQueries({ queryKey: ['project-member-assignments', companyId, projectId] });
       await queryClient.invalidateQueries({ queryKey: ['projects', companyId] });
       toast.success('Ansvarig uppdaterad');
     },
