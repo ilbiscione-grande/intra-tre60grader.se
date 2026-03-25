@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { CheckCircle2, Circle, Clock3, Link2, Plus, Trash2 } from 'lucide-react';
+import { CheckCircle2, Circle, Clock3, Link2, Plus, Trash2, Users } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import ActionSheet from '@/components/common/ActionSheet';
@@ -20,6 +20,7 @@ import type { Role } from '@/lib/types';
 import type { ProjectMemberVisual } from './projectQueries';
 
 type ProjectTaskRow = DbRow<'project_tasks'>;
+type ProjectTaskMemberRow = DbRow<'project_task_members'>;
 type ProjectTaskSubtask = {
   id: string;
   title: string;
@@ -115,6 +116,70 @@ function message(error: unknown, fallback: string) {
   return fallback;
 }
 
+function TaskMemberPicker({
+  members,
+  selectedUserIds,
+  onChange
+}: {
+  members: ProjectMemberVisual[];
+  selectedUserIds: string[];
+  onChange: (nextUserIds: string[]) => void;
+}) {
+  const selectedUserIdSet = new Set(selectedUserIds);
+
+  return (
+    <div className="space-y-2 rounded-xl border border-border/70 bg-muted/10 p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs text-foreground/60">Välj en eller flera medlemmar som ska vara kopplade till uppgiften.</p>
+        <Badge>{selectedUserIds.length} valda</Badge>
+      </div>
+      <div className="grid gap-2 md:grid-cols-2">
+        {members.map((member) => {
+          const selected = selectedUserIdSet.has(member.user_id);
+          return (
+            <button
+              key={member.user_id}
+              type="button"
+              className={`flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-left transition ${
+                selected ? 'border-primary bg-primary/5' : 'border-border bg-background'
+              }`}
+              onClick={() => {
+                const next = new Set(selectedUserIds);
+                if (selected) next.delete(member.user_id);
+                else next.add(member.user_id);
+                onChange(Array.from(next));
+              }}
+            >
+              <div className="flex min-w-0 items-center gap-3">
+                <ProfileBadge
+                  label={member.display_name ?? member.email ?? member.user_id}
+                  color={member.color}
+                  avatarUrl={member.avatar_url}
+                  emoji={member.emoji}
+                  className="h-8 w-8 shrink-0"
+                  textClassName="text-xs font-semibold text-white"
+                />
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium">
+                    {getUserDisplayName({
+                      displayName: member.display_name,
+                      email: member.email,
+                      handle: member.handle,
+                      userId: member.user_id
+                    })}
+                  </p>
+                  <p className="text-xs text-foreground/55">{member.role}</p>
+                </div>
+              </div>
+              <Badge>{selected ? 'Tillagd' : 'Lägg till'}</Badge>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function ProjectTasksPanel({
   companyId,
   projectId,
@@ -135,6 +200,7 @@ export default function ProjectTasksPanel({
   const [priority, setPriority] = useState<TaskPriority>('normal');
   const [dueDate, setDueDate] = useState('');
   const [assigneeUserId, setAssigneeUserId] = useState<string>('none');
+  const [memberUserIds, setMemberUserIds] = useState<string[]>([]);
   const [milestoneId, setMilestoneId] = useState<string>('none');
   const [subtasks, setSubtasks] = useState<ProjectTaskSubtask[]>([]);
   const [subtaskDraft, setSubtaskDraft] = useState('');
@@ -174,6 +240,21 @@ export default function ProjectTasksPanel({
       return data ?? [];
     }
   });
+  const taskMembersQuery = useQuery<ProjectTaskMemberRow[]>({
+    queryKey: ['project-task-members', companyId, projectId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('project_task_members')
+        .select('id,company_id,project_id,task_id,user_id,created_by,created_at')
+        .eq('company_id', companyId)
+        .eq('project_id', projectId)
+        .order('created_at', { ascending: true })
+        .returns<ProjectTaskMemberRow[]>();
+
+      if (error) throw error;
+      return data ?? [];
+    }
+  });
 
   const normalizedMembers = useMemo(
     () =>
@@ -187,6 +268,15 @@ export default function ProjectTasksPanel({
     [members]
   );
   const assigneeByUserId = useMemo(() => new Map(normalizedMembers.map((member) => [member.user_id, member])), [normalizedMembers]);
+  const taskMemberUserIdsByTaskId = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const assignment of taskMembersQuery.data ?? []) {
+      const current = map.get(assignment.task_id) ?? [];
+      current.push(assignment.user_id);
+      map.set(assignment.task_id, current);
+    }
+    return map;
+  }, [taskMembersQuery.data]);
   const milestoneById = useMemo(() => new Map(milestones.map((milestone) => [milestone.id, milestone])), [milestones]);
   const tasks = tasksQuery.data ?? [];
   const openTasks = tasks.filter((task) => task.status !== 'done');
@@ -195,9 +285,14 @@ export default function ProjectTasksPanel({
   const myTasks = useMemo(
     () => {
       const currentUserId = normalizeUserId(currentUserQuery.data);
-      return currentUserId ? tasks.filter((task) => task.assignee_user_id === currentUserId && task.status !== 'done') : [];
+      return currentUserId
+        ? tasks.filter((task) => {
+            const taskMemberUserIds = taskMemberUserIdsByTaskId.get(task.id) ?? [];
+            return (task.assignee_user_id === currentUserId || taskMemberUserIds.includes(currentUserId)) && task.status !== 'done';
+          })
+        : [];
     },
-    [currentUserQuery.data, tasks]
+    [currentUserQuery.data, taskMemberUserIdsByTaskId, tasks]
   );
   const boardColumns = useMemo(
     () => ({
@@ -230,6 +325,7 @@ export default function ProjectTasksPanel({
           priority,
           dueDate: dueDate || null,
           assigneeUserId: assigneeUserId === 'none' ? null : normalizeUserId(assigneeUserId),
+          memberUserIds,
           milestoneId: milestoneId === 'none' ? null : milestoneId,
           subtasks: serializeTaskSubtasks(subtasks)
         })
@@ -244,10 +340,12 @@ export default function ProjectTasksPanel({
       setPriority('normal');
       setDueDate('');
       setAssigneeUserId('none');
+      setMemberUserIds([]);
       setMilestoneId('none');
       setSubtasks([]);
       setSubtaskDraft('');
       await queryClient.invalidateQueries({ queryKey: ['project-tasks', companyId, projectId] });
+      await queryClient.invalidateQueries({ queryKey: ['project-task-members', companyId, projectId] });
       toast.success('Uppgift skapad');
     },
     onError: (error) => {
@@ -262,17 +360,19 @@ export default function ProjectTasksPanel({
     }: {
       taskId: string;
       patch: Partial<Pick<ProjectTaskRow, 'status' | 'priority' | 'due_date' | 'assignee_user_id' | 'milestone_id' | 'subtasks'>>;
+      memberUserIds?: string[];
     }) => {
       const res = await fetch('/api/project-tasks', {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ companyId, taskId, patch })
+        body: JSON.stringify({ companyId, taskId, patch, memberUserIds })
       });
       const body = (await res.json().catch(() => null)) as { error?: string } | null;
       if (!res.ok) throw new Error(body?.error ?? 'Kunde inte uppdatera uppgift');
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['project-tasks', companyId, projectId] });
+      await queryClient.invalidateQueries({ queryKey: ['project-task-members', companyId, projectId] });
     },
     onError: (error) => {
       toast.error(message(error, 'Kunde inte uppdatera uppgift'));
@@ -419,6 +519,10 @@ export default function ProjectTasksPanel({
                       </SelectContent>
                     </Select>
                   </label>
+                  <div className="space-y-2 md:col-span-2">
+                    <span className="text-sm">Medlemmar på uppgiften</span>
+                    <TaskMemberPicker members={normalizedMembers} selectedUserIds={memberUserIds} onChange={setMemberUserIds} />
+                  </div>
                   <label className="space-y-1 md:col-span-2">
                     <span className="text-sm">Koppla till delmål</span>
                     <Select value={milestoneId} onValueChange={setMilestoneId}>
@@ -544,6 +648,10 @@ export default function ProjectTasksPanel({
                   </SelectContent>
                 </Select>
               </label>
+              <div className="space-y-2 md:col-span-2">
+                <span className="text-sm">Medlemmar på uppgiften</span>
+                <TaskMemberPicker members={normalizedMembers} selectedUserIds={memberUserIds} onChange={setMemberUserIds} />
+              </div>
               <label className="space-y-1 md:col-span-2">
                 <span className="text-sm">Koppla till delmål</span>
                 <Select value={milestoneId} onValueChange={setMilestoneId}>
@@ -647,6 +755,9 @@ export default function ProjectTasksPanel({
                   {boardColumns[column].length === 0 ? <p className="text-sm text-foreground/55">Tom kolumn.</p> : null}
                   {boardColumns[column].map((task) => {
                     const assignee = task.assignee_user_id ? assigneeByUserId.get(task.assignee_user_id) ?? null : null;
+                    const taskMembers = (taskMemberUserIdsByTaskId.get(task.id) ?? [])
+                      .map((userId) => assigneeByUserId.get(userId) ?? null)
+                      .filter((member): member is ProjectMemberVisual => Boolean(member));
                     const isOverdue = Boolean(task.due_date && task.due_date < todayIso() && task.status !== 'done');
                     const linkedMilestone = task.milestone_id ? milestoneById.get(task.milestone_id) ?? null : null;
                     const taskSubtasks = normalizeTaskSubtasks(task.subtasks);
@@ -697,6 +808,21 @@ export default function ProjectTasksPanel({
                             </span>
                           </div>
                         ) : null}
+                        {taskMembers.length > 0 ? (
+                          <div className="mt-3 flex flex-wrap gap-1.5">
+                            {taskMembers.map((member) => (
+                              <ProfileBadge
+                                key={`${task.id}-${member.user_id}`}
+                                label={member.display_name ?? member.email ?? member.user_id}
+                                color={member.color}
+                                avatarUrl={member.avatar_url}
+                                emoji={member.emoji}
+                                className="h-6 w-6 shrink-0"
+                                textClassName="text-[10px] font-semibold text-white"
+                              />
+                            ))}
+                          </div>
+                        ) : null}
                       </div>
                     );
                   })}
@@ -707,6 +833,10 @@ export default function ProjectTasksPanel({
             <>
           {openTasks.map((task) => {
             const assignee = task.assignee_user_id ? assigneeByUserId.get(task.assignee_user_id) ?? null : null;
+            const taskMemberUserIds = taskMemberUserIdsByTaskId.get(task.id) ?? [];
+            const taskMembers = taskMemberUserIds
+              .map((userId) => assigneeByUserId.get(userId) ?? null)
+              .filter((member): member is ProjectMemberVisual => Boolean(member));
             const isOverdue = Boolean(task.due_date && task.due_date < todayIso());
             const linkedMilestone = task.milestone_id ? milestoneById.get(task.milestone_id) ?? null : null;
             const taskSubtasks = normalizeTaskSubtasks(task.subtasks);
@@ -770,6 +900,12 @@ export default function ProjectTasksPanel({
                     <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-900 dark:bg-amber-500/15 dark:text-amber-200">
                       <Link2 className="h-3.5 w-3.5" />
                       <span className="max-w-[160px] truncate">{linkedMilestone.title || 'Kopplat delmål'}</span>
+                    </span>
+                  ) : null}
+                  {taskMembers.length > 0 ? (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs text-foreground/70">
+                      <Users className="h-3.5 w-3.5" />
+                      {taskMembers.length} medlem{taskMembers.length === 1 ? '' : 'mar'}
                     </span>
                   ) : null}
                   {taskSubtasks.length > 0 ? (
@@ -872,9 +1008,34 @@ export default function ProjectTasksPanel({
                     ) : null}
                   </div>
                 ) : null}
+                {taskMembers.length > 0 ? (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {taskMembers.map((member) => (
+                      <div key={`${task.id}-${member.user_id}`} className="inline-flex items-center gap-2 rounded-full bg-muted px-2 py-1 text-xs">
+                        <ProfileBadge
+                          label={member.display_name ?? member.email ?? member.user_id}
+                          color={member.color}
+                          avatarUrl={member.avatar_url}
+                          emoji={member.emoji}
+                          className="h-5 w-5 shrink-0"
+                          textClassName="text-[9px] font-semibold text-white"
+                        />
+                        <span className="max-w-[140px] truncate">
+                          {getUserDisplayName({
+                            displayName: member.display_name,
+                            email: member.email,
+                            handle: member.handle,
+                            userId: member.user_id
+                          })}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
 
                 {canManageTasks(role) ? (
-                  <div className="mt-3 grid gap-2 md:grid-cols-4">
+                  <div className="mt-3 space-y-3">
+                    <div className="grid gap-2 md:grid-cols-4">
                     <Select
                       value={task.status}
                       onValueChange={(value) => updateTaskMutation.mutate({ taskId: task.id, patch: { status: value as TaskStatus } })}
@@ -948,6 +1109,21 @@ export default function ProjectTasksPanel({
                         ))}
                       </SelectContent>
                     </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <p className="text-sm text-foreground/70">Medlemmar på uppgiften</p>
+                      <TaskMemberPicker
+                        members={normalizedMembers}
+                        selectedUserIds={taskMemberUserIds}
+                        onChange={(nextUserIds) =>
+                          updateTaskMutation.mutate({
+                            taskId: task.id,
+                            patch: {},
+                            memberUserIds: nextUserIds
+                          })
+                        }
+                      />
+                    </div>
                   </div>
                 ) : null}
               </div>
