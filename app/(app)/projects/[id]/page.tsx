@@ -843,7 +843,7 @@ export default function ProjectDetailsPage() {
   }, [invoiceSourceCountsQuery.data]);
 
   const availableMembers = useMemo(() => {
-    const baseMembers = new Map<string, { id: string; company_id: string; user_id: string; role: Role; created_at: string; email: string | null; handle: string | null; display_name: string | null }>();
+    const baseMembers = new Map<string, { id: string; company_id: string; user_id: string; role: Role; created_at: string; email: string | null; handle: string | null; display_name: string | null; color: string; avatar_path: string | null; avatar_url: string | null; emoji: string | null }>();
 
     for (const member of companyMemberOptionsQuery.data ?? []) {
       if (!baseMembers.has(member.user_id)) {
@@ -855,7 +855,11 @@ export default function ProjectDetailsPage() {
           created_at: member.created_at,
           email: member.email,
           handle: member.handle,
-          display_name: member.display_name
+          display_name: member.display_name,
+          color: member.color,
+          avatar_path: member.avatar_path,
+          avatar_url: member.avatar_url,
+          emoji: member.emoji
         });
       }
     }
@@ -868,19 +872,15 @@ export default function ProjectDetailsPage() {
         created_at: '',
         email: currentUserQuery.data.email,
         handle: currentUserQuery.data.email?.split('@')[0]?.toLowerCase() ?? null,
-        display_name: null
-      });
-    }
-
-    return Array.from(baseMembers.values()).map((member) => {
-      return {
-        ...member,
+        display_name: null,
         color: '#3b82f6',
         avatar_path: null,
         avatar_url: null,
         emoji: null
-      };
-    });
+      });
+    }
+
+    return Array.from(baseMembers.values());
   }, [companyId, companyMemberOptionsQuery.data, currentUserQuery.data, role]);
   const currentUserId = currentUserQuery.data?.id ?? '';
   const assignedMembers = useMemo(
