@@ -285,6 +285,7 @@ export default function ProjectDetailsPage() {
   const [memberSearch, setMemberSearch] = useState('');
   const [memberRoleFilter, setMemberRoleFilter] = useState<'all' | Role>('all');
   const [optimisticAssignedUserIds, setOptimisticAssignedUserIds] = useState<string[] | null>(null);
+  const [isSyncingProjectMembers, setIsSyncingProjectMembers] = useState(false);
   const hasAutoOpenedPlanningRef = useRef(false);
   const pendingMemberOperationsRef = useRef<ProjectMemberOperation[]>([]);
   const activeMemberOperationRef = useRef<ProjectMemberOperation | null>(null);
@@ -796,46 +797,6 @@ export default function ProjectDetailsPage() {
     return counts;
   }, [invoiceSourceCountsQuery.data]);
 
-  const syncProjectMemberMutation = useMutation({
-    mutationFn: async ({ action, userId }: { action: 'add' | 'remove'; userId: string }) => {
-      const res = await fetch(
-        action === 'add'
-          ? '/api/project-members'
-          : `/api/project-members?companyId=${encodeURIComponent(companyId)}&projectId=${encodeURIComponent(projectId)}&userId=${encodeURIComponent(userId)}`,
-        action === 'add'
-          ? {
-              method: 'PATCH',
-              headers: {
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({
-                companyId,
-                projectId,
-                userId
-              })
-            }
-          : {
-              method: 'DELETE'
-            }
-      );
-      const body = (await res.json().catch(() => null)) as
-        | { error?: string; assignments?: ProjectMemberAssignmentRow[] }
-        | null;
-      if (!res.ok) {
-        throw new Error(body?.error ?? 'Kunde inte uppdatera projektmedlemmar');
-      }
-      return body?.assignments ?? [];
-    },
-    onSuccess: async (assignments) => {
-      queryClient.setQueryData<ProjectMemberAssignmentRow[]>(['project-member-assignments', companyId, projectId], assignments);
-      await queryClient.invalidateQueries({ queryKey: ['project-member-assignments', companyId, projectId] });
-      await queryClient.invalidateQueries({ queryKey: ['project-members', companyId] });
-    },
-    onError: (error) => {
-      toast.error(getErrorMessage(error, 'Kunde inte uppdatera projektmedlemmar'));
-    }
-  });
-
   const availableMembers = useMemo(() => {
     const baseMembers = new Map<string, { id: string; company_id: string; user_id: string; role: Role; created_at: string; email: string | null; handle: string | null; display_name: string | null }>();
 
@@ -945,24 +906,61 @@ export default function ProjectDetailsPage() {
     });
   }, [serverAssignedUserIds]);
 
+  async function runProjectMemberOperation(operation: ProjectMemberOperation) {
+    setIsSyncingProjectMembers(true);
+    try {
+      const res = await fetch(
+        operation.action === 'add'
+          ? '/api/project-members'
+          : `/api/project-members?companyId=${encodeURIComponent(companyId)}&projectId=${encodeURIComponent(projectId)}&userId=${encodeURIComponent(operation.userId)}`,
+        operation.action === 'add'
+          ? {
+              method: 'PATCH',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                companyId,
+                projectId,
+                userId: operation.userId
+              })
+            }
+          : {
+              method: 'DELETE'
+            }
+      );
+
+      const body = (await res.json().catch(() => null)) as
+        | { error?: string; assignments?: ProjectMemberAssignmentRow[] }
+        | null;
+
+      if (!res.ok) {
+        throw new Error(body?.error ?? 'Kunde inte uppdatera projektmedlemmar');
+      }
+
+      const assignments = body?.assignments ?? [];
+      queryClient.setQueryData<ProjectMemberAssignmentRow[]>(['project-member-assignments', companyId, projectId], assignments);
+      await queryClient.invalidateQueries({ queryKey: ['project-member-assignments', companyId, projectId] });
+      await queryClient.invalidateQueries({ queryKey: ['project-members', companyId] });
+      toast.success('Projektmedlemmar uppdaterade');
+    } catch (error) {
+      pendingMemberOperationsRef.current = [];
+      setOptimisticAssignedUserIds(null);
+      toast.error(getErrorMessage(error, 'Kunde inte uppdatera projektmedlemmar'));
+    } finally {
+      setIsSyncingProjectMembers(false);
+    }
+  }
+
   function processNextMemberOperation() {
-    if (activeMemberOperationRef.current || syncProjectMemberMutation.isPending) return;
+    if (activeMemberOperationRef.current || isSyncingProjectMembers) return;
     const nextOperation = pendingMemberOperationsRef.current.shift() ?? null;
     if (!nextOperation) return;
 
     activeMemberOperationRef.current = nextOperation;
-    syncProjectMemberMutation.mutate(nextOperation, {
-      onSuccess: () => {
-        toast.success('Projektmedlemmar uppdaterade');
-      },
-      onError: () => {
-        pendingMemberOperationsRef.current = [];
-        setOptimisticAssignedUserIds(null);
-      },
-      onSettled: () => {
+    void runProjectMemberOperation(nextOperation).finally(() => {
         activeMemberOperationRef.current = null;
         processNextMemberOperation();
-      }
     });
   }
 
