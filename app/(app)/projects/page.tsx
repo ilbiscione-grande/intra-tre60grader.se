@@ -14,6 +14,7 @@ import ProjectOverviewKpis from '@/features/projects/ProjectOverviewKpis';
 import { useProjectColumns } from '@/features/projects/projectQueries';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { canViewProjectSummary } from '@/lib/auth/capabilities';
 import { createClient } from '@/lib/supabase/client';
@@ -126,37 +127,63 @@ export default function ProjectsPage() {
     </div>
   );
 
+  const mobileViewModeTrigger = (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline" size="icon" className="h-8 w-8 shrink-0 rounded-full sm:h-9 sm:w-9" aria-label="Välj visningsläge">
+          {viewMode === 'board' ? <LayoutGrid className="h-4 w-4" /> : <Rows3 className="h-4 w-4" />}
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onClick={() => changeViewMode('board')}>
+          <LayoutGrid className="mr-2 h-4 w-4" />
+          Board
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => changeViewMode('list')}>
+          <Rows3 className="mr-2 h-4 w-4" />
+          Lista
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+
+  const desktopViewModeToggle = (
+    <div className="inline-flex items-center rounded-full border border-border bg-muted/20 p-1">
+      <button
+        type="button"
+        onClick={() => changeViewMode('board')}
+        className={`inline-flex h-8 w-8 items-center justify-center rounded-full transition ${
+          viewMode === 'board' ? 'bg-background text-foreground shadow-sm' : 'text-foreground/65'
+        }`}
+        aria-label="Boardvy"
+        title="Boardvy"
+      >
+        <LayoutGrid className="h-4 w-4" />
+      </button>
+      <button
+        type="button"
+        onClick={() => changeViewMode('list')}
+        className={`inline-flex h-8 w-8 items-center justify-center rounded-full transition ${
+          viewMode === 'list' ? 'bg-background text-foreground shadow-sm' : 'text-foreground/65'
+        }`}
+        aria-label="Listvy"
+        title="Listvy"
+      >
+        <Rows3 className="h-4 w-4" />
+      </button>
+    </div>
+  );
+
   if (mode === 'mobile') {
     return (
       <div className="space-y-4">
         <div className="flex items-center gap-1.5">
           {summaryToggle}
           {automationTrigger}
+          {mobileViewModeTrigger}
           <SectionErrorBoundary title="Skapa projekt">
             <CreateProjectEntry companyId={companyId} mode="mobile" />
           </SectionErrorBoundary>
-        </div>
-        <div className="inline-flex rounded-full border border-border bg-muted/20 p-1">
-          <button
-            type="button"
-            onClick={() => changeViewMode('board')}
-            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs transition ${
-              viewMode === 'board' ? 'bg-background text-foreground shadow-sm' : 'text-foreground/65'
-            }`}
-          >
-            <LayoutGrid className="h-3.5 w-3.5" />
-            Board
-          </button>
-          <button
-            type="button"
-            onClick={() => changeViewMode('list')}
-            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs transition ${
-              viewMode === 'list' ? 'bg-background text-foreground shadow-sm' : 'text-foreground/65'
-            }`}
-          >
-            <Rows3 className="h-3.5 w-3.5" />
-            Lista
-          </button>
         </div>
         {projectFilters}
         {canSeeProjectSummary && showSummary ? (
@@ -191,32 +218,11 @@ export default function ProjectsPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="inline-flex rounded-full border border-border bg-muted/20 p-1">
-          <button
-            type="button"
-            onClick={() => changeViewMode('board')}
-            className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm transition ${
-              viewMode === 'board' ? 'bg-background text-foreground shadow-sm' : 'text-foreground/65'
-            }`}
-          >
-            <LayoutGrid className="h-4 w-4" />
-            Board
-          </button>
-          <button
-            type="button"
-            onClick={() => changeViewMode('list')}
-            className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm transition ${
-              viewMode === 'list' ? 'bg-background text-foreground shadow-sm' : 'text-foreground/65'
-            }`}
-          >
-            <Rows3 className="h-4 w-4" />
-            Lista
-          </button>
-        </div>
+      <div className="flex flex-wrap items-center justify-end gap-3">
         <div className="flex items-center justify-end gap-2">
           {automationTrigger}
           {summaryToggle}
+          {desktopViewModeToggle}
           <SectionErrorBoundary title="Skapa projekt">
             <CreateProjectEntry companyId={companyId} mode="desktop" />
           </SectionErrorBoundary>
