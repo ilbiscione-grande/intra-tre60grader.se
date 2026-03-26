@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { LayoutGrid, Rows3, SlidersHorizontal } from 'lucide-react';
 import { useAppContext } from '@/components/providers/AppContext';
 import SectionErrorBoundary from '@/components/common/SectionErrorBoundary';
@@ -11,9 +11,12 @@ import ProjectBoardMobile from '@/features/projects/ProjectBoardMobile';
 import ProjectListView from '@/features/projects/ProjectListView';
 import ProjectLeadershipDashboard from '@/features/projects/ProjectLeadershipDashboard';
 import ProjectOverviewKpis from '@/features/projects/ProjectOverviewKpis';
+import { useProjectColumns } from '@/features/projects/projectQueries';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
 import { canViewProjectSummary } from '@/lib/auth/capabilities';
+import { createClient } from '@/lib/supabase/client';
 import { useBreakpointMode } from '@/lib/ui/useBreakpointMode';
 
 type ProjectViewMode = 'board' | 'list';
@@ -27,12 +30,42 @@ export default function ProjectsPage() {
   const [showSummary, setShowSummary] = useState(false);
   const [showAutomation, setShowAutomation] = useState(false);
   const [viewMode, setViewMode] = useState<ProjectViewMode>('board');
+  const [projectSearch, setProjectSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [onlyMine, setOnlyMine] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const columnsQuery = useProjectColumns(companyId);
+  const statusOptions = useMemo(
+    () => [{ key: 'all', title: 'Alla statusar' }, ...(columnsQuery.data ?? []).map((column) => ({ key: column.key, title: column.title }))],
+    [columnsQuery.data]
+  );
 
   useEffect(() => {
     const stored = window.localStorage.getItem(PROJECT_VIEW_MODE_KEY);
     if (stored === 'board' || stored === 'list') {
       setViewMode(stored);
     }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadCurrentUser() {
+      const supabase = createClient();
+      const {
+        data: { user }
+      } = await supabase.auth.getUser();
+
+      if (!cancelled) {
+        setCurrentUserId(user?.id ?? null);
+      }
+    }
+
+    void loadCurrentUser();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   function changeViewMode(nextMode: ProjectViewMode) {
@@ -95,6 +128,35 @@ export default function ProjectsPage() {
             Lista
           </button>
         </div>
+        <div className="grid gap-2">
+          <Input
+            value={projectSearch}
+            onChange={(event) => setProjectSearch(event.target.value)}
+            placeholder="Sök projekt, ansvarig eller medlem"
+            className="h-10 rounded-2xl"
+          />
+          <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+            <select
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value)}
+              className="h-10 rounded-2xl border border-input bg-background px-3 text-sm outline-none transition focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/20"
+            >
+              {statusOptions.map((option) => (
+                <option key={option.key} value={option.key}>
+                  {option.title}
+                </option>
+              ))}
+            </select>
+            <Button
+              type="button"
+              variant={onlyMine ? 'default' : 'outline'}
+              className="h-10 rounded-2xl"
+              onClick={() => setOnlyMine((current) => !current)}
+            >
+              Mina projekt
+            </Button>
+          </div>
+        </div>
         {canSeeProjectSummary && showSummary ? (
           <>
             <SectionErrorBoundary title="Projektöversikt">
@@ -106,7 +168,11 @@ export default function ProjectsPage() {
           </>
         ) : null}
         <SectionErrorBoundary title="Projektflöde">
-          {viewMode === 'board' ? <ProjectBoardMobile companyId={companyId} /> : <ProjectListView companyId={companyId} />}
+          {viewMode === 'board' ? (
+            <ProjectBoardMobile companyId={companyId} searchTerm={projectSearch} statusFilter={statusFilter} onlyMine={onlyMine} currentUserId={currentUserId} />
+          ) : (
+            <ProjectListView companyId={companyId} searchTerm={projectSearch} statusFilter={statusFilter} onlyMine={onlyMine} currentUserId={currentUserId} />
+          )}
         </SectionErrorBoundary>
 
         <Dialog open={showAutomation} onOpenChange={setShowAutomation}>
@@ -147,12 +213,39 @@ export default function ProjectsPage() {
           </button>
         </div>
         <div className="flex items-center justify-end gap-2">
-        {automationTrigger}
-        {summaryToggle}
-        <SectionErrorBoundary title="Skapa projekt">
-          <CreateProjectEntry companyId={companyId} mode="desktop" />
-        </SectionErrorBoundary>
+          {automationTrigger}
+          {summaryToggle}
+          <SectionErrorBoundary title="Skapa projekt">
+            <CreateProjectEntry companyId={companyId} mode="desktop" />
+          </SectionErrorBoundary>
         </div>
+      </div>
+      <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_220px_auto]">
+        <Input
+          value={projectSearch}
+          onChange={(event) => setProjectSearch(event.target.value)}
+          placeholder="Sök projekt, ansvarig eller medlem"
+          className="h-10 rounded-2xl"
+        />
+        <select
+          value={statusFilter}
+          onChange={(event) => setStatusFilter(event.target.value)}
+          className="h-10 rounded-2xl border border-input bg-background px-3 text-sm outline-none transition focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/20"
+        >
+          {statusOptions.map((option) => (
+            <option key={option.key} value={option.key}>
+              {option.title}
+            </option>
+          ))}
+        </select>
+        <Button
+          type="button"
+          variant={onlyMine ? 'default' : 'outline'}
+          className="h-10 rounded-2xl"
+          onClick={() => setOnlyMine((current) => !current)}
+        >
+          Mina projekt
+        </Button>
       </div>
       {canSeeProjectSummary && showSummary ? (
         <>
@@ -165,7 +258,11 @@ export default function ProjectsPage() {
         </>
       ) : null}
       <SectionErrorBoundary title="Projektflöde">
-        {viewMode === 'board' ? <ProjectBoardDesktop companyId={companyId} /> : <ProjectListView companyId={companyId} />}
+        {viewMode === 'board' ? (
+          <ProjectBoardDesktop companyId={companyId} searchTerm={projectSearch} statusFilter={statusFilter} onlyMine={onlyMine} currentUserId={currentUserId} />
+        ) : (
+          <ProjectListView companyId={companyId} searchTerm={projectSearch} statusFilter={statusFilter} onlyMine={onlyMine} currentUserId={currentUserId} />
+        )}
       </SectionErrorBoundary>
 
       <Dialog open={showAutomation} onOpenChange={setShowAutomation}>

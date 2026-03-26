@@ -36,6 +36,10 @@ import type { Project } from '@/lib/types';
 
 type BoardState = Record<string, Project[]>;
 
+function normalizeSearch(value: string) {
+  return value.trim().toLowerCase();
+}
+
 function columnId(status: string) {
   return `column:${status}`;
 }
@@ -301,7 +305,19 @@ function AddColumnCard({ onAdd, busy }: { onAdd: () => void; busy: boolean }) {
   );
 }
 
-export default function ProjectBoardDesktop({ companyId }: { companyId: string }) {
+export default function ProjectBoardDesktop({
+  companyId,
+  searchTerm = '',
+  statusFilter = 'all',
+  onlyMine = false,
+  currentUserId = null
+}: {
+  companyId: string;
+  searchTerm?: string;
+  statusFilter?: string;
+  onlyMine?: boolean;
+  currentUserId?: string | null;
+}) {
   const supabase = useMemo(() => createClient(), []);
   const queryClient = useQueryClient();
   const projectsQuery = useProjects(companyId);
@@ -311,6 +327,7 @@ export default function ProjectBoardDesktop({ companyId }: { companyId: string }
   const moveMutation = useMoveProject(companyId);
   const updateWorkflowStatusMutation = useUpdateProjectWorkflowStatus(companyId);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+  const search = normalizeSearch(searchTerm);
 
   const columns = columnsQuery.data ?? [];
   const availableMembers = projectMembersQuery.data?.availableMembers ?? [];
@@ -371,7 +388,49 @@ export default function ProjectBoardDesktop({ companyId }: { companyId: string }
     return [...known, ...missing];
   }, [columnOrder, statuses]);
 
-  const projects = projectsQuery.data ?? [];
+  const projects = useMemo(
+    () =>
+      (projectsQuery.data ?? []).filter((project) => {
+        if (statusFilter !== 'all' && project.status !== statusFilter) return false;
+        if (
+          onlyMine &&
+          (!currentUserId ||
+            (project.responsible_user_id !== currentUserId &&
+              !(membersByProjectId.get(project.id) ?? []).some((member) => member.user_id === currentUserId)))
+        ) {
+          return false;
+        }
+        if (!search) return true;
+
+        const members = membersByProjectId.get(project.id) ?? [];
+        const responsible = availableMembers.find((member) => member.user_id === project.responsible_user_id) ?? null;
+        const haystack = [
+          project.title,
+          titleByStatus.get(project.status) ?? '',
+          responsible
+            ? getUserDisplayName({
+                displayName: responsible.display_name,
+                email: responsible.email,
+                handle: responsible.handle,
+                userId: responsible.user_id
+              })
+            : '',
+          ...members.map((member) =>
+            getUserDisplayName({
+              displayName: member.display_name,
+              email: member.email,
+              handle: member.handle,
+              userId: member.user_id
+            })
+          )
+        ]
+          .join(' ')
+          .toLowerCase();
+
+        return haystack.includes(search);
+      }),
+    [availableMembers, currentUserId, membersByProjectId, onlyMine, projectsQuery.data, search, statusFilter, titleByStatus]
+  );
   const initialBoard = useMemo(() => buildBoardState(projects, statuses), [projects, statuses]);
 
   const [board, setBoard] = useState<BoardState>(initialBoard);

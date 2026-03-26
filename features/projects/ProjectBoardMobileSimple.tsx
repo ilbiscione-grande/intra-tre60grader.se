@@ -33,6 +33,10 @@ import { useAutoScrollActiveTab } from '@/lib/ui/useAutoScrollActiveTab';
 
 type BoardState = Record<string, Project[]>;
 
+function normalizeSearch(value: string) {
+  return value.trim().toLowerCase();
+}
+
 function toKeySeed(title: string) {
   return title
     .trim()
@@ -192,7 +196,19 @@ function ActiveMobileColumn({
   );
 }
 
-export default function ProjectBoardMobileSimple({ companyId }: { companyId: string }) {
+export default function ProjectBoardMobileSimple({
+  companyId,
+  searchTerm = '',
+  statusFilter = 'all',
+  onlyMine = false,
+  currentUserId = null
+}: {
+  companyId: string;
+  searchTerm?: string;
+  statusFilter?: string;
+  onlyMine?: boolean;
+  currentUserId?: string | null;
+}) {
   const supabase = useMemo(() => createClient(), []);
   const queryClient = useQueryClient();
   const [activeStatus, setActiveStatus] = useState('');
@@ -223,11 +239,9 @@ export default function ProjectBoardMobileSimple({ companyId }: { companyId: str
   const activitySummariesQuery = useProjectActivitySummaries(companyId);
   const moveMutation = useMoveProject(companyId);
   const updateWorkflowStatusMutation = useUpdateProjectWorkflowStatus(companyId);
+  const search = normalizeSearch(searchTerm);
 
   const columns = columnsQuery.data ?? [];
-  const projects = projectsQuery.data ?? [];
-  const statuses = useMemo(() => columns.map((column) => column.key), [columns]);
-  const initialBoard = useMemo(() => buildBoardState(projects, statuses), [projects, statuses]);
   const availableMembers = projectMembersQuery.data?.availableMembers ?? [];
 
   const membersByProjectId = useMemo(() => {
@@ -261,6 +275,51 @@ export default function ProjectBoardMobileSimple({ companyId }: { companyId: str
   }, [activitySummariesQuery.data, availableMembers]);
 
   const titleByStatus = useMemo(() => new Map(columns.map((column) => [column.key, column.title])), [columns]);
+  const projects = useMemo(
+    () =>
+      (projectsQuery.data ?? []).filter((project) => {
+        if (statusFilter !== 'all' && project.status !== statusFilter) return false;
+        if (
+          onlyMine &&
+          (!currentUserId ||
+            (project.responsible_user_id !== currentUserId &&
+              !(membersByProjectId.get(project.id) ?? []).some((member) => member.user_id === currentUserId)))
+        ) {
+          return false;
+        }
+        if (!search) return true;
+
+        const members = membersByProjectId.get(project.id) ?? [];
+        const responsible = availableMembers.find((member) => member.user_id === project.responsible_user_id) ?? null;
+        const haystack = [
+          project.title,
+          titleByStatus.get(project.status) ?? '',
+          responsible
+            ? getUserDisplayName({
+                displayName: responsible.display_name,
+                email: responsible.email,
+                handle: responsible.handle,
+                userId: responsible.user_id
+              })
+            : '',
+          ...members.map((member) =>
+            getUserDisplayName({
+              displayName: member.display_name,
+              email: member.email,
+              handle: member.handle,
+              userId: member.user_id
+            })
+          )
+        ]
+          .join(' ')
+          .toLowerCase();
+
+        return haystack.includes(search);
+      }),
+    [availableMembers, currentUserId, membersByProjectId, onlyMine, projectsQuery.data, search, statusFilter, titleByStatus]
+  );
+  const statuses = useMemo(() => columns.map((column) => column.key), [columns]);
+  const initialBoard = useMemo(() => buildBoardState(projects, statuses), [projects, statuses]);
   const activeColumn = useMemo(() => columns.find((column) => column.key === activeStatus) ?? null, [activeStatus, columns]);
   const activeIndex = Math.max(0, columns.findIndex((column) => column.key === activeStatus));
   const activeList = board[activeStatus] ?? [];
@@ -631,7 +690,11 @@ export default function ProjectBoardMobileSimple({ companyId }: { companyId: str
                     activitySummary={activitySummaryByProjectId.get(project.id)}
                   />
                 ))}
-                {activeList.length === 0 ? <p className="rounded-2xl bg-muted/60 p-4 text-sm text-foreground/70">Inga projekt i kolumnen.</p> : null}
+                {activeList.length === 0 ? (
+                  <p className="rounded-2xl bg-muted/60 p-4 text-sm text-foreground/70">
+                    {search || statusFilter !== 'all' ? 'Inga projekt matchar filtret.' : 'Inga projekt i kolumnen.'}
+                  </p>
+                ) : null}
               </div>
             </SortableContext>
           </ActiveMobileColumn>

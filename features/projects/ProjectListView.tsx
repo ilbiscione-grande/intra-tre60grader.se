@@ -5,13 +5,30 @@ import { useMoveProject, useProjectActivitySummaries, useProjectColumns, useProj
 import { getUserDisplayName } from '@/features/profile/profileBadge';
 import ProjectCard from '@/features/projects/ProjectCard';
 
-export default function ProjectListView({ companyId }: { companyId: string }) {
+function normalizeSearch(value: string) {
+  return value.trim().toLowerCase();
+}
+
+export default function ProjectListView({
+  companyId,
+  searchTerm = '',
+  statusFilter = 'all',
+  onlyMine = false,
+  currentUserId = null
+}: {
+  companyId: string;
+  searchTerm?: string;
+  statusFilter?: string;
+  onlyMine?: boolean;
+  currentUserId?: string | null;
+}) {
   const projectsQuery = useProjects(companyId);
   const columnsQuery = useProjectColumns(companyId);
   const projectMembersQuery = useProjectMembers(companyId);
   const activitySummariesQuery = useProjectActivitySummaries(companyId);
   const moveMutation = useMoveProject(companyId);
   const updateWorkflowStatusMutation = useUpdateProjectWorkflowStatus(companyId);
+  const search = normalizeSearch(searchTerm);
 
   const columns = columnsQuery.data ?? [];
   const projects = useMemo(
@@ -52,14 +69,61 @@ export default function ProjectListView({ companyId }: { companyId: string }) {
     }
     return next;
   }, [activitySummariesQuery.data, availableMembers]);
+  const filteredProjects = useMemo(
+    () =>
+      projects.filter((project) => {
+        if (statusFilter !== 'all' && project.status !== statusFilter) return false;
+        if (
+          onlyMine &&
+          (!currentUserId ||
+            (project.responsible_user_id !== currentUserId &&
+              !(membersByProjectId.get(project.id) ?? []).some((member) => member.user_id === currentUserId)))
+        ) {
+          return false;
+        }
+        if (!search) return true;
 
-  if (projects.length === 0) {
-    return <p className="rounded-lg bg-muted p-4 text-sm text-foreground/70">Inga projekt ännu.</p>;
+        const members = membersByProjectId.get(project.id) ?? [];
+        const responsible = availableMembers.find((member) => member.user_id === project.responsible_user_id) ?? null;
+        const haystack = [
+          project.title,
+          columns.find((column) => column.key === project.status)?.title ?? '',
+          responsible
+            ? getUserDisplayName({
+                displayName: responsible.display_name,
+                email: responsible.email,
+                handle: responsible.handle,
+                userId: responsible.user_id
+              })
+            : '',
+          ...members.map((member) =>
+            getUserDisplayName({
+              displayName: member.display_name,
+              email: member.email,
+              handle: member.handle,
+              userId: member.user_id
+            })
+          )
+        ]
+          .join(' ')
+          .toLowerCase();
+
+        return haystack.includes(search);
+      }),
+    [availableMembers, columns, currentUserId, membersByProjectId, onlyMine, projects, search, statusFilter]
+  );
+
+  if (filteredProjects.length === 0) {
+    return (
+      <p className="rounded-lg bg-muted p-4 text-sm text-foreground/70">
+        {search || statusFilter !== 'all' || onlyMine ? 'Inga projekt matchar filtret.' : 'Inga projekt ännu.'}
+      </p>
+    );
   }
 
   return (
     <div className="space-y-3">
-      {projects.map((project) => (
+      {filteredProjects.map((project) => (
         <ProjectCard
           key={project.id}
           project={project}
