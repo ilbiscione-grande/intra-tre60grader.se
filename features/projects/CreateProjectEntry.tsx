@@ -663,8 +663,8 @@ export default function CreateProjectEntry({ companyId, mode }: { companyId: str
   if (mode === 'mobile') {
     return (
       <>
-        <Button size="sm" className="h-8 shrink-0 whitespace-nowrap px-2.5 text-[11px] sm:h-9 sm:px-3 sm:text-sm" onClick={() => setDialogOpen(true)}>
-          Nytt
+        <Button size="sm" className="h-8 shrink-0 whitespace-nowrap px-2 text-[10px] sm:h-9 sm:px-3 sm:text-sm" onClick={() => setDialogOpen(true)}>
+          Nytt projekt
         </Button>
         <ActionSheet open={open} onClose={() => setDialogOpen(false)} title="Snabbskapa projekt" description="Funkar online och offline">
           <div className="max-h-[72vh] overflow-y-auto pr-1">

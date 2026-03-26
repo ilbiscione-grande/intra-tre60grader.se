@@ -492,7 +492,7 @@ export default function ProjectCard({
         <div className="min-w-0 pb-12 pr-24">
           <h3 className="font-semibold group-hover:underline">{project.title}</h3>
           <Badge className="mt-2 w-fit uppercase tracking-wide">{statusLabel ?? fallbackLabel(project.workflow_status ?? project.status)}</Badge>
-          <div className="mt-3 max-w-full space-y-1">
+          <div className="mt-3 max-w-full space-y-2">
             <div className="flex items-center gap-2">
               {isMilestoneOverdue || isEndDateOverdue ? (
                 <span
@@ -502,19 +502,24 @@ export default function ProjectCard({
                   <AlertTriangle className="h-3.5 w-3.5" />
                 </span>
               ) : null}
-              <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium ${planningTone}`}>{planningLabel}</span>
+              <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium ${planningTone}`}>
+                {isMilestoneOverdue || isEndDateOverdue ? 'Tidsrisk' : nextMilestone ? 'Nästa delmål' : 'Tidsplan'}
+              </span>
               {totalMilestones > 0 ? (
                 <span className="text-[10px] text-foreground/55">{completedMilestones}/{totalMilestones} delmål</span>
               ) : null}
             </div>
+            <div className={`rounded-xl border px-3 py-2 text-xs ${planningTone}`}>
+              <p className="font-medium text-foreground/85">{planningLabel}</p>
+            </div>
             {totalMilestones > 0 ? (
-              <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted/80">
                 <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${progressPercent}%` }} />
               </div>
             ) : null}
           </div>
           {activitySummary ? (
-            <div className="mt-3 rounded-lg bg-muted/40 px-2.5 py-2 text-[11px] text-foreground/65">
+            <div className="mt-3 w-full min-w-0 overflow-hidden rounded-lg bg-muted/40 px-2.5 py-2 text-[11px] text-foreground/65">
               <p className="truncate font-medium text-foreground/75">
                 Senast uppdaterat av {activitySummary.actorLabel ?? 'intern användare'}
               </p>
@@ -524,11 +529,6 @@ export default function ProjectCard({
         </div>
         {visibleMemberBadges.length > 0 ? (
           <div className="relative z-10 mt-3 flex flex-wrap gap-1.5">
-            {responsibleLabel ? (
-              <span className="inline-flex h-7 items-center rounded-full border border-primary/20 bg-primary/5 px-2.5 text-[11px] font-medium text-foreground/75">
-                Ansvarig: <span className="ml-1 text-foreground">{responsibleLabel}</span>
-              </span>
-            ) : null}
             {visibleMemberBadges.map((member) => {
               const label = memberLabels.get(member.id) ?? member.user_id;
               const isActive = activeMemberId === member.id;
