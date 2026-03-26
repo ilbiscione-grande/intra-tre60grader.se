@@ -492,7 +492,7 @@ export default function ProjectTasksPanel({
               Ny uppgift
             </Button>
             <ActionSheet open={createOpen} onClose={() => setCreateOpen(false)} title="Ny uppgift" description="Lägg till uppgift, ansvarig och checklista">
-              <div className="space-y-3">
+              <div className="max-h-[72vh] space-y-3 overflow-y-auto pr-1">
                 <div className="grid gap-3 md:grid-cols-2">
                   <label className="space-y-1 md:col-span-2">
                     <span className="text-sm">Titel</span>

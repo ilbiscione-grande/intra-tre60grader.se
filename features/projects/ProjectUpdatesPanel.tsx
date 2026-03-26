@@ -1,7 +1,7 @@
 'use client';
 
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
-import { Camera, Edit3, FileText, ImagePlus, MessageSquarePlus, Paperclip, Reply, Send, Trash2, Type, X } from 'lucide-react';
+import { Camera, Edit3, FileText, Heart, ImagePlus, MessageSquarePlus, MoreHorizontal, Paperclip, Reply, Send, Trash2, Type, X } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import ActionSheet from '@/components/common/ActionSheet';
@@ -10,6 +10,12 @@ import { getUserDisplayName } from '@/features/profile/profileBadge';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
+} from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { createClient } from '@/lib/supabase/client';
@@ -120,6 +126,12 @@ function buildChildrenMap(updates: ProjectUpdateRow[]) {
     next.push(update);
     map.set(key, next);
   });
+  for (const [key, value] of map.entries()) {
+    map.set(
+      key,
+      [...value].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    );
+  }
   return map;
 }
 
@@ -174,6 +186,13 @@ function extractMentions(content: string | null) {
   return matches.map((match) => match.slice(1).toLowerCase());
 }
 
+function roleLabel(role?: ProjectMemberVisual['role'] | null) {
+  if (role === 'admin') return 'Admin';
+  if (role === 'finance') return 'Ekonomi';
+  if (role === 'auditor') return 'Revisor';
+  return 'Medlem';
+}
+
 export default function ProjectUpdatesPanel({
   companyId,
   projectId,
@@ -188,6 +207,9 @@ export default function ProjectUpdatesPanel({
   highlightUpdateId?: string | null;
 }) {
   const supabase = useMemo(() => createClient(), []);
+  const db = supabase as unknown as {
+    from: (table: string) => any;
+  };
   const queryClient = useQueryClient();
   const rootCameraFileRef = useRef<HTMLInputElement | null>(null);
   const rootImageFileRef = useRef<HTMLInputElement | null>(null);
@@ -224,8 +246,23 @@ export default function ProjectUpdatesPanel({
         .select('id,company_id,project_id,parent_id,created_by,content,attachment_path,attachment_name,attachment_type,attachment_size,created_at,updated_at')
         .eq('company_id', companyId)
         .eq('project_id', projectId)
-        .order('created_at', { ascending: true })
+        .order('created_at', { ascending: false })
         .returns<ProjectUpdateRow[]>();
+
+      if (error) throw error;
+      return data ?? [];
+    }
+  });
+
+  const likesQuery = useQuery<Array<{ id: string; project_update_id: string; user_id: string }>>({
+    queryKey: ['project-update-likes', companyId, projectId],
+    queryFn: async () => {
+      const { data, error } = await db
+        .from('project_update_likes')
+        .select('id,project_update_id,user_id')
+        .eq('company_id', companyId)
+        .eq('project_id', projectId)
+        .order('created_at', { ascending: false });
 
       if (error) throw error;
       return data ?? [];
@@ -466,6 +503,37 @@ export default function ProjectUpdatesPanel({
     onError: (error) => toast.error(error instanceof Error ? error.message : 'Kunde inte ta bort uppdateringen')
   });
 
+  const toggleLikeMutation = useMutation({
+    mutationFn: async ({ updateId, liked }: { updateId: string; liked: boolean }) => {
+      const userId = currentUserQuery.data?.id;
+      if (!userId) throw new Error('Kunde inte identifiera användaren');
+
+      if (liked) {
+        const { error } = await db
+          .from('project_update_likes')
+          .delete()
+          .eq('company_id', companyId)
+          .eq('project_id', projectId)
+          .eq('project_update_id', updateId)
+          .eq('user_id', userId);
+        if (error) throw error;
+        return;
+      }
+
+      const { error } = await db.from('project_update_likes').insert({
+        company_id: companyId,
+        project_id: projectId,
+        project_update_id: updateId,
+        user_id: userId
+      });
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['project-update-likes', companyId, projectId] });
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'Kunde inte uppdatera gilla-markering')
+  });
+
   const updates = updatesQuery.data ?? [];
   const attachments = attachmentsQuery.data ?? [];
   const memberByUserId = useMemo(() => {
@@ -477,6 +545,15 @@ export default function ProjectUpdatesPanel({
   }, [directoryQuery.data]);
   const childrenMap = useMemo(() => buildChildrenMap(updates), [updates]);
   const attachmentMap = useMemo(() => buildAttachmentMap(updates, attachments), [attachments, updates]);
+  const likesByUpdateId = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    for (const like of likesQuery.data ?? []) {
+      const current = map.get(like.project_update_id) ?? new Set<string>();
+      current.add(like.user_id);
+      map.set(like.project_update_id, current);
+    }
+    return map;
+  }, [likesQuery.data]);
   const rootUpdates = childrenMap.get(null) ?? [];
 
   useEffect(() => {
@@ -571,7 +648,7 @@ export default function ProjectUpdatesPanel({
       signedUrl: attachmentUrlsQuery.data?.[attachment.path]
     }));
     const author = update.created_by ? memberByUserId.get(update.created_by) ?? null : null;
-    const authorBadgeLabel = author
+    const authorDisplayName = author
       ? getUserDisplayName({
           displayName: author.display_name,
           email: author.email,
@@ -579,6 +656,10 @@ export default function ProjectUpdatesPanel({
           userId: author.user_id
         })
       : update.created_by ?? 'Intern användare';
+    const likedByUserIds = likesByUpdateId.get(update.id) ?? new Set<string>();
+    const likeCount = likedByUserIds.size;
+    const isLiked = Boolean(currentUserQuery.data?.id && likedByUserIds.has(currentUserQuery.data.id));
+    const authorMetaRole = `${roleLabel(author?.role)}${update.parent_id ? ' · Svar' : ''}`;
 
     return (
       <div key={update.id} className={`space-y-3 ${indentClass}`}>
@@ -588,22 +669,61 @@ export default function ProjectUpdatesPanel({
           }}
           className={`rounded-xl border border-border/70 bg-card p-3 ${highlightUpdateId === update.id ? 'ring-2 ring-primary/40' : ''}`}
         >
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex min-w-0 items-start gap-3">
               <ProfileBadge
-                label={authorBadgeLabel}
+                label={authorDisplayName}
                 color={author?.color}
                 avatarUrl={author?.avatar_url}
                 emoji={author?.emoji}
-                className="h-7 w-7 shrink-0"
-                textClassName="text-[11px] font-semibold text-white"
+                className="h-10 w-10 shrink-0"
+                textClassName="text-xs font-semibold text-white"
               />
-              <Badge className="bg-muted/70">{authorLabel(update, currentUserQuery.data?.id ?? null, author)}</Badge>
-              {update.parent_id ? <Badge className="bg-secondary/80">Svar</Badge> : <Badge>Uppdatering</Badge>}
-              {isEdited ? <Badge className="bg-muted/70">Redigerad</Badge> : null}
-              {mentionsCurrentUser ? <Badge className="bg-primary/15 text-primary">Nämner dig</Badge> : null}
+              <div className="min-w-0">
+                <p className="truncate font-medium text-foreground">
+                  {authorLabel(update, currentUserQuery.data?.id ?? null, author)}
+                </p>
+                <p className="mt-0.5 text-[11px] uppercase tracking-[0.14em] text-foreground/45">
+                  {authorMetaRole}
+                </p>
+                <p className="mt-1 text-xs text-foreground/55">
+                  {new Date(update.created_at).toLocaleString('sv-SE')}
+                </p>
+                {isEdited || mentionsCurrentUser ? (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {isEdited ? <Badge className="bg-muted/70">Redigerad</Badge> : null}
+                    {mentionsCurrentUser ? <Badge className="bg-primary/15 text-primary">Nämner dig</Badge> : null}
+                  </div>
+                ) : null}
+              </div>
             </div>
-            <p className="text-xs text-foreground/55">{new Date(update.created_at).toLocaleString('sv-SE')}</p>
+            {canManage ? (
+              <DropdownMenu modal={false}>
+                <DropdownMenuTrigger asChild>
+                  <Button type="button" variant="ghost" size="icon" className="h-8 w-8 shrink-0">
+                    <MoreHorizontal className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="z-[220] w-44">
+                  <DropdownMenuItem
+                    onClick={() => {
+                      setEditingUpdateId(update.id);
+                      setEditingContent(update.content ?? '');
+                    }}
+                  >
+                    <Edit3 className="mr-2 h-4 w-4" />
+                    Redigera
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => deleteUpdateMutation.mutate(update.id)}
+                    disabled={deleteUpdateMutation.isPending}
+                  >
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Ta bort
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : null}
           </div>
 
           {isEditing ? (
@@ -644,32 +764,16 @@ export default function ProjectUpdatesPanel({
               <Reply className="mr-2 h-4 w-4" />
               Svara
             </Button>
-            {canManage ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setEditingUpdateId(update.id);
-                  setEditingContent(update.content ?? '');
-                }}
-              >
-                <Edit3 className="mr-2 h-4 w-4" />
-                Redigera
-              </Button>
-            ) : null}
-            {canManage ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => deleteUpdateMutation.mutate(update.id)}
-                disabled={deleteUpdateMutation.isPending}
-              >
-                <Trash2 className="mr-2 h-4 w-4" />
-                Ta bort
-              </Button>
-            ) : null}
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => toggleLikeMutation.mutate({ updateId: update.id, liked: isLiked })}
+              disabled={toggleLikeMutation.isPending || !currentUserQuery.data?.id}
+            >
+              <Heart className={`mr-2 h-4 w-4 ${isLiked ? 'fill-current text-rose-600' : ''}`} />
+              {likeCount > 0 ? `Gilla (${likeCount})` : 'Gilla'}
+            </Button>
           </div>
 
           {isReplyOpen ? (

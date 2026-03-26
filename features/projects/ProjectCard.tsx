@@ -300,7 +300,7 @@ export default function ProjectCard({
         className="absolute inset-0 z-10 rounded-[inherit]"
       />
       <CardContent className="relative p-4">
-        <div className="absolute right-3 top-3 z-20 flex items-start gap-1">
+        <div className="absolute right-3 top-3 z-30 flex items-start gap-1">
           {onSetWorkflowStatus ? (
             breakpointMode === 'mobile' ? (
               <div ref={mobileProjectMenuRef} className="relative">
@@ -321,7 +321,7 @@ export default function ProjectCard({
                 {mobileProjectMenuOpen ? (
                   <div
                     ref={mobileProjectMenuPanelRef}
-                    className={`absolute right-0 z-[220] w-56 overflow-y-auto rounded-xl border border-border bg-card p-2 shadow-xl ${
+                  className={`absolute right-0 z-[320] w-56 overflow-y-auto rounded-xl border border-border bg-card p-2 shadow-xl ${
                       mobileProjectMenuPlacement === 'up' ? 'bottom-[calc(100%+0.5rem)]' : 'top-[calc(100%+0.5rem)]'
                     }`}
                     style={{ maxHeight: `${mobileProjectMenuMaxHeight}px` }}
@@ -423,7 +423,7 @@ export default function ProjectCard({
                   side="bottom"
                   sideOffset={8}
                   collisionPadding={{ top: 20, right: 12, bottom: 12, left: 12 }}
-                  className="w-56"
+                  className="z-[320] w-56"
                 >
                   <div className="px-2 pb-2 pt-1">
                     <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Projekt</p>
@@ -523,7 +523,7 @@ export default function ProjectCard({
           ) : null}
         </div>
         {visibleMemberBadges.length > 0 ? (
-          <div className="relative z-20 mt-3 flex flex-wrap gap-1.5">
+          <div className="relative z-10 mt-3 flex flex-wrap gap-1.5">
             {responsibleLabel ? (
               <span className="inline-flex h-7 items-center rounded-full border border-primary/20 bg-primary/5 px-2.5 text-[11px] font-medium text-foreground/75">
                 Ansvarig: <span className="ml-1 text-foreground">{responsibleLabel}</span>
@@ -584,7 +584,7 @@ export default function ProjectCard({
                 <MoreHorizontal className="h-4 w-4" />
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-64">
+            <DropdownMenuContent align="end" className="z-[240] w-64">
               <div className="px-2 pb-2 pt-1">
                 <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Projektmedlemmar</p>
               </div>
