@@ -23,13 +23,13 @@ export default function ProjectsPage() {
   const [showAutomation, setShowAutomation] = useState(false);
 
   const summaryToggle = canSeeProjectSummary ? (
-    <Button variant={showSummary ? 'default' : 'outline'} size="sm" className="h-9 px-3 text-xs sm:text-sm" onClick={() => setShowSummary((current) => !current)}>
+    <Button variant={showSummary ? 'default' : 'outline'} size="sm" className="h-9 shrink-0 whitespace-nowrap px-3 text-xs sm:text-sm" onClick={() => setShowSummary((current) => !current)}>
         {showSummary ? 'Dölj sammanfattning' : 'Visa sammanfattning'}
     </Button>
   ) : null;
 
   const automationTrigger = role === 'admin' ? (
-    <Button variant="outline" size="sm" className="h-9 px-3 text-xs sm:text-sm" onClick={() => setShowAutomation(true)}>
+    <Button variant="outline" size="sm" className="h-9 shrink-0 whitespace-nowrap px-3 text-xs sm:text-sm" onClick={() => setShowAutomation(true)}>
       <SlidersHorizontal className="mr-2 h-4 w-4" />
       Automationer
     </Button>
@@ -38,12 +38,14 @@ export default function ProjectsPage() {
   if (mode === 'mobile') {
     return (
       <div className="space-y-4">
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="-mx-4 overflow-x-auto px-4">
+          <div className="flex min-w-max items-center gap-2 pb-1">
           {summaryToggle}
           {automationTrigger}
           <SectionErrorBoundary title="Skapa projekt">
             <CreateProjectEntry companyId={companyId} mode="mobile" />
           </SectionErrorBoundary>
+          </div>
         </div>
         {canSeeProjectSummary && showSummary ? (
           <>
