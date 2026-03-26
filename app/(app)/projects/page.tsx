@@ -96,6 +96,36 @@ export default function ProjectsPage() {
     </Button>
   ) : null;
 
+  const projectFilters = (
+    <div className="flex min-w-0 items-center gap-1.5">
+      <Input
+        value={projectSearch}
+        onChange={(event) => setProjectSearch(event.target.value)}
+        placeholder="Sök"
+        className="h-8 min-w-0 flex-1 rounded-2xl px-2.5 text-xs sm:h-9 sm:px-3 sm:text-sm"
+      />
+      <select
+        value={statusFilter}
+        onChange={(event) => setStatusFilter(event.target.value)}
+        className="h-8 w-[96px] shrink-0 rounded-2xl border border-input bg-background px-2 text-[11px] outline-none transition focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/20 sm:h-9 sm:w-[170px] sm:px-3 sm:text-sm"
+      >
+        {statusOptions.map((option) => (
+          <option key={option.key} value={option.key}>
+            {option.title}
+          </option>
+        ))}
+      </select>
+      <Button
+        type="button"
+        variant={onlyMine ? 'default' : 'outline'}
+        className="h-8 shrink-0 rounded-2xl px-2.5 text-[11px] sm:h-9 sm:px-3 sm:text-sm"
+        onClick={() => setOnlyMine((current) => !current)}
+      >
+        Mina
+      </Button>
+    </div>
+  );
+
   if (mode === 'mobile') {
     return (
       <div className="space-y-4">
@@ -128,35 +158,7 @@ export default function ProjectsPage() {
             Lista
           </button>
         </div>
-        <div className="grid gap-2">
-          <Input
-            value={projectSearch}
-            onChange={(event) => setProjectSearch(event.target.value)}
-            placeholder="Sök projekt, ansvarig eller medlem"
-            className="h-10 rounded-2xl"
-          />
-          <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
-            <select
-              value={statusFilter}
-              onChange={(event) => setStatusFilter(event.target.value)}
-              className="h-10 rounded-2xl border border-input bg-background px-3 text-sm outline-none transition focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/20"
-            >
-              {statusOptions.map((option) => (
-                <option key={option.key} value={option.key}>
-                  {option.title}
-                </option>
-              ))}
-            </select>
-            <Button
-              type="button"
-              variant={onlyMine ? 'default' : 'outline'}
-              className="h-10 rounded-2xl"
-              onClick={() => setOnlyMine((current) => !current)}
-            >
-              Mina projekt
-            </Button>
-          </div>
-        </div>
+        {projectFilters}
         {canSeeProjectSummary && showSummary ? (
           <>
             <SectionErrorBoundary title="Projektöversikt">
@@ -220,33 +222,7 @@ export default function ProjectsPage() {
           </SectionErrorBoundary>
         </div>
       </div>
-      <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_220px_auto]">
-        <Input
-          value={projectSearch}
-          onChange={(event) => setProjectSearch(event.target.value)}
-          placeholder="Sök projekt, ansvarig eller medlem"
-          className="h-10 rounded-2xl"
-        />
-        <select
-          value={statusFilter}
-          onChange={(event) => setStatusFilter(event.target.value)}
-          className="h-10 rounded-2xl border border-input bg-background px-3 text-sm outline-none transition focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/20"
-        >
-          {statusOptions.map((option) => (
-            <option key={option.key} value={option.key}>
-              {option.title}
-            </option>
-          ))}
-        </select>
-        <Button
-          type="button"
-          variant={onlyMine ? 'default' : 'outline'}
-          className="h-10 rounded-2xl"
-          onClick={() => setOnlyMine((current) => !current)}
-        >
-          Mina projekt
-        </Button>
-      </div>
+      {projectFilters}
       {canSeeProjectSummary && showSummary ? (
         <>
           <SectionErrorBoundary title="Projektöversikt">
