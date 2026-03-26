@@ -193,6 +193,17 @@ function roleLabel(role?: ProjectMemberVisual['role'] | null) {
   return 'Medlem';
 }
 
+function formatUpdateDateTime(value: string) {
+  const date = new Date(value);
+  return date.toLocaleDateString('sv-SE', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+}
+
 export default function ProjectUpdatesPanel({
   companyId,
   projectId,
@@ -687,43 +698,53 @@ export default function ProjectUpdatesPanel({
                   {authorMetaRole}
                 </p>
                 <p className="mt-1 text-xs text-foreground/55">
-                  {new Date(update.created_at).toLocaleString('sv-SE')}
+                  {formatUpdateDateTime(update.created_at)}
                 </p>
                 {isEdited || mentionsCurrentUser ? (
                   <div className="mt-2 flex flex-wrap gap-2">
-                    {isEdited ? <Badge className="bg-muted/70">Redigerad</Badge> : null}
                     {mentionsCurrentUser ? <Badge className="bg-primary/15 text-primary">Nämner dig</Badge> : null}
                   </div>
                 ) : null}
               </div>
             </div>
-            {canManage ? (
-              <DropdownMenu modal={false}>
-                <DropdownMenuTrigger asChild>
-                  <Button type="button" variant="ghost" size="icon" className="h-8 w-8 shrink-0">
-                    <MoreHorizontal className="h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="z-[220] w-44">
-                  <DropdownMenuItem
-                    onClick={() => {
-                      setEditingUpdateId(update.id);
-                      setEditingContent(update.content ?? '');
-                    }}
-                  >
-                    <Edit3 className="mr-2 h-4 w-4" />
-                    Redigera
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={() => deleteUpdateMutation.mutate(update.id)}
-                    disabled={deleteUpdateMutation.isPending}
-                  >
-                    <Trash2 className="mr-2 h-4 w-4" />
-                    Ta bort
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            ) : null}
+            <div className="flex items-center gap-1">
+              {isEdited ? (
+                <span
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-full text-foreground/45"
+                  title="Redigerad"
+                  aria-label="Redigerad"
+                >
+                  <Edit3 className="h-4 w-4" />
+                </span>
+              ) : null}
+              {canManage ? (
+                <DropdownMenu modal={false}>
+                  <DropdownMenuTrigger asChild>
+                    <Button type="button" variant="ghost" size="icon" className="h-8 w-8 shrink-0">
+                      <MoreHorizontal className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="z-[220] w-44">
+                    <DropdownMenuItem
+                      onClick={() => {
+                        setEditingUpdateId(update.id);
+                        setEditingContent(update.content ?? '');
+                      }}
+                    >
+                      <Edit3 className="mr-2 h-4 w-4" />
+                      Redigera
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => deleteUpdateMutation.mutate(update.id)}
+                      disabled={deleteUpdateMutation.isPending}
+                    >
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Ta bort
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : null}
+            </div>
           </div>
 
           {isEditing ? (
@@ -749,11 +770,12 @@ export default function ProjectUpdatesPanel({
 
           <ProjectUpdateAttachments attachments={attachmentsForUpdate} onOpen={openAttachment} />
 
-          <div className="mt-3 flex gap-2">
+          <div className="mt-3 grid grid-cols-2 gap-2">
             <Button
               type="button"
               variant="ghost"
               size="sm"
+              className="justify-center rounded-xl border border-border/70 bg-muted/35 text-foreground shadow-sm hover:bg-muted"
               onClick={() => {
                 setReplyTargetId(isReplyOpen ? null : update.id);
                 if (!replyComposers[update.id]) {
@@ -768,6 +790,11 @@ export default function ProjectUpdatesPanel({
               type="button"
               variant="ghost"
               size="sm"
+              className={`justify-center rounded-xl border shadow-sm ${
+                isLiked
+                  ? 'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 dark:border-rose-500/30 dark:bg-rose-500/15 dark:text-rose-200 dark:hover:bg-rose-500/20'
+                  : 'border-border/70 bg-muted/35 text-foreground hover:bg-muted'
+              }`}
               onClick={() => toggleLikeMutation.mutate({ updateId: update.id, liked: isLiked })}
               disabled={toggleLikeMutation.isPending || !currentUserQuery.data?.id}
             >
@@ -975,10 +1002,10 @@ export default function ProjectUpdatesPanel({
 
             <Button
               type="button"
-              variant="outline"
+              variant="default"
               size="icon"
               aria-label="Lägg till innehåll"
-              className="relative"
+              className="relative border-primary/20 bg-primary text-primary-foreground shadow-md hover:bg-primary/90"
               onClick={() => setRootAttachmentSheetOpen(true)}
             >
               <MessageSquarePlus className="h-4 w-4" />

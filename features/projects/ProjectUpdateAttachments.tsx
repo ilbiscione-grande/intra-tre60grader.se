@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useMemo } from 'react';
-import { FileText, Paperclip } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { FileText, Paperclip, X } from 'lucide-react';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 
 export type ProjectUpdateAttachmentView = {
   id: string;
@@ -34,43 +35,71 @@ export function ProjectUpdateAttachments({
   attachments: ProjectUpdateAttachmentView[];
   onOpen: (path: string) => void;
 }) {
+  const [previewAttachment, setPreviewAttachment] = useState<ProjectUpdateAttachmentView | null>(null);
+
   if (attachments.length === 0) return null;
 
   return (
-    <div className="mt-3 grid gap-3 sm:grid-cols-2">
-      {attachments.map((attachment) => {
-        const image = isImageAttachment(attachment.fileType) && attachment.signedUrl;
+    <>
+      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        {attachments.map((attachment) => {
+          const image = isImageAttachment(attachment.fileType) && attachment.signedUrl;
 
-        return image ? (
-          <button
-            key={attachment.id}
-            type="button"
-            className="overflow-hidden rounded-xl border border-border/70 bg-muted/10 text-left transition hover:border-primary/40"
-            onClick={() => onOpen(attachment.path)}
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={attachment.signedUrl} alt={attachment.fileName ?? 'Bilaga'} className="h-40 w-full object-cover" />
-            <div className="flex items-center justify-between px-3 py-2 text-sm">
-              <span className="truncate">{attachment.fileName ?? 'Bild'}</span>
-              <span className="text-xs text-foreground/55">{formatSize(attachment.fileSize)}</span>
-            </div>
-          </button>
-        ) : (
-          <button
-            key={attachment.id}
-            type="button"
-            className="flex items-center justify-between rounded-lg border border-border/70 bg-muted/15 px-3 py-2 text-left text-sm transition hover:border-primary/40 hover:bg-muted/25"
-            onClick={() => onOpen(attachment.path)}
-          >
-            <span className="flex min-w-0 items-center gap-2">
-              <Paperclip className="h-4 w-4 shrink-0 text-foreground/55" />
-              <span className="truncate">{attachment.fileName ?? 'Bilaga'}</span>
-            </span>
-            <span className="text-xs text-foreground/55">{formatSize(attachment.fileSize) || 'Öppna'}</span>
-          </button>
-        );
-      })}
-    </div>
+          return image ? (
+            <button
+              key={attachment.id}
+              type="button"
+              className="overflow-hidden rounded-xl border border-border/70 bg-muted/10 text-left transition hover:border-primary/40"
+              onClick={() => setPreviewAttachment(attachment)}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={attachment.signedUrl} alt={attachment.fileName ?? 'Bilaga'} className="h-40 w-full object-cover" />
+              <div className="flex items-center justify-between px-3 py-2 text-sm">
+                <span className="truncate">{attachment.fileName ?? 'Bild'}</span>
+                <span className="text-xs text-foreground/55">{formatSize(attachment.fileSize)}</span>
+              </div>
+            </button>
+          ) : (
+            <button
+              key={attachment.id}
+              type="button"
+              className="flex items-center justify-between rounded-lg border border-border/70 bg-muted/15 px-3 py-2 text-left text-sm transition hover:border-primary/40 hover:bg-muted/25"
+              onClick={() => onOpen(attachment.path)}
+            >
+              <span className="flex min-w-0 items-center gap-2">
+                <Paperclip className="h-4 w-4 shrink-0 text-foreground/55" />
+                <span className="truncate">{attachment.fileName ?? 'Bilaga'}</span>
+              </span>
+              <span className="text-xs text-foreground/55">{formatSize(attachment.fileSize) || 'Öppna'}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      <Dialog open={Boolean(previewAttachment)} onOpenChange={(open) => !open && setPreviewAttachment(null)}>
+        <DialogContent className="max-w-5xl border-0 bg-transparent p-0 shadow-none">
+          <DialogTitle className="sr-only">{previewAttachment?.fileName ?? 'Bildförhandsvisning'}</DialogTitle>
+          <div className="relative overflow-hidden rounded-2xl bg-black/90">
+            <button
+              type="button"
+              className="absolute right-3 top-3 z-10 inline-flex h-10 w-10 items-center justify-center rounded-full bg-background/90 text-foreground shadow-sm transition hover:bg-background"
+              aria-label="Stäng bild"
+              onClick={() => setPreviewAttachment(null)}
+            >
+              <X className="h-5 w-5" />
+            </button>
+            {previewAttachment?.signedUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={previewAttachment.signedUrl}
+                alt={previewAttachment.fileName ?? 'Bilaga'}
+                className="max-h-[82vh] w-full object-contain"
+              />
+            ) : null}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
