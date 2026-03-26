@@ -1,13 +1,14 @@
 'use client';
 
-import { useState } from 'react';
-import { SlidersHorizontal } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { LayoutGrid, Rows3, SlidersHorizontal } from 'lucide-react';
 import { useAppContext } from '@/components/providers/AppContext';
 import SectionErrorBoundary from '@/components/common/SectionErrorBoundary';
 import ProjectAutomationCard from '@/components/settings/ProjectAutomationCard';
 import CreateProjectEntry from '@/features/projects/CreateProjectEntry';
 import ProjectBoardDesktop from '@/features/projects/ProjectBoardDesktop';
 import ProjectBoardMobile from '@/features/projects/ProjectBoardMobile';
+import ProjectListView from '@/features/projects/ProjectListView';
 import ProjectLeadershipDashboard from '@/features/projects/ProjectLeadershipDashboard';
 import ProjectOverviewKpis from '@/features/projects/ProjectOverviewKpis';
 import { Button } from '@/components/ui/button';
@@ -15,12 +16,29 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { canViewProjectSummary } from '@/lib/auth/capabilities';
 import { useBreakpointMode } from '@/lib/ui/useBreakpointMode';
 
+type ProjectViewMode = 'board' | 'list';
+
+const PROJECT_VIEW_MODE_KEY = 'projects_view_mode';
+
 export default function ProjectsPage() {
   const mode = useBreakpointMode();
   const { companyId, role, capabilities } = useAppContext();
   const canSeeProjectSummary = canViewProjectSummary(role, capabilities);
   const [showSummary, setShowSummary] = useState(false);
   const [showAutomation, setShowAutomation] = useState(false);
+  const [viewMode, setViewMode] = useState<ProjectViewMode>('board');
+
+  useEffect(() => {
+    const stored = window.localStorage.getItem(PROJECT_VIEW_MODE_KEY);
+    if (stored === 'board' || stored === 'list') {
+      setViewMode(stored);
+    }
+  }, []);
+
+  function changeViewMode(nextMode: ProjectViewMode) {
+    setViewMode(nextMode);
+    window.localStorage.setItem(PROJECT_VIEW_MODE_KEY, nextMode);
+  }
 
   const summaryToggle = canSeeProjectSummary ? (
     <Button
@@ -55,6 +73,28 @@ export default function ProjectsPage() {
             <CreateProjectEntry companyId={companyId} mode="mobile" />
           </SectionErrorBoundary>
         </div>
+        <div className="inline-flex rounded-full border border-border bg-muted/20 p-1">
+          <button
+            type="button"
+            onClick={() => changeViewMode('board')}
+            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs transition ${
+              viewMode === 'board' ? 'bg-background text-foreground shadow-sm' : 'text-foreground/65'
+            }`}
+          >
+            <LayoutGrid className="h-3.5 w-3.5" />
+            Board
+          </button>
+          <button
+            type="button"
+            onClick={() => changeViewMode('list')}
+            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs transition ${
+              viewMode === 'list' ? 'bg-background text-foreground shadow-sm' : 'text-foreground/65'
+            }`}
+          >
+            <Rows3 className="h-3.5 w-3.5" />
+            Lista
+          </button>
+        </div>
         {canSeeProjectSummary && showSummary ? (
           <>
             <SectionErrorBoundary title="Projektöversikt">
@@ -66,7 +106,7 @@ export default function ProjectsPage() {
           </>
         ) : null}
         <SectionErrorBoundary title="Projektflöde">
-          <ProjectBoardMobile companyId={companyId} />
+          {viewMode === 'board' ? <ProjectBoardMobile companyId={companyId} /> : <ProjectListView companyId={companyId} />}
         </SectionErrorBoundary>
 
         <Dialog open={showAutomation} onOpenChange={setShowAutomation}>
@@ -83,12 +123,36 @@ export default function ProjectsPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-end gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="inline-flex rounded-full border border-border bg-muted/20 p-1">
+          <button
+            type="button"
+            onClick={() => changeViewMode('board')}
+            className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm transition ${
+              viewMode === 'board' ? 'bg-background text-foreground shadow-sm' : 'text-foreground/65'
+            }`}
+          >
+            <LayoutGrid className="h-4 w-4" />
+            Board
+          </button>
+          <button
+            type="button"
+            onClick={() => changeViewMode('list')}
+            className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm transition ${
+              viewMode === 'list' ? 'bg-background text-foreground shadow-sm' : 'text-foreground/65'
+            }`}
+          >
+            <Rows3 className="h-4 w-4" />
+            Lista
+          </button>
+        </div>
+        <div className="flex items-center justify-end gap-2">
         {automationTrigger}
         {summaryToggle}
         <SectionErrorBoundary title="Skapa projekt">
           <CreateProjectEntry companyId={companyId} mode="desktop" />
         </SectionErrorBoundary>
+        </div>
       </div>
       {canSeeProjectSummary && showSummary ? (
         <>
@@ -101,7 +165,7 @@ export default function ProjectsPage() {
         </>
       ) : null}
       <SectionErrorBoundary title="Projektflöde">
-        <ProjectBoardDesktop companyId={companyId} />
+        {viewMode === 'board' ? <ProjectBoardDesktop companyId={companyId} /> : <ProjectListView companyId={companyId} />}
       </SectionErrorBoundary>
 
       <Dialog open={showAutomation} onOpenChange={setShowAutomation}>
