@@ -41,6 +41,9 @@ export default function ProjectsPage() {
         <div className="flex flex-wrap items-center gap-2">
           {summaryToggle}
           {automationTrigger}
+          <SectionErrorBoundary title="Skapa projekt">
+            <CreateProjectEntry companyId={companyId} mode="mobile" />
+          </SectionErrorBoundary>
         </div>
         {canSeeProjectSummary && showSummary ? (
           <>
@@ -52,9 +55,6 @@ export default function ProjectsPage() {
             </SectionErrorBoundary>
           </>
         ) : null}
-        <SectionErrorBoundary title="Skapa projekt">
-          <CreateProjectEntry companyId={companyId} mode="mobile" />
-        </SectionErrorBoundary>
         <SectionErrorBoundary title="Projektflöde">
           <ProjectBoardMobile companyId={companyId} />
         </SectionErrorBoundary>

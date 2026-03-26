@@ -20,7 +20,6 @@ import {
   type ProjectTemplate
 } from '@/features/projects/projectQueries';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -663,34 +662,32 @@ export default function CreateProjectEntry({ companyId, mode }: { companyId: str
 
   if (mode === 'mobile') {
     return (
-      <Card>
-        <CardContent className="p-3">
-          <Button className="w-full" onClick={() => setDialogOpen(true)}>
-            Nytt projekt
-          </Button>
-          <ActionSheet open={open} onClose={() => setDialogOpen(false)} title="Snabbskapa projekt" description="Funkar online och offline">
-            <div className="max-h-[72vh] overflow-y-auto pr-1">
-              <ProjectForm
-                onSubmit={submit}
-                isPending={createMutation.isPending}
-                customers={customers}
-                columns={columns}
-                initialStatus={initialStatus}
-                currentUserId={currentUserId}
-                availableMembers={availableMembers}
-                templates={projectTemplatesQuery.data ?? []}
-              />
-            </div>
-          </ActionSheet>
-        </CardContent>
-      </Card>
+      <>
+        <Button size="sm" className="h-9 px-3 text-xs sm:text-sm" onClick={() => setDialogOpen(true)}>
+          Nytt projekt
+        </Button>
+        <ActionSheet open={open} onClose={() => setDialogOpen(false)} title="Snabbskapa projekt" description="Funkar online och offline">
+          <div className="max-h-[72vh] overflow-y-auto pr-1">
+            <ProjectForm
+              onSubmit={submit}
+              isPending={createMutation.isPending}
+              customers={customers}
+              columns={columns}
+              initialStatus={initialStatus}
+              currentUserId={currentUserId}
+              availableMembers={availableMembers}
+              templates={projectTemplatesQuery.data ?? []}
+            />
+          </div>
+        </ActionSheet>
+      </>
     );
   }
 
   return (
     <Dialog open={open} onOpenChange={setDialogOpen}>
       <DialogTrigger asChild>
-        <Button>Nytt projekt</Button>
+        <Button size="sm" className="h-9 px-3 text-xs sm:text-sm">Nytt projekt</Button>
       </DialogTrigger>
       <DialogContent className="max-h-[85vh] overflow-hidden">
         <DialogHeader>
