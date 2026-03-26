@@ -663,8 +663,8 @@ export default function CreateProjectEntry({ companyId, mode }: { companyId: str
   if (mode === 'mobile') {
     return (
       <>
-        <Button size="sm" className="h-9 shrink-0 whitespace-nowrap px-3 text-xs sm:text-sm" onClick={() => setDialogOpen(true)}>
-          Nytt projekt
+        <Button size="sm" className="h-8 shrink-0 whitespace-nowrap px-2.5 text-[11px] sm:h-9 sm:px-3 sm:text-sm" onClick={() => setDialogOpen(true)}>
+          Nytt
         </Button>
         <ActionSheet open={open} onClose={() => setDialogOpen(false)} title="Snabbskapa projekt" description="Funkar online och offline">
           <div className="max-h-[72vh] overflow-y-auto pr-1">
@@ -687,7 +687,7 @@ export default function CreateProjectEntry({ companyId, mode }: { companyId: str
   return (
     <Dialog open={open} onOpenChange={setDialogOpen}>
       <DialogTrigger asChild>
-        <Button size="sm" className="h-9 shrink-0 whitespace-nowrap px-3 text-xs sm:text-sm">Nytt projekt</Button>
+        <Button size="sm" className="h-8 shrink-0 whitespace-nowrap px-2.5 text-[11px] sm:h-9 sm:px-3 sm:text-sm">Nytt projekt</Button>
       </DialogTrigger>
       <DialogContent className="max-h-[85vh] overflow-hidden">
         <DialogHeader>
