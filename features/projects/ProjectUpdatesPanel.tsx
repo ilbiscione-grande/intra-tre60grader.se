@@ -449,7 +449,9 @@ export default function ProjectUpdatesPanel({
     onSuccess: async (_, variables) => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['project-updates', companyId, projectId] }),
-        queryClient.invalidateQueries({ queryKey: ['project-update-attachments', companyId, projectId] })
+        queryClient.invalidateQueries({ queryKey: ['project-update-attachments', companyId, projectId] }),
+        queryClient.invalidateQueries({ queryKey: ['project-updates-activity', companyId, projectId] }),
+        queryClient.invalidateQueries({ queryKey: ['project-activity-summaries', companyId] })
       ]);
 
       if (variables.parentId) {
@@ -483,7 +485,11 @@ export default function ProjectUpdatesPanel({
       if (error) throw error;
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['project-updates', companyId, projectId] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['project-updates', companyId, projectId] }),
+        queryClient.invalidateQueries({ queryKey: ['project-updates-activity', companyId, projectId] }),
+        queryClient.invalidateQueries({ queryKey: ['project-activity-summaries', companyId] })
+      ]);
       setEditingUpdateId(null);
       setEditingContent('');
       toast.success('Uppdatering sparad');
@@ -507,7 +513,9 @@ export default function ProjectUpdatesPanel({
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['project-updates', companyId, projectId] }),
-        queryClient.invalidateQueries({ queryKey: ['project-update-attachments', companyId, projectId] })
+        queryClient.invalidateQueries({ queryKey: ['project-update-attachments', companyId, projectId] }),
+        queryClient.invalidateQueries({ queryKey: ['project-updates-activity', companyId, projectId] }),
+        queryClient.invalidateQueries({ queryKey: ['project-activity-summaries', companyId] })
       ]);
       toast.success('Uppdatering borttagen');
     },
@@ -709,13 +717,18 @@ export default function ProjectUpdatesPanel({
             </div>
             <div className="flex items-center gap-1">
               {isEdited ? (
-                <span
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-full text-foreground/45"
-                  title="Redigerad"
-                  aria-label="Redigerad"
-                >
-                  <Edit3 className="h-4 w-4" />
-                </span>
+                <div className="group/edit relative">
+                  <span
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-full text-foreground/45"
+                    title={`Senast redigerad ${formatUpdateDateTime(update.updated_at)}`}
+                    aria-label={`Senast redigerad ${formatUpdateDateTime(update.updated_at)}`}
+                  >
+                    <Edit3 className="h-4 w-4" />
+                  </span>
+                  <div className="pointer-events-none absolute right-0 top-[calc(100%+0.35rem)] z-20 whitespace-nowrap rounded-md border border-border/70 bg-card px-2 py-1 text-[11px] font-medium text-foreground shadow-md opacity-0 transition group-hover/edit:opacity-100 group-focus-within/edit:opacity-100">
+                    Senast redigerad {formatUpdateDateTime(update.updated_at)}
+                  </div>
+                </div>
               ) : null}
               {canManage ? (
                 <DropdownMenu modal={false}>
