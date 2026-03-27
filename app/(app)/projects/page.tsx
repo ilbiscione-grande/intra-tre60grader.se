@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { LayoutGrid, Rows3, SlidersHorizontal } from 'lucide-react';
 import { useAppContext } from '@/components/providers/AppContext';
 import SectionErrorBoundary from '@/components/common/SectionErrorBoundary';
@@ -35,6 +35,8 @@ export default function ProjectsPage() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [onlyMine, setOnlyMine] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [searchMenuOpen, setSearchMenuOpen] = useState(false);
+  const searchMenuRef = useRef<HTMLDivElement | null>(null);
   const columnsQuery = useProjectColumns(companyId);
   const statusOptions = useMemo(
     () => [{ key: 'all', title: 'Alla statusar' }, ...(columnsQuery.data ?? []).map((column) => ({ key: column.key, title: column.title }))],
@@ -69,6 +71,27 @@ export default function ProjectsPage() {
     };
   }, []);
 
+  useEffect(() => {
+    function handlePointerDown(event: MouseEvent) {
+      if (!searchMenuRef.current?.contains(event.target as Node)) {
+        setSearchMenuOpen(false);
+      }
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setSearchMenuOpen(false);
+      }
+    }
+
+    window.addEventListener('mousedown', handlePointerDown);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('mousedown', handlePointerDown);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
+
   function changeViewMode(nextMode: ProjectViewMode) {
     setViewMode(nextMode);
     window.localStorage.setItem(PROJECT_VIEW_MODE_KEY, nextMode);
@@ -98,32 +121,49 @@ export default function ProjectsPage() {
   ) : null;
 
   const projectFilters = (
-    <div className="flex min-w-0 items-center gap-1.5">
+    <div ref={searchMenuRef} className="relative min-w-0">
       <Input
         value={projectSearch}
         onChange={(event) => setProjectSearch(event.target.value)}
+        onFocus={() => setSearchMenuOpen(true)}
+        onClick={() => setSearchMenuOpen(true)}
         placeholder="Sök"
-        className="h-8 min-w-0 flex-1 rounded-2xl px-2.5 text-xs sm:h-9 sm:px-3 sm:text-sm"
+        className="h-8 min-w-0 rounded-2xl px-2.5 text-xs sm:h-9 sm:px-3 sm:text-sm"
       />
-      <select
-        value={statusFilter}
-        onChange={(event) => setStatusFilter(event.target.value)}
-        className="h-8 w-[96px] shrink-0 rounded-2xl border border-input bg-background px-2 text-[11px] outline-none transition focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/20 sm:h-9 sm:w-[170px] sm:px-3 sm:text-sm"
-      >
-        {statusOptions.map((option) => (
-          <option key={option.key} value={option.key}>
-            {option.title}
-          </option>
-        ))}
-      </select>
-      <Button
-        type="button"
-        variant={onlyMine ? 'default' : 'outline'}
-        className="h-8 shrink-0 rounded-2xl px-2.5 text-[11px] sm:h-9 sm:px-3 sm:text-sm"
-        onClick={() => setOnlyMine((current) => !current)}
-      >
-        Mina
-      </Button>
+      {searchMenuOpen ? (
+        <div className="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-30 rounded-2xl border border-border bg-background p-3 shadow-xl">
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-foreground/55">Status</p>
+              <select
+                value={statusFilter}
+                onChange={(event) => setStatusFilter(event.target.value)}
+                className="h-9 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none transition focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/20"
+              >
+                {statusOptions.map((option) => (
+                  <option key={option.key} value={option.key}>
+                    {option.title}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex items-center justify-between gap-3 rounded-xl border border-border/70 bg-muted/25 px-3 py-2">
+              <div>
+                <p className="text-sm font-medium">Mina projekt</p>
+                <p className="text-xs text-foreground/60">Visa bara projekt där du deltar</p>
+              </div>
+              <Button
+                type="button"
+                variant={onlyMine ? 'default' : 'outline'}
+                className="h-8 shrink-0 rounded-xl px-3 text-xs"
+                onClick={() => setOnlyMine((current) => !current)}
+              >
+                {onlyMine ? 'På' : 'Av'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 
