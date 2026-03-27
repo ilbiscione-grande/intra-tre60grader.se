@@ -5,7 +5,20 @@ import * as SelectPrimitive from '@radix-ui/react-select';
 import { Check, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/ui/cn';
 
-const Select = SelectPrimitive.Root;
+const Select = ({
+  children,
+  ...props
+}: React.ComponentPropsWithoutRef<typeof SelectPrimitive.Root>) => {
+  const SelectRoot = SelectPrimitive.Root as unknown as React.ComponentType<
+    React.ComponentPropsWithoutRef<typeof SelectPrimitive.Root> & { modal?: boolean }
+  >;
+
+  return (
+    <SelectRoot {...props} modal={false}>
+      {children}
+    </SelectRoot>
+  );
+};
 const SelectValue = SelectPrimitive.Value;
 
 const SelectTrigger = React.forwardRef<
