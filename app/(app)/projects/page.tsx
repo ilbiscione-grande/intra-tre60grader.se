@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { LayoutGrid, Rows3, SlidersHorizontal, X } from 'lucide-react';
+import { LayoutGrid, Rows3, Search, SlidersHorizontal, X } from 'lucide-react';
 import ProfileBadge from '@/components/common/ProfileBadge';
 import { useAppContext } from '@/components/providers/AppContext';
 import SectionErrorBoundary from '@/components/common/SectionErrorBoundary';
@@ -151,38 +151,35 @@ export default function ProjectsPage() {
     setEndDateFilter('');
   }
 
-  const projectFilters = (
-    <div ref={searchMenuRef} className="relative min-w-0">
-      <div className="relative">
-        <Input
-          value={projectSearch}
-          onChange={(event) => setProjectSearch(event.target.value)}
-          onFocus={() => setSearchMenuOpen(true)}
-          onClick={() => setSearchMenuOpen(true)}
-          placeholder="Sök"
-          className="h-8 min-w-0 rounded-2xl px-2.5 pr-9 text-xs sm:h-9 sm:px-3 sm:pr-10 sm:text-sm"
-        />
-        {projectSearch || searchMenuOpen ? (
-          <button
-            type="button"
-            onClick={() => {
-              if (projectSearch) {
-                setProjectSearch('');
-                return;
-              }
-              setSearchMenuOpen(false);
-            }}
-            className="absolute right-2 top-1/2 inline-flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full text-foreground/55 transition hover:bg-muted hover:text-foreground"
-            aria-label={projectSearch ? 'Rensa sökning' : 'Stäng sökfilter'}
-            title={projectSearch ? 'Rensa sökning' : 'Stäng sökfilter'}
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
-        ) : null}
-      </div>
+  const searchPanel = (
+    <div ref={searchMenuRef} className="relative">
       {searchMenuOpen ? (
-        <div className="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-[120] rounded-2xl border border-border bg-background p-3 shadow-xl">
+        <div className="absolute right-0 top-[calc(100%+0.5rem)] z-[120] w-[min(26rem,calc(100vw-2rem))] rounded-2xl border border-border bg-background p-3 shadow-xl">
           <div className="space-y-3">
+            <div className="relative">
+              <Input
+                value={projectSearch}
+                onChange={(event) => setProjectSearch(event.target.value)}
+                autoFocus
+                placeholder="Sök"
+                className="h-9 rounded-2xl px-3 pr-10 text-sm"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  if (projectSearch) {
+                    setProjectSearch('');
+                    return;
+                  }
+                  setSearchMenuOpen(false);
+                }}
+                className="absolute right-2 top-1/2 inline-flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full text-foreground/55 transition hover:bg-muted hover:text-foreground"
+                aria-label={projectSearch ? 'Rensa sökning' : 'Stäng sökfilter'}
+                title={projectSearch ? 'Rensa sökning' : 'Stäng sökfilter'}
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
             <div className="rounded-xl border border-border/70 bg-muted/20 px-3 py-2 text-xs text-foreground/65">
               Söker på kund, projektnamn, status, ansvarig och tilldelade medlemmar.
             </div>
@@ -356,18 +353,32 @@ export default function ProjectsPage() {
     </div>
   );
 
+  const searchTrigger = (
+    <Button
+      type="button"
+      variant={searchMenuOpen || projectSearch || hasActiveFilters ? 'default' : 'outline'}
+      size="icon"
+      className="h-8 w-8 shrink-0 rounded-full sm:h-9 sm:w-9"
+      aria-label="Öppna sök och filter"
+      onClick={() => setSearchMenuOpen((current) => !current)}
+    >
+      <Search className="h-4 w-4" />
+    </Button>
+  );
+
   if (mode === 'mobile') {
     return (
       <div className="space-y-4">
-        <div className="flex items-center gap-1.5">
+        <div className="relative flex items-center gap-1.5">
           {summaryToggle}
           {automationTrigger}
           {mobileViewModeTrigger}
           <SectionErrorBoundary title="Skapa projekt">
             <CreateProjectEntry companyId={companyId} mode="mobile" />
           </SectionErrorBoundary>
+          {searchTrigger}
+          {searchPanel}
         </div>
-        {projectFilters}
         {activeFiltersBar}
         {canSeeProjectSummary && showSummary ? (
           <>
@@ -401,7 +412,7 @@ export default function ProjectsPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-end gap-3">
+      <div className="relative flex flex-wrap items-center justify-end gap-3">
         <div className="flex items-center justify-end gap-2">
           {automationTrigger}
           {summaryToggle}
@@ -409,9 +420,10 @@ export default function ProjectsPage() {
           <SectionErrorBoundary title="Skapa projekt">
             <CreateProjectEntry companyId={companyId} mode="desktop" />
           </SectionErrorBoundary>
+          {searchTrigger}
         </div>
+        {searchPanel}
       </div>
-      {projectFilters}
       {activeFiltersBar}
       {canSeeProjectSummary && showSummary ? (
         <>
