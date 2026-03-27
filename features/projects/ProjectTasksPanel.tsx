@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { CheckCircle2, Circle, Clock3, Link2, Plus, Trash2, Users } from 'lucide-react';
+import { CheckCircle2, Circle, Clock3, Link2, Plus, Trash2 } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import ActionSheet from '@/components/common/ActionSheet';
@@ -35,6 +35,10 @@ type ProjectMilestoneOption = {
 
 type TaskStatus = 'todo' | 'in_progress' | 'done';
 type TaskPriority = 'low' | 'normal' | 'high';
+type TaskVisibleMemberBadge = ProjectMemberVisual & {
+  label: string;
+  isResponsible?: boolean;
+};
 
 function normalizeUserId(value: unknown): string | null {
   if (typeof value === 'string' && value.trim()) return value;
@@ -114,6 +118,95 @@ function message(error: unknown, fallback: string) {
   if (error instanceof Error) return error.message;
   if (error && typeof error === 'object' && 'message' in error) return String((error as { message?: unknown }).message ?? fallback);
   return fallback;
+}
+
+function buildTaskVisibleMemberBadges(assignee: ProjectMemberVisual | null, taskMembers: ProjectMemberVisual[]) {
+  const ordered: TaskVisibleMemberBadge[] = [];
+  const seenUserIds = new Set<string>();
+
+  if (assignee) {
+    ordered.push({
+      ...assignee,
+      label: getUserDisplayName({
+        displayName: assignee.display_name,
+        email: assignee.email,
+        handle: assignee.handle,
+        userId: assignee.user_id
+      }),
+      isResponsible: true
+    });
+    seenUserIds.add(assignee.user_id);
+  }
+
+  for (const member of taskMembers) {
+    if (seenUserIds.has(member.user_id)) continue;
+    ordered.push({
+      ...member,
+      label: getUserDisplayName({
+        displayName: member.display_name,
+        email: member.email,
+        handle: member.handle,
+        userId: member.user_id
+      })
+    });
+    seenUserIds.add(member.user_id);
+  }
+
+  return ordered;
+}
+
+function TaskMemberBadges({
+  members,
+  activeMemberKey,
+  onToggle
+}: {
+  members: TaskVisibleMemberBadge[];
+  activeMemberKey: string | null;
+  onToggle: (key: string) => void;
+}) {
+  if (members.length === 0) return null;
+
+  return (
+    <div className="relative z-10 mt-3 flex flex-wrap gap-1.5">
+      {members.map((member) => {
+        const key = `${member.id}-${member.user_id}`;
+        const tooltipLabel = member.isResponsible ? `Ansvarig: ${member.label}` : member.label;
+        const isActive = activeMemberKey === key;
+
+        return (
+          <div key={key} className="group/member relative">
+            <button
+              type="button"
+              className="rounded-full"
+              aria-label={tooltipLabel}
+              title={tooltipLabel}
+              onClick={() => onToggle(key)}
+            >
+              <ProfileBadge
+                label={member.label}
+                color={member.color}
+                avatarUrl={member.avatar_url}
+                emoji={member.emoji}
+                className={`h-7 w-7 border shadow-sm transition group-hover/member:scale-[1.03] ${
+                  member.isResponsible ? 'border-primary ring-2 ring-primary/25' : 'border-background'
+                }`}
+                textClassName="text-[10px] font-semibold text-white"
+              />
+            </button>
+            <div
+              className={`pointer-events-none absolute bottom-[calc(100%+0.45rem)] left-1/2 z-30 -translate-x-1/2 whitespace-nowrap rounded-md border border-border/70 bg-card px-2 py-1 text-[11px] font-medium text-foreground shadow-md transition ${
+                isActive
+                  ? 'translate-y-0 opacity-100'
+                  : 'translate-y-1 opacity-0 group-hover/member:translate-y-0 group-hover/member:opacity-100 group-focus-within/member:translate-y-0 group-focus-within/member:opacity-100'
+              }`}
+            >
+              {tooltipLabel}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 function TaskMemberPicker({
@@ -212,6 +305,7 @@ export default function ProjectTasksPanel({
   const [subtaskDraftByTaskId, setSubtaskDraftByTaskId] = useState<Record<string, string>>({});
   const [view, setView] = useState<'list' | 'board'>('list');
   const [createOpen, setCreateOpen] = useState(false);
+  const [activeTaskMemberKey, setActiveTaskMemberKey] = useState<string | null>(null);
   const mode = useBreakpointMode();
 
   const currentUserQuery = useQuery<string | null>({
@@ -771,14 +865,7 @@ export default function ProjectTasksPanel({
                     const taskMembers = (taskMemberUserIdsByTaskId.get(task.id) ?? [])
                       .map((userId) => assigneeByUserId.get(userId) ?? null)
                       .filter((member): member is ProjectMemberVisual => Boolean(member));
-                    const assigneeLabel = assignee
-                      ? getUserDisplayName({
-                          displayName: assignee.display_name,
-                          email: assignee.email,
-                          handle: assignee.handle,
-                          userId: assignee.user_id
-                        })
-                      : null;
+                    const visibleTaskMemberBadges = buildTaskVisibleMemberBadges(assignee, taskMembers);
                     const isOverdue = Boolean(task.due_date && task.due_date < todayIso() && task.status !== 'done');
                     const linkedMilestone = task.milestone_id ? milestoneById.get(task.milestone_id) ?? null : null;
                     const taskSubtasks = normalizeTaskSubtasks(task.subtasks);
@@ -809,44 +896,11 @@ export default function ProjectTasksPanel({
                           ) : null}
                           {taskSubtasks.length > 0 ? <Badge>{completedSubtasks}/{taskSubtasks.length} delsteg</Badge> : null}
                         </div>
-                        {assignee ? (
-                          <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-muted px-2 py-1 text-xs">
-                            <ProfileBadge
-                              label={assigneeLabel}
-                              color={assignee.color}
-                              avatarUrl={assignee.avatar_url}
-                              emoji={assignee.emoji}
-                              className="h-5 w-5 shrink-0"
-                              textClassName="text-[9px] font-semibold text-white"
-                            />
-                            <span className="max-w-[140px] truncate">
-                              {assigneeLabel}
-                            </span>
-                          </div>
-                        ) : null}
-                        {taskMembers.length > 0 ? (
-                          <div className="mt-3 flex flex-wrap gap-1.5">
-                            {taskMembers.map((member) => {
-                              const label = getUserDisplayName({
-                                displayName: member.display_name,
-                                email: member.email,
-                                handle: member.handle,
-                                userId: member.user_id
-                              });
-                              return (
-                                <ProfileBadge
-                                  key={`${task.id}-${member.user_id}`}
-                                  label={label}
-                                  color={member.color}
-                                  avatarUrl={member.avatar_url}
-                                  emoji={member.emoji}
-                                  className="h-6 w-6 shrink-0"
-                                  textClassName="text-[10px] font-semibold text-white"
-                                />
-                              );
-                            })}
-                          </div>
-                        ) : null}
+                        <TaskMemberBadges
+                          members={visibleTaskMemberBadges}
+                          activeMemberKey={activeTaskMemberKey}
+                          onToggle={(key) => setActiveTaskMemberKey((current) => (current === key ? null : key))}
+                        />
                       </div>
                     );
                   })}
@@ -861,14 +915,7 @@ export default function ProjectTasksPanel({
             const taskMembers = taskMemberUserIds
               .map((userId) => assigneeByUserId.get(userId) ?? null)
               .filter((member): member is ProjectMemberVisual => Boolean(member));
-            const assigneeLabel = assignee
-              ? getUserDisplayName({
-                  displayName: assignee.display_name,
-                  email: assignee.email,
-                  handle: assignee.handle,
-                  userId: assignee.user_id
-                })
-              : null;
+            const visibleTaskMemberBadges = buildTaskVisibleMemberBadges(assignee, taskMembers);
             const isOverdue = Boolean(task.due_date && task.due_date < todayIso());
             const linkedMilestone = task.milestone_id ? milestoneById.get(task.milestone_id) ?? null : null;
             const taskSubtasks = normalizeTaskSubtasks(task.subtasks);
@@ -903,36 +950,16 @@ export default function ProjectTasksPanel({
                       {new Date(task.due_date).toLocaleDateString('sv-SE')}
                     </span>
                   ) : null}
-                  {assignee ? (
-                    <span className="inline-flex items-center gap-2 rounded-full bg-muted px-2 py-1 text-xs">
-                      <ProfileBadge
-                        label={assigneeLabel}
-                        color={assignee.color}
-                        avatarUrl={assignee.avatar_url}
-                        emoji={assignee.emoji}
-                        className="h-5 w-5 shrink-0"
-                        textClassName="text-[9px] font-semibold text-white"
-                      />
-                      <span className="max-w-[140px] truncate">
-                        {assigneeLabel}
-                      </span>
-                    </span>
-                  ) : (
+                  {visibleTaskMemberBadges.length === 0 ? (
                     <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs text-foreground/70">
                       <Circle className="h-3.5 w-3.5" />
                       Ej tilldelad
                     </span>
-                  )}
+                  ) : null}
                   {linkedMilestone ? (
                     <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-900 dark:bg-amber-500/15 dark:text-amber-200">
                       <Link2 className="h-3.5 w-3.5" />
                       <span className="max-w-[160px] truncate">{linkedMilestone.title || 'Kopplat delmål'}</span>
-                    </span>
-                  ) : null}
-                  {taskMembers.length > 0 ? (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs text-foreground/70">
-                      <Users className="h-3.5 w-3.5" />
-                      {taskMembers.length} medlem{taskMembers.length === 1 ? '' : 'mar'}
                     </span>
                   ) : null}
                   {taskSubtasks.length > 0 ? (
@@ -1035,31 +1062,11 @@ export default function ProjectTasksPanel({
                     ) : null}
                   </div>
                 ) : null}
-                {taskMembers.length > 0 ? (
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {taskMembers.map((member) => {
-                      const label = getUserDisplayName({
-                        displayName: member.display_name,
-                        email: member.email,
-                        handle: member.handle,
-                        userId: member.user_id
-                      });
-                      return (
-                        <div key={`${task.id}-${member.user_id}`} className="inline-flex items-center gap-2 rounded-full bg-muted px-2 py-1 text-xs">
-                          <ProfileBadge
-                            label={label}
-                            color={member.color}
-                            avatarUrl={member.avatar_url}
-                            emoji={member.emoji}
-                            className="h-5 w-5 shrink-0"
-                            textClassName="text-[9px] font-semibold text-white"
-                          />
-                          <span className="max-w-[140px] truncate">{label}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : null}
+                <TaskMemberBadges
+                  members={visibleTaskMemberBadges}
+                  activeMemberKey={activeTaskMemberKey}
+                  onToggle={(key) => setActiveTaskMemberKey((current) => (current === key ? null : key))}
+                />
 
                 {canManageTasks(role) ? (
                   <div className="mt-3 space-y-3">
