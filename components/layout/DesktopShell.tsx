@@ -45,11 +45,16 @@ export default function DesktopShell({
     });
   }
 
+  const sidebarWidth = showSidebar ? (collapsed ? 80 : 256) : 0;
+
   return (
     <div className="min-h-screen overflow-x-hidden lg:flex">
       {showSidebar ? <DesktopSidebar role={role} capabilities={capabilities} collapsed={collapsed} onToggle={toggleSidebar} /> : null}
       <div className="flex min-h-screen min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-[120] border-b border-border bg-card/80 px-6 py-4 backdrop-blur">
+        <header
+          className="fixed right-0 top-0 z-[140] border-b border-border bg-card/92 px-6 py-4 shadow-sm backdrop-blur-xl"
+          style={{ left: `${sidebarWidth}px` }}
+        >
           <div className="flex items-center justify-between gap-4">
             <div className="flex min-w-0 items-center gap-3">
               {showSidebar ? (
@@ -66,6 +71,7 @@ export default function DesktopShell({
             </div>
           </div>
         </header>
+        <div className="h-[81px] shrink-0" />
         <OfflineBanner />
         <main className="min-w-0 flex-1 p-6">
           <MfaReminder />
