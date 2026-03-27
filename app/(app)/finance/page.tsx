@@ -497,6 +497,8 @@ export default function FinancePage() {
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" asChild><Link href="/orders">Ordrar</Link></Button>
             <Button variant="outline" asChild><Link href="/invoices">Fakturor</Link></Button>
+            <Button variant="outline" asChild><Link href="/receivables">Kundreskontra</Link></Button>
+            <Button variant="outline" asChild><Link href="/payables">Leverantörsreskontra</Link></Button>
             <Button variant="outline" asChild><Link href="/reports">Alla rapporter</Link></Button>
             <Button variant="ghost" asChild><Link href={'/help/ekonomioversikt' as Route}>Hjälp om ekonomi</Link></Button>
           </div>

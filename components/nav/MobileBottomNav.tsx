@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import type { Route } from 'next';
 import { usePathname, useRouter } from 'next/navigation';
-import { BriefcaseBusiness, Building2, ScrollText, Activity, Landmark, Settings } from 'lucide-react';
+import { BriefcaseBusiness, Building2, ScrollText, Activity, ListTodo, Settings } from 'lucide-react';
 import { useEffect } from 'react';
 import { buttonVariants } from '@/components/ui/button';
 import { canAccessCustomers, canAccessFinance, canAccessOrders } from '@/lib/auth/navigation';
@@ -18,11 +18,11 @@ type NavItem = {
 };
 
 const navItems: NavItem[] = [
+  { href: '/todo' as Route, label: 'Att göra', visible: () => true, icon: ListTodo },
   { href: '/projects', label: 'Projekt', visible: () => true, icon: BriefcaseBusiness },
   { href: '/customers', label: 'Kunder', visible: (role, capabilities) => canAccessCustomers(role, capabilities), icon: Building2 },
   { href: '/orders', label: 'Ordrar', visible: (role, capabilities) => canAccessOrders(role, capabilities), icon: ScrollText },
   { href: '/finance', label: 'Ekonomi', visible: (role, capabilities) => canAccessFinance(role, capabilities), icon: Activity },
-  { href: '/payables', label: 'Lev.resk', visible: (role, capabilities) => canAccessFinance(role, capabilities), icon: Landmark },
   { href: '/settings', label: 'Inställn.', visible: (role) => role === 'member', icon: Settings }
 ];
 

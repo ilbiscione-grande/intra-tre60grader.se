@@ -5,8 +5,8 @@ export default async function HomePage() {
   const authContext = await getAuthContext();
 
   if (!isStaff(authContext)) {
-    redirect(getLoginRedirectUrl(authContext, '/projects'));
+    redirect(getLoginRedirectUrl(authContext, '/todo'));
   }
 
-  redirect('/projects');
+  redirect('/todo');
 }

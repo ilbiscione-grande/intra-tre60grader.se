@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import type { Route } from 'next';
 import { usePathname, useRouter } from 'next/navigation';
-import { Activity, BarChart3, BriefcaseBusiness, Building2, ChevronLeft, ChevronRight, CircleHelp, Receipt, ScrollText, Settings, Shield, WalletCards, Landmark } from 'lucide-react';
+import { Activity, BarChart3, BriefcaseBusiness, Building2, ChevronLeft, ChevronRight, CircleHelp, ListTodo, Receipt, ScrollText, Settings, Shield, WalletCards, Landmark } from 'lucide-react';
 import { useEffect } from 'react';
 import { buttonVariants } from '@/components/ui/button';
 import { canAccessCustomers, canAccessFinance, canAccessOrders, canAccessReports, canAccessTeam } from '@/lib/auth/navigation';
@@ -18,6 +18,7 @@ type NavItem = {
 };
 
 const items: NavItem[] = [
+  { href: '/todo' as Route, label: 'Att göra', visible: () => true, icon: ListTodo },
   { href: '/projects', label: 'Projekt', visible: () => true, icon: BriefcaseBusiness },
   { href: '/customers', label: 'Kunder', visible: (role, capabilities) => canAccessCustomers(role, capabilities), icon: Building2 },
   { href: '/orders', label: 'Ordrar', visible: (role, capabilities) => canAccessOrders(role, capabilities), icon: ScrollText },
