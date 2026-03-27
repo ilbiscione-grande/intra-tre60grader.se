@@ -1369,26 +1369,30 @@ export default function ProjectDetailsPage() {
                   </label>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button onClick={() => saveProjectMutation.mutate()} disabled={saveProjectMutation.isPending}>
+                <div className="grid grid-cols-3 gap-2">
+                  <Button
+                    onClick={() => saveProjectMutation.mutate()}
+                    disabled={saveProjectMutation.isPending}
+                    className="h-11 min-w-0 px-2 text-xs sm:h-12 sm:px-4 sm:text-sm"
+                  >
                     {saveProjectMutation.isPending ? 'Sparar...' : 'Spara projekt'}
                   </Button>
                   {orderId ? (
-                    <Button asChild variant="outline">
-                      <Link href={`/orders/${orderId}`}>
-                        <span>Öppna order</span>
-                        <ArrowUpRight className="ml-2 h-4 w-4" />
+                    <Button asChild variant="outline" className="h-11 min-w-0 px-2 text-xs sm:h-12 sm:px-4 sm:text-sm">
+                      <Link href={`/orders/${orderId}`} className="min-w-0">
+                        <span className="truncate">Öppna order</span>
+                        <ArrowUpRight className="ml-1 h-4 w-4 shrink-0 sm:ml-2" />
                       </Link>
                     </Button>
-                  ) : null}
+                  ) : <div />}
                   {currentCustomer ? (
-                    <Button asChild variant="outline">
-                      <Link href={`/customers/${currentCustomer.id}` as Route}>
-                        <span>Öppna kund</span>
-                        <ArrowUpRight className="ml-2 h-4 w-4" />
+                    <Button asChild variant="outline" className="h-11 min-w-0 px-2 text-xs sm:h-12 sm:px-4 sm:text-sm">
+                      <Link href={`/customers/${currentCustomer.id}` as Route} className="min-w-0">
+                        <span className="truncate">Öppna kund</span>
+                        <ArrowUpRight className="ml-1 h-4 w-4 shrink-0 sm:ml-2" />
                       </Link>
                     </Button>
-                  ) : null}
+                  ) : <div />}
                 </div>
               </CardContent>
             </Card>
