@@ -951,7 +951,7 @@ export default function ProjectUpdatesPanel({
 
       <Card
         ref={rootComposerCardRef}
-        className={`sticky bottom-[calc(env(safe-area-inset-bottom)+5.5rem)] z-20 md:bottom-4 ${
+        className={`sticky bottom-[calc(env(safe-area-inset-bottom)+5.5rem)] z-[130] md:bottom-4 ${
           rootComposerVisible
             ? 'border-primary/20 bg-background/95 shadow-lg backdrop-blur'
             : 'border-transparent bg-transparent shadow-none backdrop-blur-0'
