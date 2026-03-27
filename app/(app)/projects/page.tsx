@@ -152,9 +152,19 @@ export default function ProjectsPage() {
   }
 
   const searchPanel = (
-    <div ref={searchMenuRef} className="relative">
+    <div ref={searchMenuRef} className="relative ml-auto shrink-0">
+      <Button
+        type="button"
+        variant={searchMenuOpen || projectSearch || hasActiveFilters ? 'default' : 'outline'}
+        size="icon"
+        className="h-8 w-8 rounded-full sm:h-9 sm:w-9"
+        aria-label="Öppna sök och filter"
+        onClick={() => setSearchMenuOpen((current) => !current)}
+      >
+        <Search className="h-4 w-4" />
+      </Button>
       {searchMenuOpen ? (
-        <div className="absolute right-0 top-[calc(100%+0.5rem)] z-[120] w-[min(26rem,calc(100vw-2rem))] rounded-2xl border border-border bg-background p-3 shadow-xl">
+        <div className="absolute right-0 top-[calc(100%+0.5rem)] z-[120] w-[min(26rem,calc(100vw-1rem))] max-w-[calc(100vw-1rem)] rounded-2xl border border-border bg-background p-3 shadow-xl sm:w-[26rem] sm:max-w-[26rem]">
           <div className="space-y-3">
             <div className="relative">
               <Input
@@ -353,19 +363,6 @@ export default function ProjectsPage() {
     </div>
   );
 
-  const searchTrigger = (
-    <Button
-      type="button"
-      variant={searchMenuOpen || projectSearch || hasActiveFilters ? 'default' : 'outline'}
-      size="icon"
-      className="h-8 w-8 shrink-0 rounded-full sm:h-9 sm:w-9"
-      aria-label="Öppna sök och filter"
-      onClick={() => setSearchMenuOpen((current) => !current)}
-    >
-      <Search className="h-4 w-4" />
-    </Button>
-  );
-
   if (mode === 'mobile') {
     return (
       <div className="space-y-4">
@@ -376,7 +373,6 @@ export default function ProjectsPage() {
           <SectionErrorBoundary title="Skapa projekt">
             <CreateProjectEntry companyId={companyId} mode="mobile" />
           </SectionErrorBoundary>
-          {searchTrigger}
           {searchPanel}
         </div>
         {activeFiltersBar}
@@ -420,9 +416,8 @@ export default function ProjectsPage() {
           <SectionErrorBoundary title="Skapa projekt">
             <CreateProjectEntry companyId={companyId} mode="desktop" />
           </SectionErrorBoundary>
-          {searchTrigger}
+          {searchPanel}
         </div>
-        {searchPanel}
       </div>
       {activeFiltersBar}
       {canSeeProjectSummary && showSummary ? (
