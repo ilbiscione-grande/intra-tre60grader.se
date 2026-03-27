@@ -1259,38 +1259,40 @@ export default function ProjectDetailsPage() {
 
   return (
     <section className="space-y-3 md:space-y-4">
-      <div className="flex items-start gap-3">
-        <Button asChild variant="secondary" size="icon" aria-label="Tillbaka till projekt">
-          <Link href="/projects">
-            <ArrowLeft className="h-4 w-4" />
-          </Link>
-        </Button>
-        <div className="space-y-0.5">
-          <p className="text-[10px] font-medium uppercase tracking-[0.16em] text-foreground/40">Projekt</p>
-          <h1 className="text-lg font-semibold tracking-tight sm:text-xl lg:text-2xl">{project.title}</h1>
-        </div>
-      </div>
-
-      <div ref={containerRef} className="-mx-4 flex overflow-x-auto border-b border-border/70 px-4">
-        {projectTabs.map((tab) => (
-          <Button
-            key={tab.id}
-            ref={registerItem(tab.id)}
-            type="button"
-            variant="ghost"
-            className={`shrink-0 rounded-none border-b-2 px-3 py-3 text-sm ${
-              activeTab === tab.id
-                ? 'border-primary text-foreground'
-                : 'border-transparent text-foreground/60 hover:border-border hover:text-foreground'
-            }`}
-            onClick={() => setActiveTab(tab.id)}
-          >
-            <span className="inline-flex items-center gap-1.5">
-              {tab.id === 'planning' && hasPlanningAttention ? <AlertTriangle className="h-3.5 w-3.5 text-amber-500" /> : null}
-              <span>{tab.label}</span>
-            </span>
+      <div className="md:sticky md:top-[73px] md:z-[90] md:-mx-6 md:border-b md:border-border/70 md:bg-background/95 md:px-6 md:pb-3 md:pt-1 md:backdrop-blur">
+        <div className="flex items-start gap-3">
+          <Button asChild variant="secondary" size="icon" aria-label="Tillbaka till projekt">
+            <Link href="/projects">
+              <ArrowLeft className="h-4 w-4" />
+            </Link>
           </Button>
-        ))}
+          <div className="space-y-0.5">
+            <p className="text-[10px] font-medium uppercase tracking-[0.16em] text-foreground/40">Projekt</p>
+            <h1 className="text-lg font-semibold tracking-tight sm:text-xl lg:text-2xl">{project.title}</h1>
+          </div>
+        </div>
+
+        <div ref={containerRef} className="-mx-4 mt-3 flex overflow-x-auto border-b border-border/70 px-4 md:mx-0 md:mt-4 md:border-b-0 md:px-0">
+          {projectTabs.map((tab) => (
+            <Button
+              key={tab.id}
+              ref={registerItem(tab.id)}
+              type="button"
+              variant="ghost"
+              className={`shrink-0 rounded-none border-b-2 px-3 py-3 text-sm ${
+                activeTab === tab.id
+                  ? 'border-primary text-foreground'
+                  : 'border-transparent text-foreground/60 hover:border-border hover:text-foreground'
+              }`}
+              onClick={() => setActiveTab(tab.id)}
+            >
+              <span className="inline-flex items-center gap-1.5">
+                {tab.id === 'planning' && hasPlanningAttention ? <AlertTriangle className="h-3.5 w-3.5 text-amber-500" /> : null}
+                <span>{tab.label}</span>
+              </span>
+            </Button>
+          ))}
+        </div>
       </div>
 
       {activeTab === 'overview' && (
