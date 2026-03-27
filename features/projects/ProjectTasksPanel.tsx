@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import SimpleSelect from '@/components/ui/simple-select';
 import { Textarea } from '@/components/ui/textarea';
 import { getUserDisplayName } from '@/features/profile/profileBadge';
 import { createClient } from '@/lib/supabase/client';
@@ -504,14 +504,15 @@ export default function ProjectTasksPanel({
                   </label>
                   <label className="space-y-1">
                     <span className="text-sm">Prioritet</span>
-                    <Select value={priority} onValueChange={(value) => setPriority(value as TaskPriority)}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="low">Låg</SelectItem>
-                        <SelectItem value="normal">Normal</SelectItem>
-                        <SelectItem value="high">Hög</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <SimpleSelect
+                      value={priority}
+                      onValueChange={(value) => setPriority(value as TaskPriority)}
+                      options={[
+                        { value: 'low', label: 'Låg' },
+                        { value: 'normal', label: 'Normal' },
+                        { value: 'high', label: 'Hög' }
+                      ]}
+                    />
                   </label>
                   <label className="space-y-1">
                     <span className="text-sm">Deadline</span>
@@ -519,22 +520,22 @@ export default function ProjectTasksPanel({
                   </label>
                   <label className="space-y-1 md:col-span-2">
                     <span className="text-sm">Ansvarig</span>
-                    <Select value={assigneeUserId} onValueChange={setAssigneeUserId}>
-                      <SelectTrigger><SelectValue placeholder="Välj medlem" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">Ingen ansvarig ännu</SelectItem>
-                        {normalizedMembers.map((member) => (
-                          <SelectItem key={member.id} value={member.user_id}>
-                            {getUserDisplayName({
-                              displayName: member.display_name,
-                              email: member.email,
-                              handle: member.handle,
-                              userId: member.user_id
-                            })}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <SimpleSelect
+                      value={assigneeUserId}
+                      onValueChange={setAssigneeUserId}
+                      options={[
+                        { value: 'none', label: 'Ingen ansvarig ännu' },
+                        ...normalizedMembers.map((member) => ({
+                          value: member.user_id,
+                          label: getUserDisplayName({
+                            displayName: member.display_name,
+                            email: member.email,
+                            handle: member.handle,
+                            userId: member.user_id
+                          })
+                        }))
+                      ]}
+                    />
                   </label>
                   <div className="space-y-2 md:col-span-2">
                     <span className="text-sm">Medlemmar på uppgiften</span>
@@ -542,17 +543,17 @@ export default function ProjectTasksPanel({
                   </div>
                   <label className="space-y-1 md:col-span-2">
                     <span className="text-sm">Koppla till delmål</span>
-                    <Select value={milestoneId} onValueChange={setMilestoneId}>
-                      <SelectTrigger><SelectValue placeholder="Välj delmål" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">Inget delmål</SelectItem>
-                        {milestones.map((milestone) => (
-                          <SelectItem key={milestone.id} value={milestone.id}>
-                            {milestone.title || 'Namnlöst delmål'}{milestone.date ? ` • ${milestone.date}` : ''}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <SimpleSelect
+                      value={milestoneId}
+                      onValueChange={setMilestoneId}
+                      options={[
+                        { value: 'none', label: 'Inget delmål' },
+                        ...milestones.map((milestone) => ({
+                          value: milestone.id,
+                          label: `${milestone.title || 'Namnlöst delmål'}${milestone.date ? ` • ${milestone.date}` : ''}`
+                        }))
+                      ]}
+                    />
                   </label>
                 </div>
                 <div className="space-y-2 rounded-xl border border-border/70 bg-muted/10 p-3">
@@ -629,16 +630,15 @@ export default function ProjectTasksPanel({
               </label>
               <label className="space-y-1">
                 <span className="text-sm">Prioritet</span>
-                <Select value={priority} onValueChange={(value) => setPriority(value as TaskPriority)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="low">Låg</SelectItem>
-                    <SelectItem value="normal">Normal</SelectItem>
-                    <SelectItem value="high">Hög</SelectItem>
-                  </SelectContent>
-                </Select>
+                <SimpleSelect
+                  value={priority}
+                  onValueChange={(value) => setPriority(value as TaskPriority)}
+                  options={[
+                    { value: 'low', label: 'Låg' },
+                    { value: 'normal', label: 'Normal' },
+                    { value: 'high', label: 'Hög' }
+                  ]}
+                />
               </label>
               <label className="space-y-1">
                 <span className="text-sm">Deadline</span>
@@ -646,24 +646,22 @@ export default function ProjectTasksPanel({
               </label>
               <label className="space-y-1 md:col-span-2">
                 <span className="text-sm">Ansvarig</span>
-                <Select value={assigneeUserId} onValueChange={setAssigneeUserId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Välj medlem" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Ingen ansvarig ännu</SelectItem>
-                        {normalizedMembers.map((member) => (
-                          <SelectItem key={member.id} value={member.user_id}>
-                            {getUserDisplayName({
-                              displayName: member.display_name,
-                              email: member.email,
-                              handle: member.handle,
-                              userId: member.user_id
-                            })}
-                          </SelectItem>
-                        ))}
-                  </SelectContent>
-                </Select>
+                <SimpleSelect
+                  value={assigneeUserId}
+                  onValueChange={setAssigneeUserId}
+                  options={[
+                    { value: 'none', label: 'Ingen ansvarig ännu' },
+                    ...normalizedMembers.map((member) => ({
+                      value: member.user_id,
+                      label: getUserDisplayName({
+                        displayName: member.display_name,
+                        email: member.email,
+                        handle: member.handle,
+                        userId: member.user_id
+                      })
+                    }))
+                  ]}
+                />
               </label>
               <div className="space-y-2 md:col-span-2">
                 <span className="text-sm">Medlemmar på uppgiften</span>
@@ -671,19 +669,17 @@ export default function ProjectTasksPanel({
               </div>
               <label className="space-y-1 md:col-span-2">
                 <span className="text-sm">Koppla till delmål</span>
-                <Select value={milestoneId} onValueChange={setMilestoneId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Välj delmål" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Inget delmål</SelectItem>
-                    {milestones.map((milestone) => (
-                      <SelectItem key={milestone.id} value={milestone.id}>
-                        {milestone.title || 'Namnlöst delmål'}{milestone.date ? ` • ${milestone.date}` : ''}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <SimpleSelect
+                  value={milestoneId}
+                  onValueChange={setMilestoneId}
+                  options={[
+                    { value: 'none', label: 'Inget delmål' },
+                    ...milestones.map((milestone) => ({
+                      value: milestone.id,
+                      label: `${milestone.title || 'Namnlöst delmål'}${milestone.date ? ` • ${milestone.date}` : ''}`
+                    }))
+                  ]}
+                />
               </label>
             </div>
             <div className="space-y-2 rounded-xl border border-border/70 bg-muted/10 p-3">
@@ -1068,33 +1064,25 @@ export default function ProjectTasksPanel({
                 {canManageTasks(role) ? (
                   <div className="mt-3 space-y-3">
                     <div className="grid gap-2 md:grid-cols-4">
-                    <Select
+                    <SimpleSelect
                       value={task.status}
                       onValueChange={(value) => updateTaskMutation.mutate({ taskId: task.id, patch: { status: value as TaskStatus } })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="todo">Att göra</SelectItem>
-                        <SelectItem value="in_progress">Pågår</SelectItem>
-                        <SelectItem value="done">Klar</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <Select
+                      options={[
+                        { value: 'todo', label: 'Att göra' },
+                        { value: 'in_progress', label: 'Pågår' },
+                        { value: 'done', label: 'Klar' }
+                      ]}
+                    />
+                    <SimpleSelect
                       value={task.priority}
                       onValueChange={(value) => updateTaskMutation.mutate({ taskId: task.id, patch: { priority: value as TaskPriority } })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="low">Låg</SelectItem>
-                        <SelectItem value="normal">Normal</SelectItem>
-                        <SelectItem value="high">Hög</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <Select
+                      options={[
+                        { value: 'low', label: 'Låg' },
+                        { value: 'normal', label: 'Normal' },
+                        { value: 'high', label: 'Hög' }
+                      ]}
+                    />
+                    <SimpleSelect
                       value={task.assignee_user_id ?? 'none'}
                       onValueChange={(value) =>
                         updateTaskMutation.mutate({
@@ -1102,25 +1090,20 @@ export default function ProjectTasksPanel({
                           patch: { assignee_user_id: value === 'none' ? null : normalizeUserId(value) }
                         })
                       }
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">Ingen ansvarig</SelectItem>
-                        {normalizedMembers.map((member) => (
-                          <SelectItem key={member.id} value={member.user_id}>
-                            {getUserDisplayName({
-                              displayName: member.display_name,
-                              email: member.email,
-                              handle: member.handle,
-                              userId: member.user_id
-                            })}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Select
+                      options={[
+                        { value: 'none', label: 'Ingen ansvarig' },
+                        ...normalizedMembers.map((member) => ({
+                          value: member.user_id,
+                          label: getUserDisplayName({
+                            displayName: member.display_name,
+                            email: member.email,
+                            handle: member.handle,
+                            userId: member.user_id
+                          })
+                        }))
+                      ]}
+                    />
+                    <SimpleSelect
                       value={task.milestone_id ?? 'none'}
                       onValueChange={(value) =>
                         updateTaskMutation.mutate({
@@ -1128,19 +1111,14 @@ export default function ProjectTasksPanel({
                           patch: { milestone_id: value === 'none' ? null : value }
                         })
                       }
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">Inget delmål</SelectItem>
-                        {milestones.map((milestone) => (
-                          <SelectItem key={milestone.id} value={milestone.id}>
-                            {milestone.title || 'Namnlöst delmål'}{milestone.date ? ` • ${milestone.date}` : ''}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                      options={[
+                        { value: 'none', label: 'Inget delmål' },
+                        ...milestones.map((milestone) => ({
+                          value: milestone.id,
+                          label: `${milestone.title || 'Namnlöst delmål'}${milestone.date ? ` • ${milestone.date}` : ''}`
+                        }))
+                      ]}
+                    />
                     </div>
                     <div className="space-y-2">
                       <p className="text-sm text-foreground/70">Medlemmar på uppgiften</p>

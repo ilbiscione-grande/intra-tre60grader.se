@@ -21,7 +21,7 @@ import {
   DialogTitle
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import SimpleSelect from '@/components/ui/simple-select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { createInvoiceFromOrder } from '@/lib/rpc';
 import { useCompanyMemberOptions, useProjectColumns, type ProjectMemberVisual } from '@/features/projects/projectQueries';
@@ -1259,7 +1259,7 @@ export default function ProjectDetailsPage() {
 
   return (
     <section className="space-y-3 md:space-y-4">
-      <div className="md:sticky md:top-[73px] md:z-[90] md:-mx-6 md:border-b md:border-border/70 md:bg-background/95 md:px-6 md:pb-3 md:pt-1 md:backdrop-blur">
+      <div className="md:sticky md:top-[81px] md:z-[110] md:-mx-6 md:border-b md:border-border/70 md:bg-background/98 md:px-6 md:pb-3 md:pt-1 md:backdrop-blur-xl">
         <div className="flex items-start gap-3">
           <Button asChild variant="secondary" size="icon" aria-label="Tillbaka till projekt">
             <Link href="/projects">
@@ -1347,35 +1347,25 @@ export default function ProjectDetailsPage() {
 
                   <label className="space-y-1">
                     <span className="text-sm">Projektstatus</span>
-                    <Select value={draftWorkflowStatus} onValueChange={(value) => setDraftWorkflowStatus(value as ProjectStatus)}>
-                      <SelectTrigger disabled={isProjectMetaBusy}>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {statusColumns.map((column) => (
-                          <SelectItem key={column.key} value={column.key}>
-                            {column.title}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <SimpleSelect
+                      value={draftWorkflowStatus}
+                      onValueChange={(value) => setDraftWorkflowStatus(value as ProjectStatus)}
+                      disabled={isProjectMetaBusy}
+                      options={statusColumns.map((column) => ({ value: column.key, label: column.title }))}
+                    />
                   </label>
 
                   <label className="space-y-1">
                     <span className="text-sm">Kund</span>
-                    <Select value={draftCustomerId} onValueChange={setDraftCustomerId}>
-                      <SelectTrigger disabled={isProjectMetaBusy}>
-                        <SelectValue placeholder="Välj kund" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">Ingen kund</SelectItem>
-                        {(customersQuery.data ?? []).map((customer) => (
-                          <SelectItem key={customer.id} value={customer.id}>
-                            {customer.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <SimpleSelect
+                      value={draftCustomerId}
+                      onValueChange={setDraftCustomerId}
+                      disabled={isProjectMetaBusy}
+                      options={[
+                        { value: 'none', label: 'Ingen kund' },
+                        ...(customersQuery.data ?? []).map((customer) => ({ value: customer.id, label: customer.name }))
+                      ]}
+                    />
                   </label>
                 </div>
 
@@ -1633,7 +1623,7 @@ export default function ProjectDetailsPage() {
                   fallback={<p className="text-sm text-foreground/70">Ekonomi/Admin kan ändra orderstatus och skapa faktura.</p>}
                 >
                   <div className="w-52">
-                    <Select
+                    <SimpleSelect
                       value={statusValue}
                       onValueChange={(value) => {
                         const next = value as OrderStatus;
@@ -1644,18 +1634,9 @@ export default function ProjectDetailsPage() {
                         }
                         updateOrderStatusMutation.mutate(next);
                       }}
-                    >
-                      <SelectTrigger disabled={isEconomyLocked || isEconomyBusy}>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {orderStatuses.map((status) => (
-                          <SelectItem key={status} value={status}>
-                            {orderStatusEtikett(status)}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                      disabled={isEconomyLocked || isEconomyBusy}
+                      options={orderStatuses.map((status) => ({ value: status, label: orderStatusEtikett(status) }))}
+                    />
                   </div>
 
                   <Button
@@ -1819,23 +1800,18 @@ export default function ProjectDetailsPage() {
               </p>
               {role !== 'auditor' ? (
                 <div className="mt-3 space-y-3">
-                  <Select
+                  <SimpleSelect
                     value={project.responsible_user_id ?? 'none'}
                     onValueChange={(value) => setResponsibleMutation.mutate(value === 'none' ? null : value)}
                     disabled={setResponsibleMutation.isPending}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Välj ansvarig" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">Ingen ansvarig</SelectItem>
-                      {availableMembers.map((member) => (
-                        <SelectItem key={member.id} value={member.user_id}>
-                          {memberLabelByUserId.get(member.user_id) ?? member.user_id}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    options={[
+                      { value: 'none', label: 'Ingen ansvarig' },
+                      ...availableMembers.map((member) => ({
+                        value: member.user_id,
+                        label: memberLabelByUserId.get(member.user_id) ?? member.user_id
+                      }))
+                    ]}
+                  />
                   <div className="flex flex-wrap gap-2">
                     <Button
                       type="button"
