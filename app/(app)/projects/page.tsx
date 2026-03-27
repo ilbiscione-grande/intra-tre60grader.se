@@ -366,6 +366,7 @@ export default function ProjectsPage() {
   if (mode === 'mobile') {
     return (
       <div className="space-y-4">
+        {searchMenuOpen ? <div className="fixed inset-0 z-[100] bg-background/25 backdrop-blur-[3px]" aria-hidden /> : null}
         <div className="relative flex items-center gap-1.5">
           {summaryToggle}
           {automationTrigger}
@@ -408,6 +409,7 @@ export default function ProjectsPage() {
 
   return (
     <div className="space-y-4">
+      {searchMenuOpen ? <div className="fixed inset-0 z-[100] bg-background/25 backdrop-blur-[3px]" aria-hidden /> : null}
       <div className="relative flex flex-wrap items-center justify-end gap-3">
         <div className="flex items-center justify-end gap-2">
           {automationTrigger}
