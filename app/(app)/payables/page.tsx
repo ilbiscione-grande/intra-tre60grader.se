@@ -56,6 +56,11 @@ function formatMoney(value: number, currency: string) {
   return `${Number(value).toFixed(2)} ${currency}`;
 }
 
+function share(value: number, total: number) {
+  if (total <= 0) return 0;
+  return Math.max(0, Math.min(100, Math.round((value / total) * 100)));
+}
+
 function parsePayablesReport(value: unknown) {
   const root = value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
   const rowsRaw = Array.isArray(root.rows) ? root.rows : [];
@@ -286,6 +291,9 @@ export default function PayablesPage() {
   const suppliers = suppliersQuery.data ?? [];
   const invoices = invoicesQuery.data ?? [];
   const report = payablesQuery.data;
+  const overdueRows = (report?.rows ?? []).filter((row) => row.days_overdue > 0);
+  const dueSoonRows = (report?.rows ?? []).filter((row) => row.days_overdue <= 0 && row.days_overdue >= -7);
+  const overdueShare = share(Number(report?.summary.overdue_total ?? 0), Number(report?.summary.open_total ?? 0));
 
   if (!canReadFinance) {
     return <p className="rounded-lg bg-muted p-4 text-sm">Leverantörsreskontra är endast tillgänglig för ekonomi, admin eller revisor.</p>;
@@ -306,6 +314,11 @@ export default function PayablesPage() {
                 <p className="text-sm text-foreground/65">
                   Håll koll på öppna leverantörsposter, registrera nya fakturor och följ upp utbetalningar från samma vy.
                 </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <StatusChip>{report?.summary.invoice_count ?? 0} öppna fakturor</StatusChip>
+                  <StatusChip>{overdueRows.length} förfallna</StatusChip>
+                  <StatusChip>{dueSoonRows.length} förfaller snart</StatusChip>
+                </div>
               </div>
             </div>
 
@@ -321,40 +334,57 @@ export default function PayablesPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Leverantörsreskontra</CardTitle>
+          <CardTitle>Lägesbild</CardTitle>
         </CardHeader>
-        <CardContent className="grid gap-2 md:grid-cols-4">
-          <label className="space-y-1 text-sm">
+        <CardContent className="grid gap-3 md:grid-cols-4">
+          <label className="space-y-1 text-sm md:col-span-1">
             <span>Per datum</span>
             <Input type="date" value={asOf} onChange={(event) => setAsOf(event.target.value)} />
           </label>
           <Metric label="Öppna fakturor" value={String(report?.summary.invoice_count ?? 0)} icon={ReceiptText} />
           <Metric label="Öppet belopp" value={`${Number(report?.summary.open_total ?? 0).toFixed(2)} kr`} icon={Wallet} />
           <Metric label="Förfallet" value={`${Number(report?.summary.overdue_total ?? 0).toFixed(2)} kr`} icon={CalendarRange} />
+          <div className="md:col-span-4">
+            <ProgressStrip
+              label="Andel förfallet av öppet belopp"
+              value={`${overdueShare}%`}
+              detail={`${Number(report?.summary.overdue_total ?? 0).toFixed(2)} kr av ${Number(report?.summary.open_total ?? 0).toFixed(2)} kr`}
+              percent={overdueShare}
+              tone="rose"
+            />
+          </div>
         </CardContent>
       </Card>
 
         {canEditFinance ? (
           <Card>
-            <CardHeader><CardTitle>Ny leverantör / leverantörsfaktura</CardTitle></CardHeader>
+            <CardHeader><CardTitle>Registrera nytt</CardTitle></CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid gap-2 md:grid-cols-3">
-                <Input placeholder="Ny leverantör (namn)" value={supplierName} onChange={(e) => setSupplierName(e.target.value)} />
-                <Button onClick={() => createSupplierMutation.mutate()} disabled={createSupplierMutation.isPending}>Skapa leverantör</Button>
-              </div>
+              <div className="grid gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.5fr)]">
+                <div className="space-y-2 rounded-xl border border-border/70 bg-muted/10 p-3">
+                  <p className="text-sm font-medium">Ny leverantör</p>
+                  <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+                    <Input placeholder="Leverantörsnamn" value={supplierName} onChange={(e) => setSupplierName(e.target.value)} />
+                    <Button onClick={() => createSupplierMutation.mutate()} disabled={createSupplierMutation.isPending}>Skapa</Button>
+                  </div>
+                </div>
 
-              <div className="grid gap-2 md:grid-cols-6">
-                <select className="h-10 rounded-md border px-3 text-sm" value={invoiceSupplierId} onChange={(e) => setInvoiceSupplierId(e.target.value)}>
-                  <option value="">Välj leverantör</option>
-                  {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                </select>
-                <Input placeholder="Leverantörsfaktura nr" value={supplierInvoiceNo} onChange={(e) => setSupplierInvoiceNo(e.target.value)} />
-                <Input type="date" value={issueDate} onChange={(e) => setIssueDate(e.target.value)} />
-                <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
-                <Input type="number" step="0.01" placeholder="Delsumma" value={subtotal} onChange={(e) => setSubtotal(e.target.value)} />
-                <Input type="number" step="0.01" placeholder="Moms" value={vatTotal} onChange={(e) => setVatTotal(e.target.value)} />
+                <div className="space-y-2 rounded-xl border border-border/70 bg-muted/10 p-3">
+                  <p className="text-sm font-medium">Ny leverantörsfaktura</p>
+                  <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                    <select className="h-10 rounded-md border border-border bg-background px-3 text-sm" value={invoiceSupplierId} onChange={(e) => setInvoiceSupplierId(e.target.value)}>
+                      <option value="">Välj leverantör</option>
+                      {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    </select>
+                    <Input placeholder="Fakturanummer" value={supplierInvoiceNo} onChange={(e) => setSupplierInvoiceNo(e.target.value)} />
+                    <Input type="date" value={issueDate} onChange={(e) => setIssueDate(e.target.value)} />
+                    <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+                    <Input type="number" step="0.01" placeholder="Delsumma" value={subtotal} onChange={(e) => setSubtotal(e.target.value)} />
+                    <Input type="number" step="0.01" placeholder="Moms" value={vatTotal} onChange={(e) => setVatTotal(e.target.value)} />
+                  </div>
+                  <Button onClick={() => createInvoiceMutation.mutate()} disabled={createInvoiceMutation.isPending}>Registrera leverantörsfaktura</Button>
+                </div>
               </div>
-              <Button onClick={() => createInvoiceMutation.mutate()} disabled={createInvoiceMutation.isPending}>Registrera leverantörsfaktura</Button>
             </CardContent>
           </Card>
         ) : null}
@@ -362,8 +392,8 @@ export default function PayablesPage() {
         {canEditFinance ? (
           <Card>
             <CardHeader><CardTitle>Registrera betalning</CardTitle></CardHeader>
-            <CardContent className="grid gap-2 md:grid-cols-4">
-              <select className="h-10 rounded-md border px-3 text-sm" value={paymentInvoiceId} onChange={(e) => setPaymentInvoiceId(e.target.value)}>
+            <CardContent className="grid gap-2 md:grid-cols-[minmax(0,1.7fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_auto]">
+              <select className="h-10 rounded-md border border-border bg-background px-3 text-sm" value={paymentInvoiceId} onChange={(e) => setPaymentInvoiceId(e.target.value)}>
                 <option value="">Välj öppen leverantörsfaktura</option>
                 {invoices.filter((i) => Number(i.open_amount) > 0 && i.status !== 'void').map((i) => (
                   <option key={i.id} value={i.id}>{i.supplier_invoice_no} - {Number(i.open_amount).toFixed(2)} {i.currency}</option>
@@ -378,7 +408,33 @@ export default function PayablesPage() {
 
         <Card>
           <CardHeader><CardTitle>Öppna leverantörsfakturor</CardTitle></CardHeader>
-          <CardContent>
+          <CardContent className="space-y-3">
+            <div className="grid gap-3 md:hidden">
+              {(report?.rows.length ?? 0) === 0 ? (
+                <p className="text-sm text-foreground/70">Inga öppna leverantörsfakturor.</p>
+              ) : (
+                (report?.rows ?? []).map((row) => (
+                  <div key={row.supplier_invoice_id} className="rounded-xl border border-border/70 bg-card/70 p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium">{row.supplier_name || '-'}</p>
+                        <p className="text-sm text-foreground/70">{row.supplier_invoice_no}</p>
+                      </div>
+                      <StatusChip tone={row.days_overdue > 0 ? 'rose' : 'neutral'}>
+                        {row.days_overdue > 0 ? `${row.days_overdue} dagar sen` : 'Aktiv'}
+                      </StatusChip>
+                    </div>
+                    <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                      <Fact label="Förfallo" value={new Date(row.due_date).toLocaleDateString('sv-SE')} />
+                      <Fact label="Öppet" value={formatMoney(row.open_amount, row.currency)} />
+                      <Fact label="Totalt" value={formatMoney(row.total, row.currency)} />
+                      <Fact label="Betalt" value={formatMoney(row.paid_total, row.currency)} />
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+            <div className="hidden md:block">
             <Table>
               <TableHeader className="bg-muted">
                 <TableRow>
@@ -411,6 +467,7 @@ export default function PayablesPage() {
                 )}
               </TableBody>
             </Table>
+            </div>
           </CardContent>
         </Card>
     </section>
@@ -437,6 +494,65 @@ function Metric({
           <Icon className="h-4 w-4" />
         </span>
       </div>
+    </div>
+  );
+}
+
+function ProgressStrip({
+  label,
+  value,
+  detail,
+  percent,
+  tone = 'rose'
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  percent: number;
+  tone?: 'rose' | 'blue';
+}) {
+  const toneClass = tone === 'rose' ? 'bg-rose-500/85' : 'bg-sky-500/85';
+  return (
+    <div className="rounded-xl border border-border/70 bg-muted/10 p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs text-foreground/70">{label}</p>
+          <p className="text-sm font-semibold">{value}</p>
+          <p className="text-xs text-foreground/65">{detail}</p>
+        </div>
+      </div>
+      <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-muted/70">
+        <div className={`h-full rounded-full ${toneClass}`} style={{ width: `${percent}%` }} />
+      </div>
+    </div>
+  );
+}
+
+function StatusChip({
+  children,
+  tone = 'neutral'
+}: {
+  children: React.ReactNode;
+  tone?: 'neutral' | 'rose';
+}) {
+  return (
+    <span
+      className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium ${
+        tone === 'rose'
+          ? 'border-rose-300/70 bg-rose-100/70 text-rose-900 dark:border-rose-900/50 dark:bg-rose-500/15 dark:text-rose-200'
+          : 'border-border/70 bg-muted/40 text-foreground/80'
+      }`}
+    >
+      {children}
+    </span>
+  );
+}
+
+function Fact({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-border/70 bg-muted/15 px-3 py-2">
+      <p className="text-[11px] uppercase tracking-[0.16em] text-foreground/45">{label}</p>
+      <p className="mt-1 font-medium text-foreground/85">{value}</p>
     </div>
   );
 }

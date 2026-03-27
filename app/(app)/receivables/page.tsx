@@ -55,6 +55,11 @@ function formatMoney(value: number) {
   return `${value.toFixed(2)} kr`;
 }
 
+function share(value: number, total: number) {
+  if (total <= 0) return 0;
+  return Math.max(0, Math.min(100, Math.round((value / total) * 100)));
+}
+
 function parseOpenReport(value: unknown): OpenReport {
   const root = value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
   const rowsRaw = Array.isArray(root.rows) ? root.rows : [];
@@ -124,6 +129,10 @@ export default function ReceivablesPage() {
 
   const report = openQuery.data;
   const recon = reconciliationQuery.data;
+  const overdueRows = (report?.rows ?? []).filter((row) => row.days_overdue > 0);
+  const dueSoonRows = (report?.rows ?? []).filter((row) => row.days_overdue <= 0 && row.days_overdue >= -7);
+  const overdueShare = share(report?.summary.overdue_total ?? 0, report?.summary.open_total ?? 0);
+  const reconciliationOk = Boolean(recon?.ok);
 
   if (!canReadFinance) {
     return <p className="rounded-lg bg-muted p-4 text-sm">Kundreskontra är endast tillgänglig för ekonomi, admin eller revisor.</p>;
@@ -144,6 +153,11 @@ export default function ReceivablesPage() {
                 <p className="text-sm text-foreground/65">
                   Följ öppna poster, förfallna belopp och balans mot konto 1510 utan att behöva hoppa mellan flera vyer.
                 </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <StatusChip>{report?.summary.invoice_count ?? 0} öppna kundfakturor</StatusChip>
+                  <StatusChip tone={overdueRows.length > 0 ? 'rose' : 'neutral'}>{overdueRows.length} förfallna</StatusChip>
+                  <StatusChip>{dueSoonRows.length} förfaller snart</StatusChip>
+                </div>
               </div>
             </div>
 
@@ -165,9 +179,9 @@ export default function ReceivablesPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Avstämning kundfordringar</CardTitle>
+          <CardTitle>Avstämning</CardTitle>
         </CardHeader>
-        <CardContent className="grid gap-2 md:grid-cols-3">
+        <CardContent className="grid gap-3 md:grid-cols-3">
           <MetricCard label="Öppna kundfordringar" value={formatMoney(recon?.receivables_open_total ?? 0)} icon={Wallet} />
           <MetricCard label="Konto 1510 (huvudbok)" value={formatMoney(recon?.ledger_1510_balance ?? 0)} icon={ReceiptText} />
           <div className="rounded-xl border border-border/70 bg-card/70 p-3">
@@ -177,12 +191,21 @@ export default function ReceivablesPage() {
               recon.ok ? <Badge className="mt-2">OK</Badge> : <Badge className="mt-2 bg-destructive text-destructive-foreground">Ej i balans</Badge>
             ) : null}
           </div>
+          <div className="md:col-span-3">
+            <ProgressStrip
+              label="Andel förfallet av öppet belopp"
+              value={`${overdueShare}%`}
+              detail={`${formatMoney(report?.summary.overdue_total ?? 0)} av ${formatMoney(report?.summary.open_total ?? 0)}`}
+              percent={overdueShare}
+              tone="rose"
+            />
+          </div>
         </CardContent>
       </Card>
 
       <Card>
-        <CardHeader>
-          <CardTitle>Öppna kundfordringar</CardTitle>
+        <CardHeader className="pb-3">
+          <CardTitle>Kundfordringar att följa upp</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="grid gap-2 md:grid-cols-3">
@@ -190,7 +213,41 @@ export default function ReceivablesPage() {
             <MetricCard label="Öppet belopp" value={formatMoney(report?.summary.open_total ?? 0)} icon={Wallet} />
             <MetricCard label="Förfallet belopp" value={formatMoney(report?.summary.overdue_total ?? 0)} icon={CalendarRange} />
           </div>
+          <div className="rounded-xl border border-border/70 bg-card/60 px-3 py-2 text-sm text-foreground/70">
+            {reconciliationOk
+              ? 'Kundreskontran är i balans mot 1510. Fokus ligger nu på förfallna och snart förfallande poster.'
+              : 'Det finns en differens mot 1510. Börja med att kontrollera avstämningen och gå sedan vidare till förfallna poster.'}
+          </div>
 
+          <div className="grid gap-3 md:hidden">
+            {!openQuery.isLoading && (report?.rows.length ?? 0) === 0 ? (
+              <p className="text-sm text-foreground/70">Inga öppna fordringar för valt datum.</p>
+            ) : (
+              (report?.rows ?? []).map((row) => (
+                <Link key={row.invoice_id} href={`/invoices/${row.invoice_id}`} className="block">
+                  <div className="rounded-xl border border-border/70 bg-card/70 p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium">{row.invoice_no}</p>
+                        <p className="text-sm text-foreground/70">{row.customer_name || '-'}</p>
+                      </div>
+                      <StatusChip tone={row.days_overdue > 0 ? 'rose' : 'neutral'}>
+                        {row.days_overdue > 0 ? `${row.days_overdue} dagar sen` : 'Aktiv'}
+                      </StatusChip>
+                    </div>
+                    <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                      <Fact label="Förfallo" value={new Date(row.due_date).toLocaleDateString('sv-SE')} />
+                      <Fact label="Öppet" value={formatMoney(row.open_amount)} />
+                      <Fact label="Totalt" value={formatMoney(row.invoice_total)} />
+                      <Fact label="Betalt" value={formatMoney(row.paid_total)} />
+                    </div>
+                  </div>
+                </Link>
+              ))
+            )}
+          </div>
+
+          <div className="hidden md:block">
           <Table>
               <TableHeader className="bg-muted">
                 <TableRow>
@@ -233,6 +290,7 @@ export default function ReceivablesPage() {
                 )}
               </TableBody>
           </Table>
+          </div>
         </CardContent>
       </Card>
     </section>
@@ -259,6 +317,63 @@ function MetricCard({
           <Icon className="h-4 w-4" />
         </span>
       </div>
+    </div>
+  );
+}
+
+function ProgressStrip({
+  label,
+  value,
+  detail,
+  percent,
+  tone = 'rose'
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  percent: number;
+  tone?: 'rose' | 'blue';
+}) {
+  const toneClass = tone === 'rose' ? 'bg-rose-500/85' : 'bg-sky-500/85';
+  return (
+    <div className="rounded-xl border border-border/70 bg-muted/10 p-3">
+      <div>
+        <p className="text-xs text-foreground/70">{label}</p>
+        <p className="text-sm font-semibold">{value}</p>
+        <p className="text-xs text-foreground/65">{detail}</p>
+      </div>
+      <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-muted/70">
+        <div className={`h-full rounded-full ${toneClass}`} style={{ width: `${percent}%` }} />
+      </div>
+    </div>
+  );
+}
+
+function StatusChip({
+  children,
+  tone = 'neutral'
+}: {
+  children: React.ReactNode;
+  tone?: 'neutral' | 'rose';
+}) {
+  return (
+    <span
+      className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium ${
+        tone === 'rose'
+          ? 'border-rose-300/70 bg-rose-100/70 text-rose-900 dark:border-rose-900/50 dark:bg-rose-500/15 dark:text-rose-200'
+          : 'border-border/70 bg-muted/40 text-foreground/80'
+      }`}
+    >
+      {children}
+    </span>
+  );
+}
+
+function Fact({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-border/70 bg-muted/15 px-3 py-2">
+      <p className="text-[11px] uppercase tracking-[0.16em] text-foreground/45">{label}</p>
+      <p className="mt-1 font-medium text-foreground/85">{value}</p>
     </div>
   );
 }
