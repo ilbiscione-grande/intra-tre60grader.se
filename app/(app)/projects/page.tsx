@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { LayoutGrid, Rows3, SlidersHorizontal, X } from 'lucide-react';
+import ProfileBadge from '@/components/common/ProfileBadge';
 import { useAppContext } from '@/components/providers/AppContext';
 import SectionErrorBoundary from '@/components/common/SectionErrorBoundary';
 import ProjectAutomationCard from '@/components/settings/ProjectAutomationCard';
@@ -11,7 +12,8 @@ import ProjectBoardMobile from '@/features/projects/ProjectBoardMobile';
 import ProjectListView from '@/features/projects/ProjectListView';
 import ProjectLeadershipDashboard from '@/features/projects/ProjectLeadershipDashboard';
 import ProjectOverviewKpis from '@/features/projects/ProjectOverviewKpis';
-import { useProjectColumns } from '@/features/projects/projectQueries';
+import { useCompanyMemberOptions, useProjectColumns } from '@/features/projects/projectQueries';
+import { getUserDisplayName } from '@/features/profile/profileBadge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -33,17 +35,29 @@ export default function ProjectsPage() {
   const [viewMode, setViewMode] = useState<ProjectViewMode>('board');
   const [projectSearch, setProjectSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [onlyMine, setOnlyMine] = useState(false);
+  const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
   const [startDateFilter, setStartDateFilter] = useState('');
   const [endDateFilter, setEndDateFilter] = useState('');
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [searchMenuOpen, setSearchMenuOpen] = useState(false);
   const searchMenuRef = useRef<HTMLDivElement | null>(null);
   const columnsQuery = useProjectColumns(companyId);
+  const companyMemberOptionsQuery = useCompanyMemberOptions(companyId);
   const statusOptions = useMemo(
     () => [{ key: 'all', title: 'Alla statusar' }, ...(columnsQuery.data ?? []).map((column) => ({ key: column.key, title: column.title }))],
     [columnsQuery.data]
   );
+  const filterMembers = useMemo(() => {
+    const members = [...(companyMemberOptionsQuery.data ?? [])];
+    members.sort((a, b) => {
+      if (currentUserId && a.user_id === currentUserId && b.user_id !== currentUserId) return -1;
+      if (currentUserId && b.user_id === currentUserId && a.user_id !== currentUserId) return 1;
+      const aLabel = getUserDisplayName({ displayName: a.display_name, email: a.email, handle: a.handle, userId: a.user_id });
+      const bLabel = getUserDisplayName({ displayName: b.display_name, email: b.email, handle: b.handle, userId: b.user_id });
+      return aLabel.localeCompare(bLabel, 'sv');
+    });
+    return members;
+  }, [companyMemberOptionsQuery.data, currentUserId]);
 
   useEffect(() => {
     const stored = window.localStorage.getItem(PROJECT_VIEW_MODE_KEY);
@@ -122,6 +136,10 @@ export default function ProjectsPage() {
     </Button>
   ) : null;
 
+  function toggleSelectedMember(userId: string) {
+    setSelectedMemberIds((current) => (current.includes(userId) ? current.filter((id) => id !== userId) : [...current, userId]));
+  }
+
   const projectFilters = (
     <div ref={searchMenuRef} className="relative min-w-0">
       <div className="relative">
@@ -171,29 +189,69 @@ export default function ProjectsPage() {
                 ))}
               </select>
             </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-1">
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1 min-w-0">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-foreground/55">Startdatum</p>
                 <Input type="date" value={startDateFilter} onChange={(event) => setStartDateFilter(event.target.value)} className="h-9 rounded-xl text-sm" />
               </div>
-              <div className="space-y-1">
+              <div className="space-y-1 min-w-0">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-foreground/55">Slutdatum</p>
                 <Input type="date" value={endDateFilter} onChange={(event) => setEndDateFilter(event.target.value)} className="h-9 rounded-xl text-sm" />
               </div>
             </div>
-            <div className="flex items-center justify-between gap-3 rounded-xl border border-border/70 bg-muted/25 px-3 py-2">
+            <div className="space-y-2">
               <div>
-                <p className="text-sm font-medium">Mina projekt</p>
-                <p className="text-xs text-foreground/60">Visa bara projekt där du deltar</p>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-foreground/55">Medlemmar</p>
+                <p className="mt-1 text-xs text-foreground/60">Välj vilka som ska finnas med i projektet.</p>
               </div>
-              <Button
-                type="button"
-                variant={onlyMine ? 'default' : 'outline'}
-                className="h-8 shrink-0 rounded-xl px-3 text-xs"
-                onClick={() => setOnlyMine((current) => !current)}
+              <div
+                className={`gap-2 ${
+                  filterMembers.length > 7
+                    ? 'grid grid-cols-4 sm:grid-cols-7'
+                    : 'grid grid-cols-[repeat(7,minmax(0,1fr))]'
+                }`}
               >
-                {onlyMine ? 'På' : 'Av'}
-              </Button>
+                {filterMembers.map((member) => {
+                  const isSelected = selectedMemberIds.includes(member.user_id);
+                  const label = getUserDisplayName({
+                    displayName: member.display_name,
+                    email: member.email,
+                    handle: member.handle,
+                    userId: member.user_id
+                  });
+
+                  return (
+                    <button
+                      key={member.user_id}
+                      type="button"
+                      className={`flex min-w-0 flex-col items-center gap-1 rounded-2xl px-1 py-1.5 text-center transition ${
+                        isSelected ? 'bg-primary/8 text-foreground' : 'text-foreground/80 hover:bg-muted/40'
+                      }`}
+                      onClick={() => toggleSelectedMember(member.user_id)}
+                      title={label}
+                    >
+                      <div className="relative">
+                        <ProfileBadge
+                          label={label}
+                          color={member.color}
+                          avatarUrl={member.avatar_url}
+                          emoji={member.emoji}
+                          className={`h-10 w-10 shrink-0 ring-2 transition ${isSelected ? 'ring-primary' : 'ring-transparent'}`}
+                          textClassName="text-xs font-semibold text-white"
+                        />
+                        <span
+                          className={`absolute -right-1 -top-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full border border-background text-[10px] font-semibold ${
+                            isSelected ? 'bg-primary text-primary-foreground' : 'bg-muted text-foreground/55'
+                          }`}
+                        >
+                          {isSelected ? '✓' : '+'}
+                        </span>
+                      </div>
+                      <span className="line-clamp-2 text-[10px] font-medium leading-tight">{label}</span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
             <div className="flex justify-end">
               <Button
@@ -202,7 +260,7 @@ export default function ProjectsPage() {
                 className="h-8 rounded-xl px-2 text-xs"
                 onClick={() => {
                   setStatusFilter('all');
-                  setOnlyMine(false);
+                  setSelectedMemberIds([]);
                   setStartDateFilter('');
                   setEndDateFilter('');
                 }}
@@ -287,9 +345,9 @@ export default function ProjectsPage() {
         ) : null}
         <SectionErrorBoundary title="Projektflöde">
           {viewMode === 'board' ? (
-            <ProjectBoardMobile companyId={companyId} searchTerm={projectSearch} statusFilter={statusFilter} onlyMine={onlyMine} currentUserId={currentUserId} startDateFilter={startDateFilter} endDateFilter={endDateFilter} />
+            <ProjectBoardMobile companyId={companyId} searchTerm={projectSearch} statusFilter={statusFilter} currentUserId={currentUserId} selectedMemberIds={selectedMemberIds} startDateFilter={startDateFilter} endDateFilter={endDateFilter} />
           ) : (
-            <ProjectListView companyId={companyId} searchTerm={projectSearch} statusFilter={statusFilter} onlyMine={onlyMine} currentUserId={currentUserId} startDateFilter={startDateFilter} endDateFilter={endDateFilter} />
+            <ProjectListView companyId={companyId} searchTerm={projectSearch} statusFilter={statusFilter} currentUserId={currentUserId} selectedMemberIds={selectedMemberIds} startDateFilter={startDateFilter} endDateFilter={endDateFilter} />
           )}
         </SectionErrorBoundary>
 
@@ -330,9 +388,9 @@ export default function ProjectsPage() {
       ) : null}
       <SectionErrorBoundary title="Projektflöde">
         {viewMode === 'board' ? (
-          <ProjectBoardDesktop companyId={companyId} searchTerm={projectSearch} statusFilter={statusFilter} onlyMine={onlyMine} currentUserId={currentUserId} startDateFilter={startDateFilter} endDateFilter={endDateFilter} />
+          <ProjectBoardDesktop companyId={companyId} searchTerm={projectSearch} statusFilter={statusFilter} currentUserId={currentUserId} selectedMemberIds={selectedMemberIds} startDateFilter={startDateFilter} endDateFilter={endDateFilter} />
         ) : (
-          <ProjectListView companyId={companyId} searchTerm={projectSearch} statusFilter={statusFilter} onlyMine={onlyMine} currentUserId={currentUserId} startDateFilter={startDateFilter} endDateFilter={endDateFilter} />
+          <ProjectListView companyId={companyId} searchTerm={projectSearch} statusFilter={statusFilter} currentUserId={currentUserId} selectedMemberIds={selectedMemberIds} startDateFilter={startDateFilter} endDateFilter={endDateFilter} />
         )}
       </SectionErrorBoundary>
 

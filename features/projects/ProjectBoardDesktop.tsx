@@ -309,16 +309,16 @@ export default function ProjectBoardDesktop({
   companyId,
   searchTerm = '',
   statusFilter = 'all',
-  onlyMine = false,
   currentUserId = null,
+  selectedMemberIds = [],
   startDateFilter = '',
   endDateFilter = ''
 }: {
   companyId: string;
   searchTerm?: string;
   statusFilter?: string;
-  onlyMine?: boolean;
   currentUserId?: string | null;
+  selectedMemberIds?: string[];
   startDateFilter?: string;
   endDateFilter?: string;
 }) {
@@ -400,13 +400,14 @@ export default function ProjectBoardDesktop({
         if (statusFilter !== 'all' && project.status !== statusFilter) return false;
         if (startDateFilter && project.start_date !== startDateFilter) return false;
         if (endDateFilter && project.end_date !== endDateFilter) return false;
-        if (
-          onlyMine &&
-          (!currentUserId ||
-            (project.responsible_user_id !== currentUserId &&
-              !(membersByProjectId.get(project.id) ?? []).some((member) => member.user_id === currentUserId)))
-        ) {
-          return false;
+        if (selectedMemberIds.length > 0) {
+          const projectUserIds = new Set((membersByProjectId.get(project.id) ?? []).map((member) => member.user_id));
+          if (project.responsible_user_id) {
+            projectUserIds.add(project.responsible_user_id);
+          }
+          if (!selectedMemberIds.every((userId) => projectUserIds.has(userId))) {
+            return false;
+          }
         }
         if (!search) return true;
 
@@ -438,7 +439,7 @@ export default function ProjectBoardDesktop({
 
         return haystack.includes(search);
       }),
-    [availableMembers, currentUserId, customerById, endDateFilter, membersByProjectId, onlyMine, projectsQuery.data, search, startDateFilter, statusFilter, titleByStatus]
+    [availableMembers, currentUserId, customerById, endDateFilter, membersByProjectId, projectsQuery.data, search, selectedMemberIds, startDateFilter, statusFilter, titleByStatus]
   );
   const initialBoard = useMemo(() => buildBoardState(projects, statuses), [projects, statuses]);
 

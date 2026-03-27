@@ -13,16 +13,16 @@ export default function ProjectListView({
   companyId,
   searchTerm = '',
   statusFilter = 'all',
-  onlyMine = false,
   currentUserId = null,
+  selectedMemberIds = [],
   startDateFilter = '',
   endDateFilter = ''
 }: {
   companyId: string;
   searchTerm?: string;
   statusFilter?: string;
-  onlyMine?: boolean;
   currentUserId?: string | null;
+  selectedMemberIds?: string[];
   startDateFilter?: string;
   endDateFilter?: string;
 }) {
@@ -81,11 +81,19 @@ export default function ProjectListView({
         if (statusFilter !== 'all' && project.status !== statusFilter) return false;
         if (startDateFilter && project.start_date !== startDateFilter) return false;
         if (endDateFilter && project.end_date !== endDateFilter) return false;
+        if (selectedMemberIds.length > 0) {
+          const projectUserIds = new Set((membersByProjectId.get(project.id) ?? []).map((member) => member.user_id));
+          if (project.responsible_user_id) {
+            projectUserIds.add(project.responsible_user_id);
+          }
+          if (!selectedMemberIds.every((userId) => projectUserIds.has(userId))) {
+            return false;
+          }
+        }
         if (
-          onlyMine &&
-          (!currentUserId ||
-            (project.responsible_user_id !== currentUserId &&
-              !(membersByProjectId.get(project.id) ?? []).some((member) => member.user_id === currentUserId)))
+          currentUserId &&
+          selectedMemberIds.length === 0 &&
+          false
         ) {
           return false;
         }
@@ -119,13 +127,13 @@ export default function ProjectListView({
 
         return haystack.includes(search);
       }),
-    [availableMembers, columns, currentUserId, customerById, endDateFilter, membersByProjectId, onlyMine, projects, search, startDateFilter, statusFilter]
+    [availableMembers, columns, currentUserId, customerById, endDateFilter, membersByProjectId, projects, search, selectedMemberIds, startDateFilter, statusFilter]
   );
 
   if (filteredProjects.length === 0) {
     return (
       <p className="rounded-lg bg-muted p-4 text-sm text-foreground/70">
-        {search || statusFilter !== 'all' || onlyMine ? 'Inga projekt matchar filtret.' : 'Inga projekt ännu.'}
+        {search || statusFilter !== 'all' || selectedMemberIds.length > 0 || startDateFilter || endDateFilter ? 'Inga projekt matchar filtret.' : 'Inga projekt ännu.'}
       </p>
     );
   }
