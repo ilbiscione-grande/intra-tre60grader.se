@@ -16,6 +16,7 @@ const projectKey = (companyId: string) => ['projects', companyId] as const;
 const projectColumnsKey = (companyId: string) => ['project-columns', companyId] as const;
 const companyMemberDirectoryKey = (companyId: string) => ['company-member-directory', companyId] as const;
 const projectTemplatesKey = (companyId: string) => ['project-templates', companyId] as const;
+const projectCustomersKey = (companyId: string) => ['project-customers', companyId] as const;
 
 export type CompanyMemberDirectoryEntry = {
   id: string;
@@ -64,6 +65,8 @@ export type ProjectTemplate = Pick<
   'id' | 'company_id' | 'name' | 'description' | 'start_status' | 'member_user_ids' | 'milestones' | 'task_templates' | 'order_line_templates' | 'created_at' | 'updated_at'
 >;
 
+export type ProjectCustomer = Pick<DbRow<'customers'>, 'id' | 'name'>;
+
 function addDays(baseDate: string, days: number) {
   const date = new Date(`${baseDate}T00:00:00`);
   if (Number.isNaN(date.getTime())) return null;
@@ -82,6 +85,25 @@ export function useProjectColumns(companyId: string) {
         .eq('company_id', companyId)
         .order('position', { ascending: true })
         .returns<ProjectColumn[]>();
+
+      if (error) throw error;
+      return data ?? [];
+    }
+  });
+}
+
+export function useProjectCustomers(companyId: string) {
+  return useQuery<ProjectCustomer[]>({
+    queryKey: projectCustomersKey(companyId),
+    staleTime: 1000 * 60 * 5,
+    queryFn: async () => {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from('customers')
+        .select('id,name')
+        .eq('company_id', companyId)
+        .is('archived_at', null)
+        .order('name');
 
       if (error) throw error;
       return data ?? [];

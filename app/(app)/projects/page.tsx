@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { LayoutGrid, Rows3, SlidersHorizontal } from 'lucide-react';
+import { LayoutGrid, Rows3, SlidersHorizontal, X } from 'lucide-react';
 import { useAppContext } from '@/components/providers/AppContext';
 import SectionErrorBoundary from '@/components/common/SectionErrorBoundary';
 import ProjectAutomationCard from '@/components/settings/ProjectAutomationCard';
@@ -34,6 +34,8 @@ export default function ProjectsPage() {
   const [projectSearch, setProjectSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [onlyMine, setOnlyMine] = useState(false);
+  const [startDateFilter, setStartDateFilter] = useState('');
+  const [endDateFilter, setEndDateFilter] = useState('');
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [searchMenuOpen, setSearchMenuOpen] = useState(false);
   const searchMenuRef = useRef<HTMLDivElement | null>(null);
@@ -122,17 +124,39 @@ export default function ProjectsPage() {
 
   const projectFilters = (
     <div ref={searchMenuRef} className="relative min-w-0">
-      <Input
-        value={projectSearch}
-        onChange={(event) => setProjectSearch(event.target.value)}
-        onFocus={() => setSearchMenuOpen(true)}
-        onClick={() => setSearchMenuOpen(true)}
-        placeholder="Sök"
-        className="h-8 min-w-0 rounded-2xl px-2.5 text-xs sm:h-9 sm:px-3 sm:text-sm"
-      />
+      <div className="relative">
+        <Input
+          value={projectSearch}
+          onChange={(event) => setProjectSearch(event.target.value)}
+          onFocus={() => setSearchMenuOpen(true)}
+          onClick={() => setSearchMenuOpen(true)}
+          placeholder="Sök"
+          className="h-8 min-w-0 rounded-2xl px-2.5 pr-9 text-xs sm:h-9 sm:px-3 sm:pr-10 sm:text-sm"
+        />
+        {projectSearch || searchMenuOpen ? (
+          <button
+            type="button"
+            onClick={() => {
+              if (projectSearch) {
+                setProjectSearch('');
+                return;
+              }
+              setSearchMenuOpen(false);
+            }}
+            className="absolute right-2 top-1/2 inline-flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full text-foreground/55 transition hover:bg-muted hover:text-foreground"
+            aria-label={projectSearch ? 'Rensa sökning' : 'Stäng sökfilter'}
+            title={projectSearch ? 'Rensa sökning' : 'Stäng sökfilter'}
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        ) : null}
+      </div>
       {searchMenuOpen ? (
         <div className="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-30 rounded-2xl border border-border bg-background p-3 shadow-xl">
           <div className="space-y-3">
+            <div className="rounded-xl border border-border/70 bg-muted/20 px-3 py-2 text-xs text-foreground/65">
+              Söker på kund, projektnamn, status, ansvarig och tilldelade medlemmar.
+            </div>
             <div className="space-y-1">
               <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-foreground/55">Status</p>
               <select
@@ -147,6 +171,16 @@ export default function ProjectsPage() {
                 ))}
               </select>
             </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-foreground/55">Startdatum</p>
+                <Input type="date" value={startDateFilter} onChange={(event) => setStartDateFilter(event.target.value)} className="h-9 rounded-xl text-sm" />
+              </div>
+              <div className="space-y-1">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-foreground/55">Slutdatum</p>
+                <Input type="date" value={endDateFilter} onChange={(event) => setEndDateFilter(event.target.value)} className="h-9 rounded-xl text-sm" />
+              </div>
+            </div>
             <div className="flex items-center justify-between gap-3 rounded-xl border border-border/70 bg-muted/25 px-3 py-2">
               <div>
                 <p className="text-sm font-medium">Mina projekt</p>
@@ -159,6 +193,21 @@ export default function ProjectsPage() {
                 onClick={() => setOnlyMine((current) => !current)}
               >
                 {onlyMine ? 'På' : 'Av'}
+              </Button>
+            </div>
+            <div className="flex justify-end">
+              <Button
+                type="button"
+                variant="ghost"
+                className="h-8 rounded-xl px-2 text-xs"
+                onClick={() => {
+                  setStatusFilter('all');
+                  setOnlyMine(false);
+                  setStartDateFilter('');
+                  setEndDateFilter('');
+                }}
+              >
+                Rensa filter
               </Button>
             </div>
           </div>
@@ -238,9 +287,9 @@ export default function ProjectsPage() {
         ) : null}
         <SectionErrorBoundary title="Projektflöde">
           {viewMode === 'board' ? (
-            <ProjectBoardMobile companyId={companyId} searchTerm={projectSearch} statusFilter={statusFilter} onlyMine={onlyMine} currentUserId={currentUserId} />
+            <ProjectBoardMobile companyId={companyId} searchTerm={projectSearch} statusFilter={statusFilter} onlyMine={onlyMine} currentUserId={currentUserId} startDateFilter={startDateFilter} endDateFilter={endDateFilter} />
           ) : (
-            <ProjectListView companyId={companyId} searchTerm={projectSearch} statusFilter={statusFilter} onlyMine={onlyMine} currentUserId={currentUserId} />
+            <ProjectListView companyId={companyId} searchTerm={projectSearch} statusFilter={statusFilter} onlyMine={onlyMine} currentUserId={currentUserId} startDateFilter={startDateFilter} endDateFilter={endDateFilter} />
           )}
         </SectionErrorBoundary>
 
@@ -281,9 +330,9 @@ export default function ProjectsPage() {
       ) : null}
       <SectionErrorBoundary title="Projektflöde">
         {viewMode === 'board' ? (
-          <ProjectBoardDesktop companyId={companyId} searchTerm={projectSearch} statusFilter={statusFilter} onlyMine={onlyMine} currentUserId={currentUserId} />
+          <ProjectBoardDesktop companyId={companyId} searchTerm={projectSearch} statusFilter={statusFilter} onlyMine={onlyMine} currentUserId={currentUserId} startDateFilter={startDateFilter} endDateFilter={endDateFilter} />
         ) : (
-          <ProjectListView companyId={companyId} searchTerm={projectSearch} statusFilter={statusFilter} onlyMine={onlyMine} currentUserId={currentUserId} />
+          <ProjectListView companyId={companyId} searchTerm={projectSearch} statusFilter={statusFilter} onlyMine={onlyMine} currentUserId={currentUserId} startDateFilter={startDateFilter} endDateFilter={endDateFilter} />
         )}
       </SectionErrorBoundary>
 

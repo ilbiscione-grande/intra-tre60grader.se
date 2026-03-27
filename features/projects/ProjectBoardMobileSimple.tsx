@@ -26,7 +26,7 @@ import { Input } from '@/components/ui/input';
 import { PROJECT_COLUMN_COLOR_OPTIONS, getProjectColumnBackground } from '@/features/projects/columnColors';
 import { getUserDisplayName } from '@/features/profile/profileBadge';
 import ProjectCard from '@/features/projects/ProjectCard';
-import { useMoveProject, useProjectActivitySummaries, useProjectColumns, useProjectMembers, useProjects, useUpdateProjectWorkflowStatus } from '@/features/projects/projectQueries';
+import { useMoveProject, useProjectActivitySummaries, useProjectColumns, useProjectCustomers, useProjectMembers, useProjects, useUpdateProjectWorkflowStatus } from '@/features/projects/projectQueries';
 import { createClient } from '@/lib/supabase/client';
 import type { Project } from '@/lib/types';
 import { useAutoScrollActiveTab } from '@/lib/ui/useAutoScrollActiveTab';
@@ -201,13 +201,17 @@ export default function ProjectBoardMobileSimple({
   searchTerm = '',
   statusFilter = 'all',
   onlyMine = false,
-  currentUserId = null
+  currentUserId = null,
+  startDateFilter = '',
+  endDateFilter = ''
 }: {
   companyId: string;
   searchTerm?: string;
   statusFilter?: string;
   onlyMine?: boolean;
   currentUserId?: string | null;
+  startDateFilter?: string;
+  endDateFilter?: string;
 }) {
   const supabase = useMemo(() => createClient(), []);
   const queryClient = useQueryClient();
@@ -235,6 +239,7 @@ export default function ProjectBoardMobileSimple({
 
   const projectsQuery = useProjects(companyId);
   const columnsQuery = useProjectColumns(companyId);
+  const customersQuery = useProjectCustomers(companyId);
   const projectMembersQuery = useProjectMembers(companyId);
   const activitySummariesQuery = useProjectActivitySummaries(companyId);
   const moveMutation = useMoveProject(companyId);
@@ -242,6 +247,7 @@ export default function ProjectBoardMobileSimple({
   const search = normalizeSearch(searchTerm);
 
   const columns = columnsQuery.data ?? [];
+  const customerById = useMemo(() => new Map((customersQuery.data ?? []).map((customer) => [customer.id, customer.name])), [customersQuery.data]);
   const availableMembers = projectMembersQuery.data?.availableMembers ?? [];
 
   const membersByProjectId = useMemo(() => {
@@ -279,6 +285,8 @@ export default function ProjectBoardMobileSimple({
     () =>
       (projectsQuery.data ?? []).filter((project) => {
         if (statusFilter !== 'all' && project.status !== statusFilter) return false;
+        if (startDateFilter && project.start_date !== startDateFilter) return false;
+        if (endDateFilter && project.end_date !== endDateFilter) return false;
         if (
           onlyMine &&
           (!currentUserId ||
@@ -292,6 +300,7 @@ export default function ProjectBoardMobileSimple({
         const members = membersByProjectId.get(project.id) ?? [];
         const responsible = availableMembers.find((member) => member.user_id === project.responsible_user_id) ?? null;
         const haystack = [
+          customerById.get(project.customer_id ?? '') ?? '',
           project.title,
           titleByStatus.get(project.status) ?? '',
           responsible
@@ -316,7 +325,7 @@ export default function ProjectBoardMobileSimple({
 
         return haystack.includes(search);
       }),
-    [availableMembers, currentUserId, membersByProjectId, onlyMine, projectsQuery.data, search, statusFilter, titleByStatus]
+    [availableMembers, currentUserId, customerById, endDateFilter, membersByProjectId, onlyMine, projectsQuery.data, search, startDateFilter, statusFilter, titleByStatus]
   );
   const statuses = useMemo(() => columns.map((column) => column.key), [columns]);
   const initialBoard = useMemo(() => buildBoardState(projects, statuses), [projects, statuses]);
