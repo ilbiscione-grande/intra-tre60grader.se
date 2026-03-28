@@ -4,7 +4,7 @@ import Link from 'next/link';
 import type { Route } from 'next';
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { AlertTriangle, ArrowRight, BriefcaseBusiness, CheckCircle2, FileWarning, ReceiptText, Wallet } from 'lucide-react';
+import { ArrowRight, BriefcaseBusiness, CheckCircle2, Clock3, FileWarning, ReceiptText, ShieldAlert, Wallet } from 'lucide-react';
 import { useAppContext } from '@/components/providers/AppContext';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -17,6 +17,30 @@ type ProjectRow = {
   title: string;
   updated_at: string;
   status: string | null;
+  responsible_user_id: string | null;
+  end_date: string | null;
+};
+
+type ProjectMemberRow = {
+  project_id: string;
+  user_id: string;
+};
+
+type ProjectTaskRow = {
+  id: string;
+  project_id: string;
+  title: string;
+  due_date: string | null;
+  status: string | null;
+  assignee_user_id: string | null;
+  created_by: string | null;
+};
+
+type ActiveTimerRow = {
+  id: string;
+  project_id: string;
+  task_id: string | null;
+  started_at: string;
 };
 
 type InvoiceRow = {
@@ -69,19 +93,51 @@ function verificationNumberLabel(fiscalYear: number | null, verificationNo: numb
 export default function TodoPage() {
   const { companyId, role, capabilities } = useAppContext();
   const canReadFinance = canViewFinance(role, capabilities);
+  const seesAllProjectSignals = role === 'admin';
+  const seesAllFinanceSignals = role === 'admin' || role === 'finance';
   const supabase = useMemo(() => createClient(), []);
   const today = startOfToday();
+  const now = new Date();
+
+  const currentUserQuery = useQuery<string | null>({
+    queryKey: ['todo-current-user', companyId],
+    staleTime: 1000 * 60 * 30,
+    queryFn: async () => {
+      const {
+        data: { user },
+        error
+      } = await supabase.auth.getUser();
+
+      if (error) throw error;
+      return user?.id ?? null;
+    }
+  });
+  const currentUserId = currentUserQuery.data ?? null;
 
   const projectsQuery = useQuery<ProjectRow[]>({
     queryKey: ['todo-project-watch', companyId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('projects')
-        .select('id,title,updated_at,status')
+        .select('id,title,updated_at,status,responsible_user_id,end_date')
         .eq('company_id', companyId)
         .order('updated_at', { ascending: true })
         .limit(150)
         .returns<ProjectRow[]>();
+
+      if (error) throw error;
+      return data ?? [];
+    }
+  });
+
+  const projectMembersQuery = useQuery<ProjectMemberRow[]>({
+    queryKey: ['todo-project-members', companyId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('project_members')
+        .select('project_id,user_id')
+        .eq('company_id', companyId)
+        .returns<ProjectMemberRow[]>();
 
       if (error) throw error;
       return data ?? [];
@@ -145,8 +201,100 @@ export default function TodoPage() {
     enabled: canReadFinance
   });
 
+  const tasksQuery = useQuery<ProjectTaskRow[]>({
+    queryKey: ['todo-project-tasks', companyId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('project_tasks')
+        .select('id,project_id,title,due_date,status,assignee_user_id,created_by')
+        .eq('company_id', companyId)
+        .order('due_date', { ascending: true, nullsFirst: false })
+        .limit(200)
+        .returns<ProjectTaskRow[]>();
+
+      if (error) throw error;
+      return data ?? [];
+    }
+  });
+
+  const activeTimersQuery = useQuery<ActiveTimerRow[]>({
+    queryKey: ['todo-active-timers', companyId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('project_active_timers')
+        .select('id,project_id,task_id,started_at')
+        .eq('company_id', companyId)
+        .returns<ActiveTimerRow[]>();
+
+      if (error) throw error;
+      return data ?? [];
+    }
+  });
+
+  const projectById = useMemo(
+    () => new Map((projectsQuery.data ?? []).map((project) => [project.id, project])),
+    [projectsQuery.data]
+  );
+  const projectMemberUserIdsByProjectId = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const assignment of projectMembersQuery.data ?? []) {
+      const current = map.get(assignment.project_id) ?? [];
+      current.push(assignment.user_id);
+      map.set(assignment.project_id, current);
+    }
+    return map;
+  }, [projectMembersQuery.data]);
+  const taskById = useMemo(
+    () => new Map((tasksQuery.data ?? []).map((task) => [task.id, task])),
+    [tasksQuery.data]
+  );
+  const userRelevantProjectIds = useMemo(() => {
+    if (!currentUserId) return new Set<string>();
+    const relevant = new Set<string>();
+
+    for (const project of projectsQuery.data ?? []) {
+      if (project.responsible_user_id === currentUserId) {
+        relevant.add(project.id);
+      }
+    }
+
+    for (const assignment of projectMembersQuery.data ?? []) {
+      if (assignment.user_id === currentUserId) {
+        relevant.add(assignment.project_id);
+      }
+    }
+
+    for (const task of tasksQuery.data ?? []) {
+      if (task.assignee_user_id === currentUserId || task.created_by === currentUserId) {
+        relevant.add(task.project_id);
+      }
+    }
+
+    return relevant;
+  }, [currentUserId, projectMembersQuery.data, projectsQuery.data, tasksQuery.data]);
+  const visibleProjects = useMemo(() => {
+    return seesAllProjectSignals
+      ? projectsQuery.data ?? []
+      : (projectsQuery.data ?? []).filter((project) => userRelevantProjectIds.has(project.id));
+  }, [projectsQuery.data, seesAllProjectSignals, userRelevantProjectIds]);
+  const visibleTasks = useMemo(() => {
+    return seesAllProjectSignals
+      ? tasksQuery.data ?? []
+      : (tasksQuery.data ?? []).filter(
+          (task) =>
+            task.assignee_user_id === currentUserId ||
+            task.created_by === currentUserId ||
+            userRelevantProjectIds.has(task.project_id)
+        );
+  }, [currentUserId, seesAllProjectSignals, tasksQuery.data, userRelevantProjectIds]);
+  const visibleActiveTimers = useMemo(() => {
+    return seesAllProjectSignals
+      ? activeTimersQuery.data ?? []
+      : (activeTimersQuery.data ?? []).filter((timer) => userRelevantProjectIds.has(timer.project_id));
+  }, [activeTimersQuery.data, seesAllProjectSignals, userRelevantProjectIds]);
+
   const projectAlerts = useMemo(() => {
-    return (projectsQuery.data ?? [])
+    return visibleProjects
       .filter((project) => project.status !== 'done')
       .map((project) => {
         const updatedAt = new Date(project.updated_at);
@@ -156,25 +304,68 @@ export default function TodoPage() {
       .filter((project) => project.daysIdle >= 7)
       .sort((a, b) => b.daysIdle - a.daysIdle)
       .slice(0, 8);
-  }, [projectsQuery.data, today]);
+  }, [today, visibleProjects]);
+
+  const projectMissingResponsibleAlerts = useMemo(() => {
+    return visibleProjects
+      .filter((project) => project.status !== 'done' && !project.responsible_user_id)
+      .slice(0, 8);
+  }, [visibleProjects]);
+
+  const projectDeadlineAlerts = useMemo(() => {
+    return visibleProjects
+      .filter((project) => project.status !== 'done' && project.end_date)
+      .map((project) => ({
+        ...project,
+        daysLate: Math.max(1, dayDiff(new Date(project.end_date as string), today))
+      }))
+      .filter((project) => new Date(project.end_date as string) < today)
+      .sort((a, b) => b.daysLate - a.daysLate)
+      .slice(0, 8);
+  }, [today, visibleProjects]);
+
+  const overdueTaskAlerts = useMemo(() => {
+    return visibleTasks
+      .filter((task) => task.status !== 'done' && task.due_date && new Date(task.due_date) < today)
+      .map((task) => ({
+        ...task,
+        projectTitle: projectById.get(task.project_id)?.title ?? 'Projekt',
+        daysLate: Math.max(1, dayDiff(new Date(task.due_date as string), today))
+      }))
+      .sort((a, b) => b.daysLate - a.daysLate)
+      .slice(0, 8);
+  }, [projectById, today, visibleTasks]);
+
+  const unassignedTaskAlerts = useMemo(() => {
+    return visibleTasks
+      .filter((task) => task.status !== 'done' && !task.assignee_user_id)
+      .map((task) => ({
+        ...task,
+        projectTitle: projectById.get(task.project_id)?.title ?? 'Projekt'
+      }))
+      .slice(0, 8);
+  }, [projectById, visibleTasks]);
 
   const overdueCustomerInvoices = useMemo(() => {
+    if (!seesAllFinanceSignals) return [];
     return (invoicesQuery.data ?? [])
       .filter((invoice) => invoice.status !== 'paid' && invoice.status !== 'void' && new Date(invoice.due_date) < today)
       .map((invoice) => ({ ...invoice, daysOverdue: Math.max(1, dayDiff(new Date(invoice.due_date), today)) }))
       .sort((a, b) => b.daysOverdue - a.daysOverdue)
       .slice(0, 8);
-  }, [invoicesQuery.data, today]);
+  }, [invoicesQuery.data, seesAllFinanceSignals, today]);
 
   const overdueSupplierInvoices = useMemo(() => {
+    if (!seesAllFinanceSignals) return [];
     return (supplierInvoicesQuery.data ?? [])
       .filter((invoice) => invoice.status !== 'paid' && invoice.status !== 'void' && Number(invoice.open_amount) > 0 && new Date(invoice.due_date) < today)
       .map((invoice) => ({ ...invoice, daysOverdue: Math.max(1, dayDiff(new Date(invoice.due_date), today)) }))
       .sort((a, b) => b.daysOverdue - a.daysOverdue)
       .slice(0, 8);
-  }, [supplierInvoicesQuery.data, today]);
+  }, [seesAllFinanceSignals, supplierInvoicesQuery.data, today]);
 
   const verificationAlerts = useMemo(() => {
+    if (!seesAllFinanceSignals) return [];
     return (verificationsQuery.data ?? [])
       .map((verification) => {
         const debit = (verification.verification_lines ?? []).reduce((sum, line) => sum + Number(line.debit ?? 0), 0);
@@ -189,11 +380,41 @@ export default function TodoPage() {
       })
       .filter((verification) => verification.status !== 'voided' && verification.issues.length > 0)
       .slice(0, 8);
-  }, [verificationsQuery.data]);
+  }, [seesAllFinanceSignals, verificationsQuery.data]);
 
-  const urgentCount = projectAlerts.length + overdueCustomerInvoices.length + overdueSupplierInvoices.length + verificationAlerts.length;
+  const longRunningTimerAlerts = useMemo(() => {
+    return visibleActiveTimers
+      .map((timer) => {
+        const startedAt = new Date(timer.started_at);
+        const runningHours = Math.max(0, Math.round((now.getTime() - startedAt.getTime()) / (1000 * 60 * 60)));
+        return {
+          ...timer,
+          runningHours,
+          projectTitle: projectById.get(timer.project_id)?.title ?? 'Projekt',
+          taskTitle: timer.task_id ? taskById.get(timer.task_id)?.title ?? 'Uppgift' : null
+        };
+      })
+      .filter((timer) => timer.runningHours >= 12)
+      .sort((a, b) => b.runningHours - a.runningHours)
+      .slice(0, 8);
+  }, [now, projectById, taskById, visibleActiveTimers]);
+
+  const urgentCount =
+    projectAlerts.length +
+    projectMissingResponsibleAlerts.length +
+    projectDeadlineAlerts.length +
+    overdueTaskAlerts.length +
+    unassignedTaskAlerts.length +
+    longRunningTimerAlerts.length +
+    overdueCustomerInvoices.length +
+    overdueSupplierInvoices.length +
+    verificationAlerts.length;
   const isLoading =
     projectsQuery.isLoading ||
+    projectMembersQuery.isLoading ||
+    tasksQuery.isLoading ||
+    activeTimersQuery.isLoading ||
+    currentUserQuery.isLoading ||
     (canReadFinance && (invoicesQuery.isLoading || supplierInvoicesQuery.isLoading || verificationsQuery.isLoading));
 
   return (
@@ -216,7 +437,11 @@ export default function TodoPage() {
                     {urgentCount} aktiva signaler
                   </Badge>
                   <Badge className="border-border/70 bg-muted/40 text-foreground/80 hover:bg-muted/40">
-                    {canReadFinance ? 'Projekt + ekonomi' : 'Projektfokus'}
+                    {role === 'admin'
+                      ? 'Visar allt'
+                      : role === 'finance'
+                        ? 'Visar ekonomi + ditt ansvar'
+                        : 'Visar bara det som rör dig'}
                   </Badge>
                 </div>
               </div>
@@ -231,8 +456,8 @@ export default function TodoPage() {
 
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <TodoMetric title="Stilla projekt" value={String(projectAlerts.length)} detail="Inga uppdateringar på minst 7 dagar" icon={BriefcaseBusiness} tone="amber" />
-            <TodoMetric title="Förfallna kundfakturor" value={String(overdueCustomerInvoices.length)} detail="Kundfakturor över betalningstid" icon={Wallet} tone="rose" />
-            <TodoMetric title="Förfallna leverantörsfakturor" value={String(overdueSupplierInvoices.length)} detail="Utbetalningar som kräver beslut" icon={ReceiptText} tone="rose" />
+            <TodoMetric title="Försenade uppgifter" value={String(overdueTaskAlerts.length)} detail="Uppgifter över förfallodatum" icon={ShieldAlert} tone="rose" />
+            <TodoMetric title="Långa timers" value={String(longRunningTimerAlerts.length)} detail="Pågående längre än 12 timmar" icon={Clock3} tone="amber" />
             <TodoMetric title="Verifikationsflaggor" value={String(verificationAlerts.length)} detail="Saknat underlag eller obalans" icon={FileWarning} tone="blue" />
           </div>
         </CardContent>
@@ -259,6 +484,74 @@ export default function TodoPage() {
         </TodoSection>
 
         <TodoSection
+          title="Projekt utan ansvarig"
+          description="Aktiva projekt som saknar utsedd ansvarig."
+          emptyText="Alla aktiva projekt har ansvarig."
+        >
+          {projectMissingResponsibleAlerts.map((project) => (
+            <TodoItem
+              key={project.id}
+              href={`/projects/${project.id}?tab=members` as Route}
+              title={project.title}
+              detail="Projektet saknar ansvarig användare."
+              badge="Saknar ansvarig"
+              tone="amber"
+            />
+          ))}
+        </TodoSection>
+
+        <TodoSection
+          title="Projekt över slutdatum"
+          description="Projekt som passerat sitt slutdatum utan att vara klara."
+          emptyText="Inga projekt ligger över slutdatum."
+        >
+          {projectDeadlineAlerts.map((project) => (
+            <TodoItem
+              key={project.id}
+              href={`/projects/${project.id}` as Route}
+              title={project.title}
+              detail={`${project.daysLate} dagar över slutdatum • ${project.end_date}`}
+              badge={`${project.daysLate} d sena`}
+              tone="rose"
+            />
+          ))}
+        </TodoSection>
+
+        <TodoSection
+          title="Försenade uppgifter"
+          description="Öppna uppgifter som passerat sitt förfallodatum."
+          emptyText="Inga uppgifter är försenade just nu."
+        >
+          {overdueTaskAlerts.map((task) => (
+            <TodoItem
+              key={task.id}
+              href={`/projects/${task.project_id}?tab=tasks` as Route}
+              title={task.title}
+              detail={`${task.projectTitle} • ${task.daysLate} dagar sen • förfallo ${task.due_date}`}
+              badge={`${task.daysLate} d`}
+              tone="rose"
+            />
+          ))}
+        </TodoSection>
+
+        <TodoSection
+          title="Uppgifter utan ansvarig"
+          description="Öppna uppgifter som ännu inte är tilldelade någon."
+          emptyText="Alla öppna uppgifter har ansvarig."
+        >
+          {unassignedTaskAlerts.map((task) => (
+            <TodoItem
+              key={task.id}
+              href={`/projects/${task.project_id}?tab=tasks` as Route}
+              title={task.title}
+              detail={`${task.projectTitle} • ej tilldelad`}
+              badge="Ej tilldelad"
+              tone="amber"
+            />
+          ))}
+        </TodoSection>
+
+        <TodoSection
           title="Kundfakturor som behöver följas upp"
           description="Fakturor som gått över betalningstiden."
           emptyText={canReadFinance ? 'Inga kundfakturor är förfallna.' : 'Ingen ekonomidata tillgänglig för din roll.'}
@@ -275,6 +568,23 @@ export default function TodoPage() {
                 />
               ))
             : null}
+        </TodoSection>
+
+        <TodoSection
+          title="Timers som verkar ha lämnats igång"
+          description="Aktiva timers som rullat ovanligt länge utan stopp."
+          emptyText="Inga timers ser fastnade ut."
+        >
+          {longRunningTimerAlerts.map((timer) => (
+            <TodoItem
+              key={timer.id}
+              href={`/projects/${timer.project_id}?tab=time` as Route}
+              title={timer.taskTitle ? `${timer.taskTitle}` : timer.projectTitle}
+              detail={`${timer.projectTitle}${timer.taskTitle ? ' • aktiv uppgiftstimer' : ' • aktiv projekttimer'} i ${timer.runningHours} timmar`}
+              badge={`${timer.runningHours} h`}
+              tone="amber"
+            />
+          ))}
         </TodoSection>
 
         <TodoSection
