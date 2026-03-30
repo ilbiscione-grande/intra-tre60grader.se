@@ -455,10 +455,40 @@ export default function TodoPage() {
           </div>
 
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            <TodoMetric title="Stilla projekt" value={String(projectAlerts.length)} detail="Inga uppdateringar på minst 7 dagar" icon={BriefcaseBusiness} tone="amber" />
-            <TodoMetric title="Försenade uppgifter" value={String(overdueTaskAlerts.length)} detail="Uppgifter över förfallodatum" icon={ShieldAlert} tone="rose" />
-            <TodoMetric title="Långa timers" value={String(longRunningTimerAlerts.length)} detail="Pågående längre än 12 timmar" icon={Clock3} tone="amber" />
-            <TodoMetric title="Verifikationsflaggor" value={String(verificationAlerts.length)} detail="Saknat underlag eller obalans" icon={FileWarning} tone="blue" />
+            <TodoMetric
+              title="Stilla projekt"
+              value={String(projectAlerts.length)}
+              detail="Inga uppdateringar på minst 7 dagar"
+              icon={BriefcaseBusiness}
+              tone="amber"
+              href="#todo-stale-projects"
+            />
+            <TodoMetric
+              title="Försenade uppgifter"
+              value={String(overdueTaskAlerts.length)}
+              detail="Uppgifter över förfallodatum"
+              icon={ShieldAlert}
+              tone="rose"
+              href="#todo-overdue-tasks"
+            />
+            <TodoMetric
+              title="Långa timers"
+              value={String(longRunningTimerAlerts.length)}
+              detail="Pågående längre än 12 timmar"
+              icon={Clock3}
+              tone="amber"
+              href="#todo-long-timers"
+            />
+            {seesAllFinanceSignals ? (
+              <TodoMetric
+                title="Verifikationsflaggor"
+                value={String(verificationAlerts.length)}
+                detail="Saknat underlag eller obalans"
+                icon={FileWarning}
+                tone="blue"
+                href="#todo-verification-alerts"
+              />
+            ) : null}
           </div>
         </CardContent>
       </Card>
@@ -467,6 +497,7 @@ export default function TodoPage() {
 
       <div className="grid gap-4 xl:grid-cols-2">
         <TodoSection
+          id="todo-stale-projects"
           title="Projekt som tappat fart"
           description="Projekt utan uppdatering på minst en vecka."
           emptyText="Inga projekt ligger still just nu."
@@ -484,6 +515,7 @@ export default function TodoPage() {
         </TodoSection>
 
         <TodoSection
+          id="todo-project-missing-responsible"
           title="Projekt utan ansvarig"
           description="Aktiva projekt som saknar utsedd ansvarig."
           emptyText="Alla aktiva projekt har ansvarig."
@@ -501,6 +533,7 @@ export default function TodoPage() {
         </TodoSection>
 
         <TodoSection
+          id="todo-overdue-projects"
           title="Projekt över slutdatum"
           description="Projekt som passerat sitt slutdatum utan att vara klara."
           emptyText="Inga projekt ligger över slutdatum."
@@ -518,6 +551,7 @@ export default function TodoPage() {
         </TodoSection>
 
         <TodoSection
+          id="todo-overdue-tasks"
           title="Försenade uppgifter"
           description="Öppna uppgifter som passerat sitt förfallodatum."
           emptyText="Inga uppgifter är försenade just nu."
@@ -535,6 +569,7 @@ export default function TodoPage() {
         </TodoSection>
 
         <TodoSection
+          id="todo-unassigned-tasks"
           title="Uppgifter utan ansvarig"
           description="Öppna uppgifter som ännu inte är tilldelade någon."
           emptyText="Alla öppna uppgifter har ansvarig."
@@ -551,26 +586,28 @@ export default function TodoPage() {
           ))}
         </TodoSection>
 
-        <TodoSection
-          title="Kundfakturor som behöver följas upp"
-          description="Fakturor som gått över betalningstiden."
-          emptyText={canReadFinance ? 'Inga kundfakturor är förfallna.' : 'Ingen ekonomidata tillgänglig för din roll.'}
-        >
-          {canReadFinance
-            ? overdueCustomerInvoices.map((invoice) => (
-                <TodoItem
-                  key={invoice.id}
-                  href={`/invoices/${invoice.id}` as Route}
-                  title={invoice.invoice_no || 'Faktura'}
-                  detail={`${invoice.daysOverdue} dagar sen • ${formatMoney(invoice.total, invoice.currency)}`}
-                  badge={`${invoice.daysOverdue} d`}
-                  tone="rose"
-                />
-              ))
-            : null}
-        </TodoSection>
+        {seesAllFinanceSignals ? (
+          <TodoSection
+            id="todo-overdue-customer-invoices"
+            title="Kundfakturor som behöver följas upp"
+            description="Fakturor som gått över betalningstiden."
+            emptyText="Inga kundfakturor är förfallna."
+          >
+            {overdueCustomerInvoices.map((invoice) => (
+              <TodoItem
+                key={invoice.id}
+                href={`/invoices/${invoice.id}` as Route}
+                title={invoice.invoice_no || 'Faktura'}
+                detail={`${invoice.daysOverdue} dagar sen • ${formatMoney(invoice.total, invoice.currency)}`}
+                badge={`${invoice.daysOverdue} d`}
+                tone="rose"
+              />
+            ))}
+          </TodoSection>
+        ) : null}
 
         <TodoSection
+          id="todo-long-timers"
           title="Timers som verkar ha lämnats igång"
           description="Aktiva timers som rullat ovanligt länge utan stopp."
           emptyText="Inga timers ser fastnade ut."
@@ -587,43 +624,45 @@ export default function TodoPage() {
           ))}
         </TodoSection>
 
-        <TodoSection
-          title="Leverantörsfakturor som riskerar att fastna"
-          description="Öppna leverantörsfakturor som passerat förfallodagen."
-          emptyText={canReadFinance ? 'Inga leverantörsfakturor är förfallna.' : 'Ingen ekonomidata tillgänglig för din roll.'}
-        >
-          {canReadFinance
-            ? overdueSupplierInvoices.map((invoice) => (
-                <TodoItem
-                  key={invoice.id}
-                  href={'/payables' as Route}
-                  title={invoice.supplier_invoice_no || 'Leverantörsfaktura'}
-                  detail={`${invoice.daysOverdue} dagar sen • öppet ${formatMoney(invoice.open_amount, invoice.currency)}`}
-                  badge={`${invoice.daysOverdue} d`}
-                  tone="rose"
-                />
-              ))
-            : null}
-        </TodoSection>
+        {seesAllFinanceSignals ? (
+          <TodoSection
+            id="todo-overdue-supplier-invoices"
+            title="Leverantörsfakturor som riskerar att fastna"
+            description="Öppna leverantörsfakturor som passerat förfallodagen."
+            emptyText="Inga leverantörsfakturor är förfallna."
+          >
+            {overdueSupplierInvoices.map((invoice) => (
+              <TodoItem
+                key={invoice.id}
+                href={'/payables' as Route}
+                title={invoice.supplier_invoice_no || 'Leverantörsfaktura'}
+                detail={`${invoice.daysOverdue} dagar sen • öppet ${formatMoney(invoice.open_amount, invoice.currency)}`}
+                badge={`${invoice.daysOverdue} d`}
+                tone="rose"
+              />
+            ))}
+          </TodoSection>
+        ) : null}
 
-        <TodoSection
-          title="Verifikationer att kontrollera"
-          description="Poster där appen hittar obalans eller saknat underlag."
-          emptyText={canReadFinance ? 'Inga verifikationer kräver direkt kontroll.' : 'Ingen ekonomidata tillgänglig för din roll.'}
-        >
-          {canReadFinance
-            ? verificationAlerts.map((verification) => (
-                <TodoItem
-                  key={verification.id}
-                  href={`/finance/verifications/${verification.id}` as Route}
-                  title={verificationNumberLabel(verification.fiscal_year, verification.verification_no)}
-                  detail={`${verification.description || 'Verifikation'} • ${verification.issues.join(' • ')}`}
-                  badge={verification.issues.length === 1 ? verification.issues[0] : `${verification.issues.length} flaggor`}
-                  tone="blue"
-                />
-              ))
-            : null}
-        </TodoSection>
+        {seesAllFinanceSignals ? (
+          <TodoSection
+            id="todo-verification-alerts"
+            title="Verifikationer att kontrollera"
+            description="Poster där appen hittar obalans eller saknat underlag."
+            emptyText="Inga verifikationer kräver direkt kontroll."
+          >
+            {verificationAlerts.map((verification) => (
+              <TodoItem
+                key={verification.id}
+                href={`/finance/verifications/${verification.id}` as Route}
+                title={verificationNumberLabel(verification.fiscal_year, verification.verification_no)}
+                detail={`${verification.description || 'Verifikation'} • ${verification.issues.join(' • ')}`}
+                badge={verification.issues.length === 1 ? verification.issues[0] : `${verification.issues.length} flaggor`}
+                tone="blue"
+              />
+            ))}
+          </TodoSection>
+        ) : null}
       </div>
     </section>
   );
@@ -634,13 +673,15 @@ function TodoMetric({
   value,
   detail,
   icon: Icon,
-  tone = 'blue'
+  tone = 'blue',
+  href
 }: {
   title: string;
   value: string;
   detail: string;
   icon: React.ComponentType<{ className?: string }>;
   tone?: 'blue' | 'amber' | 'rose';
+  href?: string;
 }) {
   const tones = {
     blue: 'border-sky-200/60 bg-sky-50/60 dark:border-sky-900/40 dark:bg-sky-950/20',
@@ -648,8 +689,8 @@ function TodoMetric({
     rose: 'border-rose-200/60 bg-rose-50/60 dark:border-rose-900/40 dark:bg-rose-950/20'
   } as const;
 
-  return (
-    <div className={`rounded-xl border p-4 ${tones[tone]}`}>
+  const content = (
+    <div className={`rounded-xl border p-4 ${tones[tone]} ${href ? 'transition hover:border-primary/35 hover:bg-muted/15' : ''}`}>
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-xs font-medium uppercase tracking-[0.16em] text-foreground/45">{title}</p>
@@ -662,14 +703,30 @@ function TodoMetric({
       </div>
     </div>
   );
+
+  if (href) {
+    if (href.startsWith('#')) {
+      return <a href={href} className="block">{content}</a>;
+    }
+
+    return (
+      <Link href={href as Route} className="block">
+        {content}
+      </Link>
+    );
+  }
+
+  return content;
 }
 
 function TodoSection({
+  id,
   title,
   description,
   emptyText,
   children
 }: {
+  id?: string;
   title: string;
   description: string;
   emptyText: string;
@@ -678,7 +735,7 @@ function TodoSection({
   const childCount = Array.isArray(children) ? children.filter(Boolean).length : children ? 1 : 0;
 
   return (
-    <Card>
+    <Card id={id} className="scroll-mt-28">
       <CardHeader className="pb-3">
         <CardTitle>{title}</CardTitle>
         <p className="text-sm text-foreground/65">{description}</p>
