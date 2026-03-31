@@ -65,6 +65,16 @@ type CustomerActivityItem = {
   href: Route;
 };
 
+type CustomerTab = 'overview' | 'projects' | 'orders' | 'invoices' | 'logs';
+
+const customerTabs: Array<{ id: CustomerTab; label: string }> = [
+  { id: 'overview', label: 'Översikt' },
+  { id: 'projects', label: 'Projekt' },
+  { id: 'orders', label: 'Ordrar' },
+  { id: 'invoices', label: 'Fakturor' },
+  { id: 'logs', label: 'Loggar' }
+];
+
 function projectStatusLabel(status: string) {
   const map: Record<string, string> = {
     todo: 'Att göra',
@@ -106,6 +116,7 @@ export default function CustomerDetailsPage() {
   const supabase = createClient();
   const [combinedInvoiceOpen, setCombinedInvoiceOpen] = useState(false);
   const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
+  const [activeTab, setActiveTab] = useState<CustomerTab>('overview');
 
   const query = useQuery<Customer | null>({
     queryKey: ['customer', companyId, customerId],
@@ -406,121 +417,143 @@ export default function CustomerDetailsPage() {
         </DialogContent>
       </Dialog>
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <SummaryCard label="Projekt" value={String(projects.length)} helper="kopplade till kunden" icon={FolderKanban} />
-        <SummaryCard label="Ordrar" value={String(orders.length)} helper="totalt registrerade" icon={ScrollText} />
-        <SummaryCard label="Ordervärde" value={`${totalOrderValue.toFixed(2)} kr`} helper="summa av alla ordrar" icon={ReceiptText} />
-        <SummaryCard label="Öppna fakturor" value={String(openInvoices)} helper="inte fullt betalda" icon={Mail} />
+      <div className="-mx-4 flex overflow-x-auto border-b border-border/70 px-4">
+        {customerTabs.map((tab) => (
+          <Button
+            key={tab.id}
+            type="button"
+            variant="ghost"
+            className={`shrink-0 rounded-none border-b-2 px-3 py-3 text-sm ${
+              activeTab === tab.id
+                ? 'border-primary text-foreground'
+                : 'border-transparent text-foreground/60 hover:border-border hover:text-foreground'
+            }`}
+            onClick={() => setActiveTab(tab.id)}
+          >
+            {tab.label}
+          </Button>
+        ))}
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
-        <Card>
-          <CardHeader>
-            <CardTitle>Ekonomisk status</CardTitle>
-          </CardHeader>
-          <CardContent className="grid gap-3 md:grid-cols-3">
-            <StatusCard
-              label="Öppet fakturavärde"
-              value={`${openInvoiceValue.toFixed(2)} kr`}
-              helper="ej fullt betalda fakturor"
-              tone="primary"
+      {activeTab === 'overview' && (
+        <div className="space-y-4">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <SummaryCard label="Projekt" value={String(projects.length)} helper="kopplade till kunden" icon={FolderKanban} />
+            <SummaryCard label="Ordrar" value={String(orders.length)} helper="totalt registrerade" icon={ScrollText} />
+            <SummaryCard label="Ordervärde" value={`${totalOrderValue.toFixed(2)} kr`} helper="summa av alla ordrar" icon={ReceiptText} />
+            <SummaryCard label="Öppna fakturor" value={String(openInvoices)} helper="inte fullt betalda" icon={Mail} />
+          </div>
+
+          <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+            <Card>
+              <CardHeader>
+                <CardTitle>Ekonomisk status</CardTitle>
+              </CardHeader>
+              <CardContent className="grid gap-3 md:grid-cols-3">
+                <StatusCard
+                  label="Öppet fakturavärde"
+                  value={`${openInvoiceValue.toFixed(2)} kr`}
+                  helper="ej fullt betalda fakturor"
+                  tone="primary"
+                />
+                <StatusCard
+                  label="Förfallna fakturor"
+                  value={String(overdueInvoices)}
+                  helper="behöver följas upp"
+                  tone={overdueInvoices > 0 ? 'danger' : 'neutral'}
+                />
+                <StatusCard
+                  label="Senaste faktura"
+                  value={invoices[0]?.invoice_no ?? '-'}
+                  helper={invoices[0]?.created_at ? new Date(invoices[0].created_at).toLocaleDateString('sv-SE') : 'ingen ännu'}
+                  tone="neutral"
+                />
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Senaste aktivitet</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {activity.length === 0 ? (
+                  <p className="text-sm text-foreground/70">Ingen aktivitet registrerad ännu.</p>
+                ) : (
+                  activity.map((item) => (
+                    <Link
+                      key={item.id}
+                      href={item.href}
+                      className="block rounded-xl border border-border/70 bg-muted/15 px-3 py-3 transition hover:border-primary/40 hover:bg-muted/25"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium">{item.title}</p>
+                          <p className="mt-1 text-sm text-foreground/70">{item.detail}</p>
+                        </div>
+                        <p className="shrink-0 text-xs text-foreground/55">
+                          {new Date(item.at).toLocaleDateString('sv-SE')}
+                        </p>
+                      </div>
+                    </Link>
+                  ))
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-3">
+            <StatusStripCard
+              label="Öppna ordrar"
+              value={String(openOrders)}
+              helper={openOrders > 0 ? 'pågående arbete att följa upp' : 'inga öppna ordrar just nu'}
             />
-            <StatusCard
-              label="Förfallna fakturor"
-              value={String(overdueInvoices)}
-              helper="behöver följas upp"
-              tone={overdueInvoices > 0 ? 'danger' : 'neutral'}
+            <StatusStripCard
+              label="Fakturor att bevaka"
+              value={String(openInvoices)}
+              helper={openInvoices > 0 ? 'ej slutbetalda fakturor' : 'allt ser betalt ut'}
             />
-            <StatusCard
-              label="Senaste faktura"
-              value={invoices[0]?.invoice_no ?? '-'}
-              helper={invoices[0]?.created_at ? new Date(invoices[0].created_at).toLocaleDateString('sv-SE') : 'ingen ännu'}
-              tone="neutral"
+            <StatusStripCard
+              label="Senaste aktivitet"
+              value={activity[0] ? new Date(activity[0].at).toLocaleDateString('sv-SE') : '-'}
+              helper={activity[0]?.title ?? 'ingen aktivitet registrerad ännu'}
             />
-          </CardContent>
-        </Card>
+          </div>
 
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle>Grunduppgifter</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm">
+                <InfoRow icon={Building2} label="Kundnamn" value={customer.name} />
+                <InfoRow icon={ReceiptText} label="Organisationsnummer" value={customer.org_no ?? '-'} />
+                <InfoRow icon={ReceiptText} label="Momsregistreringsnummer" value={customer.vat_no ?? '-'} />
+                <InfoRow icon={Phone} label="Telefon" value={customer.phone ?? '-'} />
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Fakturering</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm">
+                <InfoRow icon={Mail} label="Faktura e-post" value={customer.billing_email ?? '-'} />
+                <InfoRow icon={MapPin} label="Adress" value={billingAddress || '-'} />
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'projects' && (
         <Card>
-          <CardHeader>
-            <CardTitle>Senaste aktivitet</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {activity.length === 0 ? (
-              <p className="text-sm text-foreground/70">Ingen aktivitet registrerad ännu.</p>
-            ) : (
-              activity.map((item) => (
-                <Link
-                  key={item.id}
-                  href={item.href}
-                  className="block rounded-xl border border-border/70 bg-muted/15 px-3 py-3 transition hover:border-primary/40 hover:bg-muted/25"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium">{item.title}</p>
-                      <p className="mt-1 text-sm text-foreground/70">{item.detail}</p>
-                    </div>
-                    <p className="shrink-0 text-xs text-foreground/55">
-                      {new Date(item.at).toLocaleDateString('sv-SE')}
-                    </p>
-                  </div>
-                </Link>
-              ))
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid gap-3 md:grid-cols-3">
-        <StatusStripCard
-          label="Öppna ordrar"
-          value={String(openOrders)}
-          helper={openOrders > 0 ? 'pågående arbete att följa upp' : 'inga öppna ordrar just nu'}
-        />
-        <StatusStripCard
-          label="Fakturor att bevaka"
-          value={String(openInvoices)}
-          helper={openInvoices > 0 ? 'ej slutbetalda fakturor' : 'allt ser betalt ut'}
-        />
-        <StatusStripCard
-          label="Senaste aktivitet"
-          value={activity[0] ? new Date(activity[0].at).toLocaleDateString('sv-SE') : '-'}
-          helper={activity[0]?.title ?? 'ingen aktivitet registrerad ännu'}
-        />
-      </div>
-
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Grunduppgifter</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3 text-sm">
-            <InfoRow icon={Building2} label="Kundnamn" value={customer.name} />
-            <InfoRow icon={ReceiptText} label="Organisationsnummer" value={customer.org_no ?? '-'} />
-            <InfoRow icon={ReceiptText} label="Momsregistreringsnummer" value={customer.vat_no ?? '-'} />
-            <InfoRow icon={Phone} label="Telefon" value={customer.phone ?? '-'} />
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Fakturering</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3 text-sm">
-            <InfoRow icon={Mail} label="Faktura e-post" value={customer.billing_email ?? '-'} />
-            <InfoRow icon={MapPin} label="Adress" value={billingAddress || '-'} />
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid gap-4 xl:grid-cols-3">
-        <Card className="xl:col-span-1">
           <CardHeader>
             <CardTitle>Projekt</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             {projectsQuery.isLoading ? <p className="text-sm text-foreground/70">Laddar projekt...</p> : null}
             {!projectsQuery.isLoading && projects.length === 0 ? <p className="text-sm text-foreground/70">Inga projekt kopplade ännu.</p> : null}
-            {projects.slice(0, 5).map((project) => (
+            {projects.map((project) => (
               <Link key={project.id} href={`/projects/${project.id}`} className="block rounded-xl border border-border/70 bg-muted/15 px-3 py-3 transition hover:border-primary/40 hover:bg-muted/25">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
@@ -533,15 +566,17 @@ export default function CustomerDetailsPage() {
             ))}
           </CardContent>
         </Card>
+      )}
 
-        <Card className="xl:col-span-1">
+      {activeTab === 'orders' && (
+        <Card>
           <CardHeader>
-            <CardTitle>Senaste ordrar</CardTitle>
+            <CardTitle>Ordrar</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             {ordersQuery.isLoading && projects.length > 0 ? <p className="text-sm text-foreground/70">Laddar ordrar...</p> : null}
             {!ordersQuery.isLoading && orders.length === 0 ? <p className="text-sm text-foreground/70">Inga ordrar kopplade ännu.</p> : null}
-            {orders.slice(0, 5).map((order) => (
+            {orders.map((order) => (
               <Link key={order.id} href={`/orders/${order.id}`} className="block rounded-xl border border-border/70 bg-muted/15 px-3 py-3 transition hover:border-primary/40 hover:bg-muted/25">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
@@ -557,15 +592,17 @@ export default function CustomerDetailsPage() {
             ))}
           </CardContent>
         </Card>
+      )}
 
-        <Card className="xl:col-span-1">
+      {activeTab === 'invoices' && (
+        <Card>
           <CardHeader>
             <CardTitle>Fakturor</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             {invoicesQuery.isLoading && projects.length > 0 ? <p className="text-sm text-foreground/70">Laddar fakturor...</p> : null}
             {!invoicesQuery.isLoading && invoices.length === 0 ? <p className="text-sm text-foreground/70">Inga fakturor kopplade ännu.</p> : null}
-            {invoices.slice(0, 5).map((invoice) => (
+            {invoices.map((invoice) => (
               <Link key={invoice.id} href={`/invoices/${invoice.id}`} className="block rounded-xl border border-border/70 bg-muted/15 px-3 py-3 transition hover:border-primary/40 hover:bg-muted/25">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
@@ -585,16 +622,49 @@ export default function CustomerDetailsPage() {
             ))}
           </CardContent>
         </Card>
-      </div>
+      )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Teknisk information</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2 text-sm text-foreground/70">
-          <p className="break-all font-mono">Kund-ID: {customer.id}</p>
-        </CardContent>
-      </Card>
+      {activeTab === 'logs' && (
+        <div className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Senaste aktivitet</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {activity.length === 0 ? (
+                <p className="text-sm text-foreground/70">Ingen aktivitet registrerad ännu.</p>
+              ) : (
+                activity.map((item) => (
+                  <Link
+                    key={item.id}
+                    href={item.href}
+                    className="block rounded-xl border border-border/70 bg-muted/15 px-3 py-3 transition hover:border-primary/40 hover:bg-muted/25"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium">{item.title}</p>
+                        <p className="mt-1 text-sm text-foreground/70">{item.detail}</p>
+                      </div>
+                      <p className="shrink-0 text-xs text-foreground/55">
+                        {new Date(item.at).toLocaleDateString('sv-SE')}
+                      </p>
+                    </div>
+                  </Link>
+                ))
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Teknisk information</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm text-foreground/70">
+              <p className="break-all font-mono">Kund-ID: {customer.id}</p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </section>
   );
 }
