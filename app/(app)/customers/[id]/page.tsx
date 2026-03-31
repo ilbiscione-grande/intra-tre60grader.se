@@ -259,13 +259,15 @@ export default function CustomerDetailsPage() {
     [projectsQuery.data]
   );
 
+  useEffect(() => {
+    if (!query.data) return;
+    setCompanyDraft(query.data);
+  }, [query.data]);
+
   if (query.isLoading) return <p>Laddar kund...</p>;
   if (!query.data) return <p>Kunden hittades inte.</p>;
 
   const customer = query.data;
-  useEffect(() => {
-    setCompanyDraft(customer);
-  }, [customer]);
   const projects = projectsQuery.data ?? [];
   const orders = ordersQuery.data ?? [];
   const invoices = invoicesQuery.data ?? [];
