@@ -326,44 +326,47 @@ export default function CustomerDetailsPage() {
             <ArrowLeft className="h-4 w-4" />
           </Link>
         </Button>
-        <div>
+        <div className="min-w-0 flex-1">
           <p className="text-[10px] uppercase tracking-[0.16em] text-foreground/45">Kund</p>
-          <h2 className="text-lg font-semibold">{customer.name}</h2>
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="truncate text-lg font-semibold">{customer.name}</h2>
+            <span
+              className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border ${
+                customer.archived_at
+                  ? 'border-rose-300/70 bg-rose-100/70 text-rose-700 dark:border-rose-900/50 dark:bg-rose-500/15 dark:text-rose-200'
+                  : 'border-emerald-300/70 bg-emerald-100/70 text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-500/15 dark:text-emerald-200'
+              }`}
+              title={customer.archived_at ? 'Arkiverad kund' : 'Aktiv kund'}
+              aria-label={customer.archived_at ? 'Arkiverad kund' : 'Aktiv kund'}
+            >
+              ✓
+            </span>
+          </div>
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        {customer.archived_at ? <Badge>Arkiverad</Badge> : <Badge>Aktiv</Badge>}
-        {customer.org_no ? <Badge>{customer.org_no}</Badge> : null}
-        {customer.city ? <Badge>{customer.city}</Badge> : null}
+      <div className="flex flex-wrap gap-2">
+        {canCreateCombinedInvoice ? (
+          <ActionIconButton onClick={() => setCombinedInvoiceOpen(true)} disabled={selectableOrders.length === 0} title="Skapa samlingsfaktura" label="Samlingsfaktura">
+            <ReceiptText className="h-4 w-4" />
+          </ActionIconButton>
+        ) : null}
+        {projects[0] ? (
+          <ActionIconLink href={`/projects/${projects[0].id}` as Route} title="Senaste projekt" label="Projekt">
+            <FolderKanban className="h-4 w-4" />
+          </ActionIconLink>
+        ) : null}
+        {orders[0] ? (
+          <ActionIconLink href={`/orders/${orders[0].id}` as Route} title="Senaste order" label="Order">
+            <ScrollText className="h-4 w-4" />
+          </ActionIconLink>
+        ) : null}
+        {invoices[0] ? (
+          <ActionIconLink href={`/invoices/${invoices[0].id}` as Route} title="Senaste faktura" label="Faktura">
+            <Mail className="h-4 w-4" />
+          </ActionIconLink>
+        ) : null}
       </div>
-
-      <Card>
-        <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
-          <div className="flex flex-wrap gap-2">
-            {canCreateCombinedInvoice ? (
-              <Button onClick={() => setCombinedInvoiceOpen(true)} disabled={selectableOrders.length === 0} size="icon" title="Skapa samlingsfaktura" aria-label="Skapa samlingsfaktura">
-                <ReceiptText className="h-4 w-4" />
-              </Button>
-            ) : null}
-            {projects[0] ? (
-              <Button asChild variant="outline" size="icon" title="Senaste projekt" aria-label="Senaste projekt">
-                <Link href={`/projects/${projects[0].id}` as Route}><FolderKanban className="h-4 w-4" /></Link>
-              </Button>
-            ) : null}
-            {orders[0] ? (
-              <Button asChild variant="outline" size="icon" title="Senaste order" aria-label="Senaste order">
-                <Link href={`/orders/${orders[0].id}` as Route}><ScrollText className="h-4 w-4" /></Link>
-              </Button>
-            ) : null}
-            {invoices[0] ? (
-              <Button asChild variant="outline" size="icon" title="Senaste faktura" aria-label="Senaste faktura">
-                <Link href={`/invoices/${invoices[0].id}` as Route}><Mail className="h-4 w-4" /></Link>
-              </Button>
-            ) : null}
-          </div>
-        </CardContent>
-      </Card>
 
       <Dialog
         open={combinedInvoiceOpen}
@@ -902,5 +905,61 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">{label}</span>
       {children}
     </label>
+  );
+}
+
+function ActionIconLink({
+  href,
+  title,
+  label,
+  children
+}: {
+  href: Route;
+  title: string;
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <Link
+      href={href}
+      title={title}
+      aria-label={title}
+      className="inline-flex min-w-[72px] flex-col items-center gap-1 rounded-xl border border-border/70 bg-muted/15 px-2 py-2 text-center transition hover:border-primary/40 hover:bg-muted/25"
+    >
+      <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-primary">
+        {children}
+      </span>
+      <span className="max-w-[64px] text-[11px] font-medium leading-tight text-foreground/75">{label}</span>
+    </Link>
+  );
+}
+
+function ActionIconButton({
+  onClick,
+  disabled,
+  title,
+  label,
+  children
+}: {
+  onClick: () => void;
+  disabled?: boolean;
+  title: string;
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      aria-label={title}
+      className="inline-flex min-w-[72px] flex-col items-center gap-1 rounded-xl border border-border/70 bg-muted/15 px-2 py-2 text-center transition hover:border-primary/40 hover:bg-muted/25 disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-primary">
+        {children}
+      </span>
+      <span className="max-w-[64px] text-[11px] font-medium leading-tight text-foreground/75">{label}</span>
+    </button>
   );
 }
