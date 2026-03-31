@@ -436,7 +436,7 @@ export default function OrderDetailsPage() {
               </CardContent>
             </Card>
             <Card>
-              <CardContent className="grid gap-3 p-4 sm:grid-cols-2">
+              <CardContent className="grid grid-cols-2 gap-3 p-4">
                 <div>
                   <p className="text-sm text-foreground/70">Orderrader</p>
                   <p className="mt-1 font-medium">{linesQuery.data?.length ?? 0}</p>

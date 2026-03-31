@@ -3,15 +3,16 @@
 import Link from 'next/link';
 import type { Route } from 'next';
 import { ArrowLeft, Building2, CircleDollarSign, FolderKanban, Mail, MapPin, Phone, ReceiptText, ScrollText } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useAppContext } from '@/components/providers/AppContext';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
 import { createClient } from '@/lib/supabase/client';
 import { createInvoiceFromOrders } from '@/lib/rpc';
 
@@ -65,15 +66,21 @@ type CustomerActivityItem = {
   href: Route;
 };
 
-type CustomerTab = 'overview' | 'projects' | 'orders' | 'invoices' | 'logs';
+type CustomerTab = 'overview' | 'company' | 'projects' | 'orders' | 'invoices' | 'logs';
 
 const customerTabs: Array<{ id: CustomerTab; label: string }> = [
   { id: 'overview', label: 'Översikt' },
+  { id: 'company', label: 'Företagsuppg.' },
   { id: 'projects', label: 'Projekt' },
   { id: 'orders', label: 'Ordrar' },
   { id: 'invoices', label: 'Fakturor' },
   { id: 'logs', label: 'Loggar' }
 ];
+
+function nullIfEmpty(value: string | null | undefined) {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+}
 
 function projectStatusLabel(status: string) {
   const map: Record<string, string> = {
@@ -110,6 +117,7 @@ function invoiceStatusLabel(status: string) {
 
 export default function CustomerDetailsPage() {
   const { companyId, role } = useAppContext();
+  const queryClient = useQueryClient();
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const customerId = params.id;
@@ -117,6 +125,7 @@ export default function CustomerDetailsPage() {
   const [combinedInvoiceOpen, setCombinedInvoiceOpen] = useState(false);
   const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState<CustomerTab>('overview');
+  const [companyDraft, setCompanyDraft] = useState<Partial<Customer>>({});
 
   const query = useQuery<Customer | null>({
     queryKey: ['customer', companyId, customerId],
@@ -210,6 +219,40 @@ export default function CustomerDetailsPage() {
       toast.error(error instanceof Error ? error.message : 'Kunde inte skapa samlingsfaktura');
     }
   });
+  const canEditCustomer = role === 'admin' || role === 'finance';
+  const updateCustomerMutation = useMutation({
+    mutationFn: async (draft: Partial<Customer>) => {
+      const cleanName = (draft.name ?? '').trim();
+      if (!cleanName) throw new Error('Kundnamn får inte vara tomt');
+
+      const { error } = await supabase
+        .from('customers')
+        .update({
+          name: cleanName,
+          org_no: nullIfEmpty(draft.org_no),
+          vat_no: nullIfEmpty(draft.vat_no),
+          billing_email: nullIfEmpty(draft.billing_email),
+          phone: nullIfEmpty(draft.phone),
+          address_line1: nullIfEmpty(draft.address_line1),
+          address_line2: nullIfEmpty(draft.address_line2),
+          postal_code: nullIfEmpty(draft.postal_code),
+          city: nullIfEmpty(draft.city),
+          country: nullIfEmpty(draft.country)
+        })
+        .eq('company_id', companyId)
+        .eq('id', customerId);
+
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['customer', companyId, customerId] });
+      await queryClient.invalidateQueries({ queryKey: ['customers', companyId] });
+      toast.success('Kunduppgifter uppdaterade');
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : 'Kunde inte uppdatera kund');
+    }
+  });
 
   const projectTitleById = useMemo(
     () => Object.fromEntries((projectsQuery.data ?? []).map((project) => [project.id, project.title])),
@@ -220,6 +263,9 @@ export default function CustomerDetailsPage() {
   if (!query.data) return <p>Kunden hittades inte.</p>;
 
   const customer = query.data;
+  useEffect(() => {
+    setCompanyDraft(customer);
+  }, [customer]);
   const projects = projectsQuery.data ?? [];
   const orders = ordersQuery.data ?? [];
   const invoices = invoicesQuery.data ?? [];
@@ -294,29 +340,25 @@ export default function CustomerDetailsPage() {
 
       <Card>
         <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
-          <div className="space-y-1">
-            <p className="text-sm font-medium">Snabba åtgärder</p>
-            <p className="text-sm text-foreground/65">Öppna det som oftast används för kunden direkt härifrån.</p>
-          </div>
           <div className="flex flex-wrap gap-2">
             {canCreateCombinedInvoice ? (
-              <Button onClick={() => setCombinedInvoiceOpen(true)} disabled={selectableOrders.length === 0}>
-                Skapa samlingsfaktura
+              <Button onClick={() => setCombinedInvoiceOpen(true)} disabled={selectableOrders.length === 0} size="icon" title="Skapa samlingsfaktura" aria-label="Skapa samlingsfaktura">
+                <ReceiptText className="h-4 w-4" />
               </Button>
             ) : null}
             {projects[0] ? (
-              <Button asChild variant="outline">
-                <Link href={`/projects/${projects[0].id}` as Route}>Senaste projekt</Link>
+              <Button asChild variant="outline" size="icon" title="Senaste projekt" aria-label="Senaste projekt">
+                <Link href={`/projects/${projects[0].id}` as Route}><FolderKanban className="h-4 w-4" /></Link>
               </Button>
             ) : null}
             {orders[0] ? (
-              <Button asChild variant="outline">
-                <Link href={`/orders/${orders[0].id}` as Route}>Senaste order</Link>
+              <Button asChild variant="outline" size="icon" title="Senaste order" aria-label="Senaste order">
+                <Link href={`/orders/${orders[0].id}` as Route}><ScrollText className="h-4 w-4" /></Link>
               </Button>
             ) : null}
             {invoices[0] ? (
-              <Button asChild variant="outline">
-                <Link href={`/invoices/${invoices[0].id}` as Route}>Senaste faktura</Link>
+              <Button asChild variant="outline" size="icon" title="Senaste faktura" aria-label="Senaste faktura">
+                <Link href={`/invoices/${invoices[0].id}` as Route}><Mail className="h-4 w-4" /></Link>
               </Button>
             ) : null}
           </div>
@@ -519,29 +561,109 @@ export default function CustomerDetailsPage() {
             />
           </div>
 
+        </div>
+      )}
+
+      {activeTab === 'company' && (
+        <div className="space-y-4">
+          <div className="grid gap-3 md:grid-cols-3">
+            <StatusStripCard
+              label="Kundnamn"
+              value={customer.name}
+              helper={canEditCustomer ? 'Kan redigeras här' : 'Visas från kundregistret'}
+            />
+            <StatusStripCard
+              label="Ort"
+              value={customer.city || '-'}
+              helper={customer.country || 'Land ej angivet'}
+            />
+            <StatusStripCard
+              label="Kontakt"
+              value={customer.billing_email || customer.phone || '-'}
+              helper={customer.billing_email ? 'Primär fakturakontakt' : 'Ingen faktura e-post angiven'}
+            />
+          </div>
+
           <div className="grid gap-4 lg:grid-cols-2">
             <Card>
               <CardHeader>
-                <CardTitle>Grunduppgifter</CardTitle>
+                <CardTitle>Företagsuppgifter</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3 text-sm">
-                <InfoRow icon={Building2} label="Kundnamn" value={customer.name} />
-                <InfoRow icon={ReceiptText} label="Organisationsnummer" value={customer.org_no ?? '-'} />
-                <InfoRow icon={ReceiptText} label="Momsregistreringsnummer" value={customer.vat_no ?? '-'} />
-                <InfoRow icon={Phone} label="Telefon" value={customer.phone ?? '-'} />
+              <CardContent className="grid gap-3 text-sm">
+                {canEditCustomer ? (
+                  <>
+                    <Field label="Kundnamn">
+                      <Input value={String(companyDraft.name ?? '')} onChange={(event) => setCompanyDraft((prev) => ({ ...prev, name: event.target.value }))} />
+                    </Field>
+                    <Field label="Organisationsnummer">
+                      <Input value={String(companyDraft.org_no ?? '')} onChange={(event) => setCompanyDraft((prev) => ({ ...prev, org_no: event.target.value }))} />
+                    </Field>
+                    <Field label="Momsregistreringsnummer">
+                      <Input value={String(companyDraft.vat_no ?? '')} onChange={(event) => setCompanyDraft((prev) => ({ ...prev, vat_no: event.target.value }))} />
+                    </Field>
+                    <Field label="Telefon">
+                      <Input value={String(companyDraft.phone ?? '')} onChange={(event) => setCompanyDraft((prev) => ({ ...prev, phone: event.target.value }))} />
+                    </Field>
+                  </>
+                ) : (
+                  <>
+                    <InfoRow icon={Building2} label="Kundnamn" value={customer.name} />
+                    <InfoRow icon={ReceiptText} label="Organisationsnummer" value={customer.org_no ?? '-'} />
+                    <InfoRow icon={ReceiptText} label="Momsregistreringsnummer" value={customer.vat_no ?? '-'} />
+                    <InfoRow icon={Phone} label="Telefon" value={customer.phone ?? '-'} />
+                  </>
+                )}
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader>
-                <CardTitle>Fakturering</CardTitle>
+                <CardTitle>Fakturering och adress</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3 text-sm">
-                <InfoRow icon={Mail} label="Faktura e-post" value={customer.billing_email ?? '-'} />
-                <InfoRow icon={MapPin} label="Adress" value={billingAddress || '-'} />
+              <CardContent className="grid gap-3 text-sm">
+                {canEditCustomer ? (
+                  <>
+                    <Field label="Faktura e-post">
+                      <Input value={String(companyDraft.billing_email ?? '')} onChange={(event) => setCompanyDraft((prev) => ({ ...prev, billing_email: event.target.value }))} />
+                    </Field>
+                    <Field label="Adressrad 1">
+                      <Input value={String(companyDraft.address_line1 ?? '')} onChange={(event) => setCompanyDraft((prev) => ({ ...prev, address_line1: event.target.value }))} />
+                    </Field>
+                    <Field label="Adressrad 2">
+                      <Input value={String(companyDraft.address_line2 ?? '')} onChange={(event) => setCompanyDraft((prev) => ({ ...prev, address_line2: event.target.value }))} />
+                    </Field>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <Field label="Postnummer">
+                        <Input value={String(companyDraft.postal_code ?? '')} onChange={(event) => setCompanyDraft((prev) => ({ ...prev, postal_code: event.target.value }))} />
+                      </Field>
+                      <Field label="Ort">
+                        <Input value={String(companyDraft.city ?? '')} onChange={(event) => setCompanyDraft((prev) => ({ ...prev, city: event.target.value }))} />
+                      </Field>
+                    </div>
+                    <Field label="Land">
+                      <Input value={String(companyDraft.country ?? '')} onChange={(event) => setCompanyDraft((prev) => ({ ...prev, country: event.target.value }))} />
+                    </Field>
+                  </>
+                ) : (
+                  <>
+                    <InfoRow icon={Mail} label="Faktura e-post" value={customer.billing_email ?? '-'} />
+                    <InfoRow icon={MapPin} label="Adress" value={billingAddress || '-'} />
+                  </>
+                )}
               </CardContent>
             </Card>
           </div>
+
+          {canEditCustomer ? (
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={() => updateCustomerMutation.mutate(companyDraft)} disabled={updateCustomerMutation.isPending}>
+                {updateCustomerMutation.isPending ? 'Sparar...' : 'Spara företagsuppgifter'}
+              </Button>
+              <Button variant="outline" onClick={() => setCompanyDraft(customer)}>
+                Återställ
+              </Button>
+            </div>
+          ) : null}
         </div>
       )}
 
@@ -771,5 +893,14 @@ function StatusStripCard({
       <p className="mt-1 text-lg font-semibold">{value}</p>
       <p className="mt-1 text-sm text-foreground/65">{helper}</p>
     </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="space-y-1.5">
+      <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">{label}</span>
+      {children}
+    </label>
   );
 }
