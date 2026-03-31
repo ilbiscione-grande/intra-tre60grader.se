@@ -422,29 +422,29 @@ export default function OrderDetailsPage() {
 
       {activeTab === 'overview' && (
         <div className="space-y-4" {...swipeHandlers}>
-          <div className="grid gap-3 md:grid-cols-4">
+          <div className="grid gap-3 md:grid-cols-2">
             <Card>
-              <CardContent className="p-4">
-                <p className="text-sm text-foreground/70">Projekt</p>
-                <p className="mt-1 font-medium">{projectQuery.data?.title ?? order.project_id}</p>
+              <CardContent className="space-y-3 p-4">
+                <div>
+                  <p className="text-sm text-foreground/70">Projekt</p>
+                  <p className="mt-1 font-medium">{projectQuery.data?.title ?? order.project_id}</p>
+                </div>
+                <div className="border-t border-border/70 pt-3">
+                  <p className="text-sm text-foreground/70">Kund</p>
+                  <p className="mt-1 font-medium">{customerQuery.data?.name ?? 'Ingen kund kopplad'}</p>
+                </div>
               </CardContent>
             </Card>
             <Card>
-              <CardContent className="p-4">
-                <p className="text-sm text-foreground/70">Orderrader</p>
-                <p className="mt-1 font-medium">{linesQuery.data?.length ?? 0}</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4">
-                <p className="text-sm text-foreground/70">Fakturor</p>
-                <p className="mt-1 font-medium">{invoicesQuery.data?.length ?? 0}</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4">
-                <p className="text-sm text-foreground/70">Kund</p>
-                <p className="mt-1 font-medium">{customerQuery.data?.name ?? 'Ingen kund kopplad'}</p>
+              <CardContent className="grid gap-3 p-4 sm:grid-cols-2">
+                <div>
+                  <p className="text-sm text-foreground/70">Orderrader</p>
+                  <p className="mt-1 font-medium">{linesQuery.data?.length ?? 0}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-foreground/70">Fakturor</p>
+                  <p className="mt-1 font-medium">{invoicesQuery.data?.length ?? 0}</p>
+                </div>
               </CardContent>
             </Card>
           </div>
@@ -678,7 +678,7 @@ export default function OrderDetailsPage() {
             <CardTitle>Bilagor</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid gap-3 md:grid-cols-3">
+            <div className="grid gap-3 md:grid-cols-2">
               <div className="rounded-lg border p-3">
                 <p className="text-sm text-foreground/70">Bilagor på fakturor</p>
                 <p className="mt-1 font-medium">{invoiceAttachments.length}</p>
@@ -688,10 +688,6 @@ export default function OrderDetailsPage() {
                 <p className="mt-1 font-medium">
                   {new Set(invoiceAttachments.map((invoice) => invoice.id)).size}
                 </p>
-              </div>
-              <div className="rounded-lg border p-3">
-                <p className="text-sm text-foreground/70">Projekt</p>
-                <p className="mt-1 font-medium">{projectQuery.data?.title ?? '-'}</p>
               </div>
             </div>
 
@@ -734,14 +730,52 @@ export default function OrderDetailsPage() {
             <CardTitle>Medlemmar</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
+            {members.length > 0 ? (
+              <div className="space-y-3 rounded-xl border border-border/70 bg-card/70 p-3">
+                <div>
+                  <p className="text-sm font-medium">Tilldelade medlemmar</p>
+                  <p className="text-sm text-foreground/65">Ordern använder samma team som projektet.</p>
+                </div>
+                <div className="space-y-3">
+                  {members.map((member) => {
+                    const memberLabel = getUserDisplayName({
+                      displayName: member.display_name,
+                      email: member.email,
+                      userId: member.user_id
+                    });
+
+                    return (
+                      <div key={member.id} className="flex items-center justify-between gap-3 rounded-lg border p-3">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <Users className="h-4 w-4 text-foreground/55" />
+                            <p className="truncate text-sm font-medium">{memberLabel}</p>
+                          </div>
+                          {member.email && member.email !== memberLabel ? <p className="mt-1 text-xs text-foreground/55">{member.email}</p> : null}
+                          <p className="mt-1 text-xs text-foreground/55">
+                            Tillagd {new Date(member.created_at).toLocaleDateString('sv-SE')}
+                          </p>
+                        </div>
+                        <Badge>{roleLabel(member.role)}</Badge>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-foreground/70">
+                Inga tilldelade medlemmar hittades på projektet ännu.
+              </p>
+            )}
+
             <div className="grid gap-3 md:grid-cols-3">
               <div className="rounded-lg border p-3">
                 <p className="text-sm text-foreground/70">Ordermodell</p>
                 <p className="mt-1 font-medium">Ärver projektets team</p>
               </div>
               <div className="rounded-lg border p-3">
-                <p className="text-sm text-foreground/70">Tillgängliga medlemmar</p>
-                <p className="mt-1 font-medium">{role === 'admin' ? members.length : '-'}</p>
+                <p className="text-sm text-foreground/70">Tilldelade medlemmar</p>
+                <p className="mt-1 font-medium">{members.length}</p>
               </div>
               <div className="rounded-lg border p-3">
                 <p className="text-sm text-foreground/70">Projekt</p>
@@ -749,45 +783,9 @@ export default function OrderDetailsPage() {
               </div>
             </div>
 
-            {role === 'admin' && members.length > 0 ? (
-              <div className="space-y-3">
-                {members.slice(0, 6).map((member) => (
-                  <div key={member.id} className="flex items-center justify-between gap-3 rounded-lg border p-3">
-                    <div className="min-w-0">
-                      {(() => {
-                        const memberLabel = getUserDisplayName({
-                          displayName: member.display_name,
-                          email: member.email,
-                          userId: member.user_id
-                        });
-                        return (
-                          <>
-                      <div className="flex items-center gap-2">
-                        <Users className="h-4 w-4 text-foreground/55" />
-                        <p className="truncate text-sm font-medium">{memberLabel}</p>
-                      </div>
-                      {member.email && member.email !== memberLabel ? <p className="mt-1 text-xs text-foreground/55">{member.email}</p> : null}
-                      <p className="mt-1 text-xs text-foreground/55">
-                        Tillagd {new Date(member.created_at).toLocaleDateString('sv-SE')}
-                      </p>
-                          </>
-                        );
-                      })()}
-                    </div>
-                    <Badge>{roleLabel(member.role)}</Badge>
-                  </div>
-                ))}
-                {members.length > 6 ? (
-                  <p className="text-xs text-foreground/55">
-                    Visar 6 av {members.length} tillgängliga bolagsmedlemmar.
-                  </p>
-                ) : null}
-              </div>
-            ) : (
-              <p className="text-sm text-foreground/70">
-                Ordern använder projektets team. Öppna projektet för att se eller hantera medlemmar.
-              </p>
-            )}
+            <p className="text-sm text-foreground/70">
+              Ordern använder projektets team. Öppna projektet för att se eller hantera medlemmar.
+            </p>
 
             <div className="flex flex-wrap gap-2">
               <Button asChild variant="outline">
