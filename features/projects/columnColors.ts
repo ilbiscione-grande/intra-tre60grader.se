@@ -11,4 +11,3 @@ export const PROJECT_COLUMN_COLOR_OPTIONS = [
 export function getProjectColumnBackground(color: string | null | undefined) {
   return PROJECT_COLUMN_COLOR_OPTIONS.find((option) => option.value === (color ?? ''))?.background;
 }
-

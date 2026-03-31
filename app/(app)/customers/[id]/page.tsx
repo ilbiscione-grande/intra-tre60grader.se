@@ -929,7 +929,7 @@ function ActionIconLink({
       <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-primary">
         {children}
       </span>
-      <span className="max-w-[64px] text-[11px] font-medium leading-tight text-foreground/75">{label}</span>
+      <span className="max-w-[64px] text-[10px] font-medium leading-tight text-foreground/75">{label}</span>
     </Link>
   );
 }
@@ -959,7 +959,7 @@ function ActionIconButton({
       <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-primary">
         {children}
       </span>
-      <span className="max-w-[64px] text-[11px] font-medium leading-tight text-foreground/75">{label}</span>
+      <span className="max-w-[64px] text-[10px] font-medium leading-tight text-foreground/75">{label}</span>
     </button>
   );
 }
