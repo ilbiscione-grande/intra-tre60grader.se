@@ -33,6 +33,7 @@ type ActiveTimer = {
 
 type TimeTrackerContextValue = {
   openStartDialog: () => void;
+  openControlsDialog: () => void;
   hasActiveTimer: boolean;
 };
 
@@ -310,6 +311,10 @@ export function TimeTrackerProvider({ children }: { children: React.ReactNode })
     setStartDialogOpen(true);
   }
 
+  function openControlsDialog() {
+    setControlsOpen(true);
+  }
+
   function resetDraft() {
     setSelectedProjectId((projectsQuery.data ?? [])[0]?.id ?? NEW_PROJECT_VALUE);
     setSelectedTaskId(NONE_TASK_VALUE);
@@ -565,7 +570,7 @@ export function TimeTrackerProvider({ children }: { children: React.ReactNode })
   ) : null;
 
   return (
-    <TimeTrackerContext.Provider value={{ openStartDialog, hasActiveTimer }}>
+    <TimeTrackerContext.Provider value={{ openStartDialog, openControlsDialog, hasActiveTimer }}>
       {children}
 
       {hasActiveTimer && activeTimer ? (

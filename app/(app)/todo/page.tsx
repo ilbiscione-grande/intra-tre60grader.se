@@ -4,13 +4,15 @@ import Link from 'next/link';
 import type { Route } from 'next';
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowRight, BriefcaseBusiness, CheckCircle2, Clock3, FileWarning, ReceiptText, ShieldAlert, Wallet } from 'lucide-react';
+import { ArrowRight, BriefcaseBusiness, Camera, CheckCircle2, CheckSquare2, Clock3, FileWarning, FilePlus2, ReceiptText, ShieldAlert, Timer, Wallet } from 'lucide-react';
 import { useAppContext } from '@/components/providers/AppContext';
+import { useTimeTracker } from '@/components/providers/TimeTrackerProvider';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { canViewFinance } from '@/lib/auth/capabilities';
 import { createClient } from '@/lib/supabase/client';
+import { useBreakpointMode } from '@/lib/ui/useBreakpointMode';
 
 type ProjectRow = {
   id: string;
@@ -92,6 +94,8 @@ function verificationNumberLabel(fiscalYear: number | null, verificationNo: numb
 
 export default function TodoPage() {
   const { companyId, role, capabilities } = useAppContext();
+  const mode = useBreakpointMode();
+  const { hasActiveTimer, openControlsDialog, openStartDialog } = useTimeTracker();
   const canReadFinance = canViewFinance(role, capabilities);
   const seesAllProjectSignals = role === 'admin';
   const seesAllFinanceSignals = role === 'admin' || role === 'finance';
@@ -416,6 +420,216 @@ export default function TodoPage() {
     activeTimersQuery.isLoading ||
     currentUserQuery.isLoading ||
     (canReadFinance && (invoicesQuery.isLoading || supplierInvoicesQuery.isLoading || verificationsQuery.isLoading));
+  const myActiveTasks = useMemo(() => {
+    return visibleTasks
+      .filter((task) => task.status !== 'done')
+      .map((task) => ({
+        ...task,
+        projectTitle: projectById.get(task.project_id)?.title ?? 'Projekt',
+        isOverdue: Boolean(task.due_date && new Date(task.due_date) < today)
+      }))
+      .sort((a, b) => {
+        if (a.isOverdue !== b.isOverdue) return a.isOverdue ? -1 : 1;
+        if (a.due_date && b.due_date) return a.due_date.localeCompare(b.due_date);
+        if (a.due_date) return -1;
+        if (b.due_date) return 1;
+        return a.title.localeCompare(b.title, 'sv');
+      })
+      .slice(0, 6);
+  }, [projectById, today, visibleTasks]);
+  const myProjects = useMemo(() => {
+    return visibleProjects
+      .map((project) => ({
+        ...project,
+        daysIdle: Math.max(0, dayDiff(new Date(project.updated_at), today))
+      }))
+      .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+      .slice(0, 5);
+  }, [today, visibleProjects]);
+  const personalSignals = useMemo(
+    () => [
+      projectAlerts.length > 0 ? `${projectAlerts.length} stilla projekt` : null,
+      overdueTaskAlerts.length > 0 ? `${overdueTaskAlerts.length} försenade uppgifter` : null,
+      longRunningTimerAlerts.length > 0 ? `${longRunningTimerAlerts.length} långa timers` : null
+    ].filter((item): item is string => Boolean(item)),
+    [longRunningTimerAlerts.length, overdueTaskAlerts.length, projectAlerts.length]
+  );
+
+  if (mode === 'mobile') {
+    return (
+      <section className="space-y-4">
+        <Card className="overflow-hidden border-border/70 bg-gradient-to-br from-card via-card to-muted/20">
+          <CardContent className="space-y-4 p-4">
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.18em] text-foreground/45">
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                <span>Hem</span>
+              </div>
+              <div>
+                <h1 className="text-xl font-semibold tracking-tight">Mitt nu</h1>
+                <p className="text-sm text-foreground/65">
+                  Snabb överblick över det som kräver uppmärksamhet, dina uppgifter och det du troligen behöver göra härnäst.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Badge className="border-border/70 bg-muted/40 text-foreground/80 hover:bg-muted/40">
+                  {urgentCount} signaler
+                </Badge>
+                <Badge className="border-border/70 bg-muted/40 text-foreground/80 hover:bg-muted/40">
+                  {hasActiveTimer ? 'Timer pågår' : 'Ingen aktiv timer'}
+                </Badge>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <QuickActionButton
+                icon={hasActiveTimer ? Timer : Clock3}
+                label={hasActiveTimer ? 'Öppna timer' : 'Starta tid'}
+                onClick={() => (hasActiveTimer ? openControlsDialog() : openStartDialog())}
+              />
+              <QuickActionLink icon={CheckSquare2} label="Mina uppgifter" href={'/projects' as Route} />
+              <QuickActionLink icon={ReceiptText} label="Ny uppdatering" href={'/projects' as Route} />
+              {canReadFinance ? (
+                <QuickActionLink icon={FilePlus2} label="Ny verifikation" href={'/finance/verifications/new' as Route} />
+              ) : (
+                <QuickActionLink icon={BriefcaseBusiness} label="Projekt" href={'/projects' as Route} />
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Att hålla koll på nu</CardTitle>
+            <p className="text-sm text-foreground/65">Automatiska signaler som rör dig just nu.</p>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {isLoading ? <p className="text-sm text-foreground/65">Laddar överblick...</p> : null}
+            {!isLoading && personalSignals.length === 0 ? (
+              <p className="text-sm text-foreground/65">Inget akut just nu.</p>
+            ) : null}
+            {projectAlerts.slice(0, 3).map((project) => (
+              <TodoItem
+                key={`mobile-stale-${project.id}`}
+                href={`/projects/${project.id}` as Route}
+                title={project.title}
+                detail={`${project.daysIdle} dagar sedan senaste aktivitet`}
+                badge={`${project.daysIdle} d`}
+                tone="amber"
+              />
+            ))}
+            {overdueTaskAlerts.slice(0, 3).map((task) => (
+              <TodoItem
+                key={`mobile-task-${task.id}`}
+                href={`/projects/${task.project_id}?tab=tasks` as Route}
+                title={task.title}
+                detail={`${task.projectTitle} • förfallo ${task.due_date}`}
+                badge={`${task.daysLate} d`}
+                tone="rose"
+              />
+            ))}
+            {longRunningTimerAlerts.slice(0, 2).map((timer) => (
+              <TodoItem
+                key={`mobile-timer-${timer.id}`}
+                href={`/projects/${timer.project_id}?tab=time` as Route}
+                title={timer.taskTitle ? timer.taskTitle : timer.projectTitle}
+                detail={`${timer.projectTitle} • aktiv i ${timer.runningHours} timmar`}
+                badge={`${timer.runningHours} h`}
+                tone="amber"
+              />
+            ))}
+            <Button asChild variant="ghost" className="w-full justify-between rounded-xl">
+              <Link href={'/todo' as Route}>
+                Visa hela att-göra
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Mina uppgifter</CardTitle>
+            <p className="text-sm text-foreground/65">Det du sannolikt ska ta tag i härnäst.</p>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {myActiveTasks.length === 0 ? (
+              <p className="text-sm text-foreground/65">Du har inga öppna uppgifter just nu.</p>
+            ) : (
+              myActiveTasks.map((task) => (
+                <Link
+                  key={task.id}
+                  href={`/projects/${task.project_id}?tab=tasks` as Route}
+                  className="block rounded-xl border border-border/70 bg-card/70 p-3 transition hover:border-primary/35 hover:bg-muted/15"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-medium">{task.title}</p>
+                      <p className="mt-1 text-sm text-foreground/65">{task.projectTitle}</p>
+                    </div>
+                    <Badge className={task.isOverdue ? 'border-rose-300/70 bg-rose-100/70 text-rose-900' : 'border-border/70 bg-muted/40 text-foreground/75'}>
+                      {task.due_date ? task.due_date : 'Ingen deadline'}
+                    </Badge>
+                  </div>
+                </Link>
+              ))
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Mina projekt</CardTitle>
+            <p className="text-sm text-foreground/65">Senaste aktivitet och status i det du jobbar med.</p>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {myProjects.length === 0 ? (
+              <p className="text-sm text-foreground/65">Inga projekt att visa just nu.</p>
+            ) : (
+              myProjects.map((project) => (
+                <Link
+                  key={project.id}
+                  href={`/projects/${project.id}` as Route}
+                  className="block rounded-xl border border-border/70 bg-card/70 p-3 transition hover:border-primary/35 hover:bg-muted/15"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-medium">{project.title}</p>
+                      <p className="mt-1 text-sm text-foreground/65">
+                        {project.daysIdle === 0 ? 'Uppdaterad idag' : `${project.daysIdle} dagar sedan aktivitet`}
+                      </p>
+                    </div>
+                    <Badge className="border-border/70 bg-muted/40 text-foreground/75">
+                      {project.status ?? 'Status saknas'}
+                    </Badge>
+                  </div>
+                </Link>
+              ))
+            )}
+            <Button asChild variant="ghost" className="w-full justify-between rounded-xl">
+              <Link href={'/projects' as Route}>
+                Alla projekt
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
+
+        {canReadFinance ? (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Snabbregistrering</CardTitle>
+              <p className="text-sm text-foreground/65">Mobilvänliga genvägar för ekonomi och underlag.</p>
+            </CardHeader>
+            <CardContent className="grid grid-cols-2 gap-2">
+              <QuickActionLink icon={FilePlus2} label="Verifikation" href={'/finance/verifications/new' as Route} />
+              <QuickActionLink icon={Camera} label="Foto/underlag" href={'/finance/verifications/new' as Route} />
+            </CardContent>
+          </Card>
+        ) : null}
+      </section>
+    );
+  }
 
   return (
     <section className="space-y-4">
@@ -665,6 +879,51 @@ export default function TodoPage() {
         ) : null}
       </div>
     </section>
+  );
+}
+
+function QuickActionButton({
+  icon: Icon,
+  label,
+  onClick
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex h-20 flex-col items-start justify-between rounded-2xl border border-border/70 bg-card/80 p-3 text-left transition hover:border-primary/35 hover:bg-muted/15"
+    >
+      <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border/70 bg-muted/25 text-foreground/75">
+        <Icon className="h-4 w-4" />
+      </span>
+      <span className="text-sm font-medium leading-tight">{label}</span>
+    </button>
+  );
+}
+
+function QuickActionLink({
+  icon: Icon,
+  label,
+  href
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  href: Route;
+}) {
+  return (
+    <Link
+      href={href}
+      className="flex h-20 flex-col items-start justify-between rounded-2xl border border-border/70 bg-card/80 p-3 text-left transition hover:border-primary/35 hover:bg-muted/15"
+    >
+      <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border/70 bg-muted/25 text-foreground/75">
+        <Icon className="h-4 w-4" />
+      </span>
+      <span className="text-sm font-medium leading-tight">{label}</span>
+    </Link>
   );
 }
 

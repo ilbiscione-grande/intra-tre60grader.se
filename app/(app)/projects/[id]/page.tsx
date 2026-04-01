@@ -36,6 +36,7 @@ import { createClient } from '@/lib/supabase/client';
 import type { Json, TableRow as DbRow } from '@/lib/supabase/database.types';
 import type { ProjectStatus, Role } from '@/lib/types';
 import { useAutoScrollActiveTab } from '@/lib/ui/useAutoScrollActiveTab';
+import { useBreakpointMode } from '@/lib/ui/useBreakpointMode';
 import { useSwipeTabs } from '@/lib/ui/useSwipeTabs';
 
 type ProjectRow = Pick<
@@ -65,6 +66,7 @@ type ActivityItem = {
   source: 'system' | 'user';
 };
 type ProjectTab = 'overview' | 'planning' | 'tasks' | 'time' | 'updates' | 'economy' | 'attachments' | 'members' | 'logs';
+type MobileProjectTab = 'overview' | 'work' | 'more';
 type ProjectMilestone = {
   id: string;
   title: string;
@@ -89,6 +91,29 @@ const projectTabs: Array<{ id: ProjectTab; label: string }> = [
   { id: 'members', label: 'Medlemmar' },
   { id: 'logs', label: 'Loggar' }
 ];
+const mobileProjectTabs: Array<{ id: MobileProjectTab; label: string }> = [
+  { id: 'overview', label: 'Översikt' },
+  { id: 'work', label: 'Arbete' },
+  { id: 'more', label: 'Mer' }
+];
+const mobileWorkTabs: Array<{ id: ProjectTab; label: string }> = [
+  { id: 'updates', label: 'Uppdateringar' },
+  { id: 'tasks', label: 'Uppgifter' },
+  { id: 'time', label: 'Tid' }
+];
+const mobileMoreTabs: Array<{ id: ProjectTab; label: string }> = [
+  { id: 'planning', label: 'Tidsplan' },
+  { id: 'economy', label: 'Ekonomi' },
+  { id: 'attachments', label: 'Bilagor' },
+  { id: 'members', label: 'Medlemmar' },
+  { id: 'logs', label: 'Loggar' }
+];
+
+function getMobileProjectTab(activeTab: ProjectTab): MobileProjectTab {
+  if (activeTab === 'overview') return 'overview';
+  if (mobileWorkTabs.some((tab) => tab.id === activeTab)) return 'work';
+  return 'more';
+}
 
 function toNumber(value: string, fallback = 0) {
   const parsed = Number(value);
@@ -258,6 +283,7 @@ export default function ProjectDetailsPage() {
   const searchParams = useSearchParams();
   const projectId = params.id;
   const { companyId, role } = useAppContext();
+  const mode = useBreakpointMode();
   const queryClient = useQueryClient();
   const supabase = useMemo(() => createClient(), []);
 
@@ -295,6 +321,7 @@ export default function ProjectDetailsPage() {
     onChange: setActiveTab
   });
   const { containerRef, registerItem } = useAutoScrollActiveTab(activeTab);
+  const mobileActiveTab = getMobileProjectTab(activeTab);
 
   useEffect(() => {
     const requestedTab = searchParams.get('tab');
@@ -1273,30 +1300,101 @@ export default function ProjectDetailsPage() {
         </div>
 
         <div ref={containerRef} className="-mx-4 mt-3 flex overflow-x-auto border-b border-border/70 px-4 md:mx-0 md:mt-4 md:border-b-0 md:px-0">
-          {projectTabs.map((tab) => (
-            <Button
-              key={tab.id}
-              ref={registerItem(tab.id)}
-              type="button"
-              variant="ghost"
-              className={`shrink-0 rounded-none border-b-2 px-3 py-3 text-sm ${
-                activeTab === tab.id
-                  ? 'border-primary text-foreground'
-                  : 'border-transparent text-foreground/60 hover:border-border hover:text-foreground'
-              }`}
-              onClick={() => setActiveTab(tab.id)}
-            >
-              <span className="inline-flex items-center gap-1.5">
-                {tab.id === 'planning' && hasPlanningAttention ? <AlertTriangle className="h-3.5 w-3.5 text-amber-500" /> : null}
-                <span>{tab.label}</span>
-              </span>
-            </Button>
-          ))}
+          {mode === 'mobile'
+            ? mobileProjectTabs.map((tab) => (
+                <Button
+                  key={tab.id}
+                  type="button"
+                  variant="ghost"
+                  className={`shrink-0 rounded-none border-b-2 px-3 py-3 text-sm ${
+                    mobileActiveTab === tab.id
+                      ? 'border-primary text-foreground'
+                      : 'border-transparent text-foreground/60 hover:border-border hover:text-foreground'
+                  }`}
+                  onClick={() => {
+                    if (tab.id === 'overview') {
+                      setActiveTab('overview');
+                      return;
+                    }
+                    if (tab.id === 'work') {
+                      setActiveTab(mobileWorkTabs.some((item) => item.id === activeTab) ? activeTab : 'updates');
+                      return;
+                    }
+                    setActiveTab(mobileMoreTabs.some((item) => item.id === activeTab) ? activeTab : 'planning');
+                  }}
+                >
+                  <span className="inline-flex items-center gap-1.5">
+                    {tab.id === 'more' && hasPlanningAttention ? <AlertTriangle className="h-3.5 w-3.5 text-amber-500" /> : null}
+                    <span>{tab.label}</span>
+                  </span>
+                </Button>
+              ))
+            : projectTabs.map((tab) => (
+                <Button
+                  key={tab.id}
+                  ref={registerItem(tab.id)}
+                  type="button"
+                  variant="ghost"
+                  className={`shrink-0 rounded-none border-b-2 px-3 py-3 text-sm ${
+                    activeTab === tab.id
+                      ? 'border-primary text-foreground'
+                      : 'border-transparent text-foreground/60 hover:border-border hover:text-foreground'
+                  }`}
+                  onClick={() => setActiveTab(tab.id)}
+                >
+                  <span className="inline-flex items-center gap-1.5">
+                    {tab.id === 'planning' && hasPlanningAttention ? <AlertTriangle className="h-3.5 w-3.5 text-amber-500" /> : null}
+                    <span>{tab.label}</span>
+                  </span>
+                </Button>
+              ))}
         </div>
+
+        {mode === 'mobile' && mobileActiveTab !== 'overview' ? (
+          <div className="-mx-4 flex overflow-x-auto border-b border-border/50 px-4">
+            {(mobileActiveTab === 'work' ? mobileWorkTabs : mobileMoreTabs).map((tab) => (
+              <Button
+                key={tab.id}
+                type="button"
+                variant="ghost"
+                className={`shrink-0 rounded-none border-b-2 px-3 py-2 text-xs ${
+                  activeTab === tab.id
+                    ? 'border-primary text-foreground'
+                    : 'border-transparent text-foreground/55 hover:border-border hover:text-foreground'
+                }`}
+                onClick={() => setActiveTab(tab.id)}
+              >
+                <span className="inline-flex items-center gap-1.5">
+                  {tab.id === 'planning' && hasPlanningAttention ? <AlertTriangle className="h-3.5 w-3.5 text-amber-500" /> : null}
+                  <span>{tab.label}</span>
+                </span>
+              </Button>
+            ))}
+          </div>
+        ) : null}
       </div>
 
       {activeTab === 'overview' && (
         <div className="space-y-4" {...swipeHandlers}>
+          {mode === 'mobile' ? (
+            <Card>
+              <CardContent className="grid grid-cols-2 gap-2 p-3">
+                <Button type="button" variant="outline" className="justify-start rounded-2xl" onClick={() => setActiveTab('updates')}>
+                  Uppdateringar
+                </Button>
+                <Button type="button" variant="outline" className="justify-start rounded-2xl" onClick={() => setActiveTab('tasks')}>
+                  Uppgifter
+                </Button>
+                <Button type="button" variant="outline" className="justify-start rounded-2xl" onClick={() => setActiveTab('time')}>
+                  Tid
+                </Button>
+                <Button type="button" variant="outline" className="justify-start rounded-2xl" onClick={() => setActiveTab('planning')}>
+                  Tidsplan
+                </Button>
+              </CardContent>
+            </Card>
+          ) : null}
+
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <ProjectSummaryCard
               icon={FolderKanban}

@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { Copy, Search } from 'lucide-react';
 import { useMemo, useState } from 'react';
@@ -66,6 +67,7 @@ type OrderListItem = {
 
 export default function OrdersPage() {
   const { companyId } = useAppContext();
+  const router = useRouter();
   const supabase = createClient();
   const [search, setSearch] = useState('');
 
@@ -264,26 +266,29 @@ export default function OrdersPage() {
               <TableHead>Status</TableHead>
               <TableHead>Total</TableHead>
               <TableHead>Skapad</TableHead>
-              <TableHead className="text-right">Åtgärder</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading && (
               <TableRow>
-                <TableCell colSpan={7}>Laddar ordrar...</TableCell>
+                <TableCell colSpan={6}>Laddar ordrar...</TableCell>
               </TableRow>
             )}
 
             {!isLoading && (filteredOrders.length ?? 0) === 0 && (
               <TableRow>
-                <TableCell colSpan={7} className="text-foreground/70">
+                <TableCell colSpan={6} className="text-foreground/70">
                   Inga ordrar hittades.
                 </TableCell>
               </TableRow>
             )}
 
             {filteredOrders.map((row) => (
-              <TableRow key={row.id} className={orderStatusSurfaceClass(row.status)}>
+              <TableRow
+                key={row.id}
+                className={`${orderStatusSurfaceClass(row.status)} cursor-pointer`}
+                onClick={() => router.push(`/orders/${row.id}`)}
+              >
                 <TableCell className="font-mono text-xs">{row.orderNo ?? row.id}</TableCell>
                 <TableCell>{row.projectTitle}</TableCell>
                 <TableCell>{row.customerName}</TableCell>
@@ -292,16 +297,6 @@ export default function OrdersPage() {
                 </TableCell>
                 <TableCell>{row.total.toFixed(2)} kr</TableCell>
                 <TableCell>{new Date(row.createdAt).toLocaleDateString('sv-SE')}</TableCell>
-                <TableCell className="text-right">
-                  <div className="flex justify-end gap-2">
-                    <Button asChild size="sm" variant="secondary">
-                      <Link href={`/orders/${row.id}`}>Öppna</Link>
-                    </Button>
-                    <Button asChild size="sm" variant="outline">
-                      <Link href={`/projects/${row.projectId}`}>Projekt</Link>
-                    </Button>
-                  </div>
-                </TableCell>
               </TableRow>
             ))}
           </TableBody>

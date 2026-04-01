@@ -304,6 +304,7 @@ export default function ProjectTasksPanel({
   const [subtaskDraft, setSubtaskDraft] = useState('');
   const [subtaskDraftByTaskId, setSubtaskDraftByTaskId] = useState<Record<string, string>>({});
   const [view, setView] = useState<'list' | 'board'>('list');
+  const [mobileScope, setMobileScope] = useState<'mine' | 'overdue' | 'all'>('mine');
   const [createOpen, setCreateOpen] = useState(false);
   const [activeTaskMemberKey, setActiveTaskMemberKey] = useState<string | null>(null);
   const mode = useBreakpointMode();
@@ -401,6 +402,16 @@ export default function ProjectTasksPanel({
     }),
     [doneTasks, openTasks]
   );
+  const visibleOpenTasks = useMemo(() => {
+    if (mode !== 'mobile') return openTasks;
+    if (mobileScope === 'mine') return myTasks;
+    if (mobileScope === 'overdue') return overdueTasks;
+    return openTasks;
+  }, [mobileScope, mode, myTasks, openTasks, overdueTasks]);
+  const visibleDoneTasks = useMemo(() => {
+    if (mode !== 'mobile' || mobileScope === 'all') return doneTasks;
+    return [];
+  }, [doneTasks, mobileScope, mode]);
 
   function addDraftSubtask() {
     const nextTitle = subtaskDraft.trim();
@@ -509,24 +520,75 @@ export default function ProjectTasksPanel({
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-3 grid-cols-2 md:grid-cols-4">
-        <div className="rounded-lg border p-3">
-          <p className="text-sm text-foreground/70">Öppna uppgifter</p>
-          <p className="mt-1 font-medium">{openTasks.length}</p>
+      {mode === 'mobile' ? (
+        <Card>
+          <CardContent className="space-y-3 p-3">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium">Uppgifter</p>
+                <p className="text-xs text-foreground/60">Fokusera på det som är ditt eller kräver uppmärksamhet nu.</p>
+              </div>
+              <Badge>{visibleOpenTasks.length}</Badge>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setMobileScope('mine')}
+                className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${mobileScope === 'mine' ? 'border-primary bg-primary/10 text-foreground' : 'border-border text-foreground/65'}`}
+              >
+                Mina {myTasks.length}
+              </button>
+              <button
+                type="button"
+                onClick={() => setMobileScope('overdue')}
+                className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${mobileScope === 'overdue' ? 'border-primary bg-primary/10 text-foreground' : 'border-border text-foreground/65'}`}
+              >
+                Försenade {overdueTasks.length}
+              </button>
+              <button
+                type="button"
+                onClick={() => setMobileScope('all')}
+                className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${mobileScope === 'all' ? 'border-primary bg-primary/10 text-foreground' : 'border-border text-foreground/65'}`}
+              >
+                Alla {openTasks.length}
+              </button>
+            </div>
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <div className="rounded-xl border border-border/70 bg-muted/10 px-2 py-2">
+                <p className="text-[11px] uppercase tracking-[0.16em] text-foreground/45">Öppna</p>
+                <p className="mt-1 text-sm font-semibold">{openTasks.length}</p>
+              </div>
+              <div className="rounded-xl border border-border/70 bg-muted/10 px-2 py-2">
+                <p className="text-[11px] uppercase tracking-[0.16em] text-foreground/45">Försenade</p>
+                <p className="mt-1 text-sm font-semibold">{overdueTasks.length}</p>
+              </div>
+              <div className="rounded-xl border border-border/70 bg-muted/10 px-2 py-2">
+                <p className="text-[11px] uppercase tracking-[0.16em] text-foreground/45">Klara</p>
+                <p className="mt-1 text-sm font-semibold">{doneTasks.length}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          <div className="rounded-lg border p-3">
+            <p className="text-sm text-foreground/70">Öppna uppgifter</p>
+            <p className="mt-1 font-medium">{openTasks.length}</p>
+          </div>
+          <div className="rounded-lg border p-3">
+            <p className="text-sm text-foreground/70">Försenade</p>
+            <p className="mt-1 font-medium">{overdueTasks.length}</p>
+          </div>
+          <div className="rounded-lg border p-3">
+            <p className="text-sm text-foreground/70">Klara</p>
+            <p className="mt-1 font-medium">{doneTasks.length}</p>
+          </div>
+          <div className="rounded-lg border p-3">
+            <p className="text-sm text-foreground/70">Tilldelade medlemmar</p>
+            <p className="mt-1 font-medium">{members.length}</p>
+          </div>
         </div>
-        <div className="rounded-lg border p-3">
-          <p className="text-sm text-foreground/70">Försenade</p>
-          <p className="mt-1 font-medium">{overdueTasks.length}</p>
-        </div>
-        <div className="rounded-lg border p-3">
-          <p className="text-sm text-foreground/70">Klara</p>
-          <p className="mt-1 font-medium">{doneTasks.length}</p>
-        </div>
-        <div className="rounded-lg border p-3">
-          <p className="text-sm text-foreground/70">Tilldelade medlemmar</p>
-          <p className="mt-1 font-medium">{members.length}</p>
-        </div>
-      </div>
+      )}
 
       <Card>
         <CardContent className="flex flex-wrap items-center justify-between gap-3 py-4">
@@ -842,11 +904,29 @@ export default function ProjectTasksPanel({
 
       <Card>
         <CardHeader>
-          <CardTitle>{view === 'board' ? 'Board' : 'Aktiva uppgifter'}</CardTitle>
+          <CardTitle>
+            {view === 'board'
+              ? 'Board'
+              : mode === 'mobile'
+                ? mobileScope === 'mine'
+                  ? 'Mina uppgifter'
+                  : mobileScope === 'overdue'
+                    ? 'Försenade uppgifter'
+                    : 'Alla öppna uppgifter'
+                : 'Aktiva uppgifter'}
+          </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           {tasksQuery.isLoading ? <p className="text-sm text-foreground/65">Laddar uppgifter...</p> : null}
-          {!tasksQuery.isLoading && view === 'list' && openTasks.length === 0 ? <p className="text-sm text-foreground/65">Inga uppgifter ännu.</p> : null}
+          {!tasksQuery.isLoading && view === 'list' && visibleOpenTasks.length === 0 ? (
+            <p className="text-sm text-foreground/65">
+              {mode === 'mobile' && mobileScope === 'mine'
+                ? 'Du har inga öppna uppgifter i projektet just nu.'
+                : mode === 'mobile' && mobileScope === 'overdue'
+                  ? 'Inga uppgifter är försenade just nu.'
+                  : 'Inga uppgifter ännu.'}
+            </p>
+          ) : null}
 
           {view === 'board' ? (
             <div className={mode === 'mobile' ? 'flex gap-3 overflow-x-auto pb-1 snap-x snap-mandatory' : 'grid gap-3 xl:grid-cols-3'}>
@@ -909,7 +989,7 @@ export default function ProjectTasksPanel({
             </div>
           ) : (
             <>
-          {openTasks.map((task) => {
+          {visibleOpenTasks.map((task) => {
             const assignee = task.assignee_user_id ? assigneeByUserId.get(task.assignee_user_id) ?? null : null;
             const taskMemberUserIds = taskMemberUserIdsByTaskId.get(task.id) ?? [];
             const taskMembers = taskMemberUserIds
@@ -1151,13 +1231,13 @@ export default function ProjectTasksPanel({
         </CardContent>
       </Card>
 
-      {view === 'list' && doneTasks.length > 0 ? (
+      {view === 'list' && visibleDoneTasks.length > 0 ? (
         <Card>
           <CardHeader>
             <CardTitle>Klara uppgifter</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
-            {doneTasks.map((task) => (
+            {visibleDoneTasks.map((task) => (
               <div key={task.id} className="flex items-center justify-between gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm dark:border-emerald-500/25 dark:bg-emerald-500/10">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">

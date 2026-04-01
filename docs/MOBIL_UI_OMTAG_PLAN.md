@@ -1,0 +1,129 @@
+# Mobil UI Omtag Plan
+
+Detta dokument beskriver hur vi gör ett omtag på mobil-lägets UI så att mobilen blir en snabb arbetsyta i stället för en nedskalad desktop.
+
+Grundprincip:
+- Mobil ska i första hand stödja snabba vardagsflöden.
+- Desktop behåller de tunga detaljvyerna och avancerade ekonomiska arbetsytorna.
+- Mobil ska fortfarande kunna nå alla sidor, men inte visa allt som primärt arbetsläge.
+
+Status:
+- `[ ]` = Ej startad
+- `[-]` = Pågår
+- `[x]` = Klar
+
+## Målbild
+På mobil ska det vara lätt att:
+- se vad som behöver göras nu
+- se status i projekt
+- lägga till projektuppdateringar
+- arbeta med egna uppgifter
+- starta, pausa och stoppa tidrapportering
+- lägga till verifikation eller fota underlag
+
+På mobil ska det fortfarande gå att:
+- nå ekonomi, kunder, ordrar, team och inställningar
+- öppna mer avancerade vyer vid behov
+- navigera till alla sidor i appen även om dessa inte är primära i mobilflödet
+
+## Etapp M1 - Definiera mobilens struktur
+- [ ] M1.1 Bestäm mobilens primära arbetsflöden: hem, projekt, att göra, tid, snabbregistrering
+- [ ] M1.2 Bestäm vilka delar som ska vara primära på mobil och vilka som ska ligga bakom meny eller "mer"
+- [ ] M1.3 Definiera princip för mobil kontra desktop:
+  mobil = jobba snabbt
+  desktop = administrera och analysera
+- [ ] M1.4 Dokumentera vilka sidor som ska få särskild mobilvy i stället för bara responsiv layout
+
+## Etapp M2 - Ny mobil navigation
+- [-] M2.1 Gör om mobilens bottennavigation till en tydlig arbetsnavigation
+- [ ] M2.2 Föreslagen bottennavigation:
+  `Hem`, `Projekt`, `Tid`, `Att göra`, `Meny`
+- [ ] M2.3 Flytta avancerade eller sekundära sidor till `Meny`
+- [ ] M2.4 Säkerställ att `Meny` ger åtkomst till hela appen:
+  kunder, ordrar, ekonomi, team, inställningar, admin
+- [ ] M2.5 Säkerställ att nuvarande djupa länkar och routing fortfarande fungerar på mobil
+
+## Etapp M3 - Mobil startsida
+- [-] M3.1 Skapa en mobil-först startsida som arbetsyta
+- [ ] M3.2 Lägg till blocket `Mitt nu`
+- [ ] M3.3 Lägg till blocket `Mina uppgifter`
+- [ ] M3.4 Lägg till blocket `Mina projekt`
+- [ ] M3.5 Lägg till blocket `Snabbåtgärder`
+- [ ] M3.6 Lägg till blocket `Att göra`
+- [ ] M3.7 Prioritera personlig information först, global information senare eller inte alls
+
+## Etapp M4 - Snabbåtgärder
+- [ ] M4.1 Definiera vilka snabbåtgärder som alltid ska finnas på mobil
+- [ ] M4.2 Föreslagna snabbåtgärder:
+  `Ny uppdatering`, `Starta tid`, `Ny verifikation`, `Fota underlag`, `Ny uppgift`
+- [ ] M4.3 Säkerställ att snabbåtgärderna kan öppnas från både startsidan och plusmenyn
+- [ ] M4.4 Gör snabbåtgärderna till dialog/sheet-flöden i stället för hela formulärsidor där det går
+
+## Etapp M5 - Projekt på mobil
+- [-] M5.1 Dela upp mobilens projektdetalj i enklare lägen
+- [ ] M5.2 Inför mobilens primära projekttabs:
+  `Översikt`, `Arbete`, `Mer`
+- [ ] M5.3 `Översikt` ska visa:
+  status, nästa delmål, senaste aktivitet, ansvarig, medlemmar
+- [ ] M5.4 `Arbete` ska visa:
+  uppdateringar, uppgifter, tid
+- [ ] M5.5 `Mer` ska visa:
+  bilagor, ekonomi, loggar, avancerade inställningar
+- [ ] M5.6 Flytta tunga redigeringsformulär till sheets/dialoger där det passar
+- [ ] M5.7 Säkerställ att det är mycket lätt att skapa ny uppdatering från projektsidan
+
+## Etapp M6 - Uppgifter på mobil
+- [-] M6.1 Gör `Mina uppgifter` till en central mobilvy
+- [ ] M6.2 Prioritera visning av:
+  försenade, idag, nästa, blockerade
+- [ ] M6.3 Gör det lätt att markera uppgift klar eller öppna uppgift
+- [ ] M6.4 Gör uppgiftens detaljvy enklare på mobil än på desktop
+- [ ] M6.5 Säkerställ att ansvarig, deadline, prioritet och projekt syns tydligt utan att vyn blir tung
+
+## Etapp M7 - Tidrapportering på mobil
+- [-] M7.1 Gör tidrapportering till en av mobilens viktigaste ytor
+- [ ] M7.2 Låt aktiv timer vara synlig och lätt att styra från hela mobilappen
+- [ ] M7.3 Gör det lätt att starta tid från:
+  hem, projekt, uppgift, plusmeny
+- [ ] M7.4 Gör det lätt att pausa, fortsätta och stoppa utan att lämna nuvarande vy
+- [ ] M7.5 Visa senaste tidsposter i en kompakt mobilvy
+
+## Etapp M8 - Verifikationer och snabbregistrering på mobil
+- [ ] M8.1 Bygg en enkel mobilvy för verifikationer med fokus på registrering
+- [ ] M8.2 Prioritera:
+  ny verifikation, fota kvitto, ladda upp underlag, se sådant som kräver åtgärd
+- [ ] M8.3 Låt avancerade ekonomi- och avstämningsvyer finnas bakom `Meny`
+- [ ] M8.4 Säkerställ att ekonomi på mobil inte blir tabelltung som desktop
+
+## Etapp M9 - Meny för full åtkomst
+- [ ] M9.1 Skapa en tydlig mobil `Meny`-yta för full appåtkomst
+- [ ] M9.2 Gruppera innehåll efter avdelning:
+  arbete, relationer, ekonomi, administration
+- [ ] M9.3 Visa mindre vanliga sidor här i stället för i bottennavigationen
+- [ ] M9.4 Säkerställ att ingen sida "försvinner" från mobil bara för att UI:t förenklas
+
+## Etapp M10 - Gemensamma mobilprinciper
+- [ ] M10.1 Minska mängden alltid synliga filter, tabeller och metadata på mobil
+- [ ] M10.2 Prioritera kort, listor, sheets och actions framför stora formulärblock
+- [ ] M10.3 Sätt tydliga regler för när mobil ska ha egen layout och när responsiv desktop räcker
+- [ ] M10.4 Säkerställ att sticky header, bottennavigation och flytande actions inte krockar
+- [ ] M10.5 Säkerställ att dropdowns, menyer och sheets fungerar stabilt på mobil
+
+## Etapp M11 - Utrullningsordning
+Bygg i denna ordning:
+
+1. [-] M11.1 Ny mobil navigation
+2. [-] M11.2 Ny mobil startsida
+3. [-] M11.3 Ny mobil projektyta
+4. [-] M11.4 Ny mobil uppgiftsyta
+5. [-] M11.5 Ny mobil tidrapportering
+6. [ ] M11.6 Ny mobil verifikations-/snabbregistreringsyta
+7. [ ] M11.7 Meny för full åtkomst
+8. [ ] M11.8 Finjustering av gemensamma mobilprinciper
+
+## Definition av klart
+Mobil-omtagen kan anses klara när:
+- en användare kan utföra sina vanligaste dagliga uppgifter utan att känna att mobilen är en sämre desktop
+- de avancerade delarna fortfarande går att nå från mobil
+- projektuppdatering, uppgifter, tid och verifikationer är märkbart snabbare att använda än idag
+- navigeringen känns konsekvent, enkel och avsiktlig
