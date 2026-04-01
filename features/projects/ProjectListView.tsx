@@ -26,6 +26,20 @@ function formatProjectDate(value: string | null | undefined) {
   return new Date(value).toLocaleDateString('sv-SE');
 }
 
+function getMemberLabel(member: {
+  display_name: string | null;
+  email: string | null;
+  handle: string | null;
+  user_id: string;
+}) {
+  return getUserDisplayName({
+    displayName: member.display_name,
+    email: member.email,
+    handle: member.handle,
+    userId: member.user_id
+  });
+}
+
 function statusTone(status: string) {
   const map: Record<string, string> = {
     todo: 'border-slate-200/80 bg-slate-100/80 text-slate-800 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-200',
@@ -246,6 +260,9 @@ export default function ProjectListView({
             {filteredProjects.map((project) => {
               const members = membersByProjectId.get(project.id) ?? [];
               const responsible = availableMembers.find((member) => member.user_id === project.responsible_user_id) ?? null;
+              const memberVisuals = responsible
+                ? [responsible, ...members.filter((member) => member.user_id !== responsible.user_id)]
+                : members;
               const customerName = customerById.get(project.customer_id ?? '') ?? '-';
               const updatedAgo = daysSince(project.updated_at);
               const statusLabel = columns.find((column) => column.key === (project.workflow_status ?? project.status))?.title ?? project.workflow_status ?? project.status;
@@ -277,15 +294,11 @@ export default function ProjectListView({
                     />
                     <MiniFact label="Uppdaterad" value={updatedAgo === 0 ? 'Idag' : `${updatedAgo} d sedan`} />
                   </div>
-                  {members.length > 0 ? (
+                  {memberVisuals.length > 0 ? (
                     <div className="mt-3 flex flex-wrap gap-1.5">
-                      {members.slice(0, 6).map((member) => {
-                        const label = getUserDisplayName({
-                          displayName: member.display_name,
-                          email: member.email,
-                          handle: member.handle,
-                          userId: member.user_id
-                        });
+                      {memberVisuals.slice(0, 6).map((member) => {
+                        const label = getMemberLabel(member);
+                        const isResponsible = member.user_id === responsible?.user_id;
                         return (
                           <ProfileBadge
                             key={`${project.id}-${member.user_id}`}
@@ -293,7 +306,7 @@ export default function ProjectListView({
                             color={member.color}
                             avatarUrl={member.avatar_url}
                             emoji={member.emoji}
-                            className="h-7 w-7 shrink-0 border border-background"
+                            className={`h-7 w-7 shrink-0 border border-background ${isResponsible ? 'ring-2 ring-primary ring-offset-2 ring-offset-background' : ''}`}
                             textClassName="text-[10px] font-semibold text-white"
                           />
                         );
@@ -306,36 +319,30 @@ export default function ProjectListView({
           </div>
 
           <div className="hidden overflow-hidden rounded-2xl border border-border/70 md:block">
-            <div className="grid grid-cols-[minmax(0,2.2fr)_130px_minmax(0,1.2fr)_160px_130px_130px] gap-4 bg-muted/30 px-5 py-3 text-xs font-semibold uppercase tracking-[0.16em] text-foreground/45">
+            <div className="grid grid-cols-[minmax(0,2.2fr)_130px_minmax(0,1.45fr)_160px_130px] gap-4 bg-muted/30 px-5 py-3 text-xs font-semibold uppercase tracking-[0.16em] text-foreground/45">
               <span>Projekt</span>
               <span>Skapad</span>
               <span>Kund / Team</span>
               <span>Status</span>
-              <span>Ansvarig</span>
               <span>Uppdaterad</span>
             </div>
             <div className="divide-y divide-border/70 bg-card/70">
               {filteredProjects.map((project) => {
                 const members = membersByProjectId.get(project.id) ?? [];
                 const responsible = availableMembers.find((member) => member.user_id === project.responsible_user_id) ?? null;
+                const memberVisuals = responsible
+                  ? [responsible, ...members.filter((member) => member.user_id !== responsible.user_id)]
+                  : members;
                 const customerName = customerById.get(project.customer_id ?? '') ?? '-';
                 const updatedAgo = daysSince(project.updated_at);
                 const summary = activitySummaryByProjectId.get(project.id);
                 const statusLabel = columns.find((column) => column.key === (project.workflow_status ?? project.status))?.title ?? project.workflow_status ?? project.status;
-                const responsibleLabel = responsible
-                  ? getUserDisplayName({
-                      displayName: responsible.display_name,
-                      email: responsible.email,
-                      handle: responsible.handle,
-                      userId: responsible.user_id
-                    })
-                  : 'Ej satt';
 
                 return (
                   <Link
                     key={project.id}
                     href={`/projects/${project.id}` as Route}
-                    className="grid grid-cols-[minmax(0,2.2fr)_130px_minmax(0,1.2fr)_160px_130px_130px] gap-4 px-5 py-4 transition hover:bg-muted/20"
+                    className="grid grid-cols-[minmax(0,2.2fr)_130px_minmax(0,1.45fr)_160px_130px] gap-4 px-5 py-4 transition hover:bg-muted/20"
                   >
                     <div className="min-w-0">
                       <p className="truncate font-medium text-foreground">{project.title}</p>
@@ -347,13 +354,9 @@ export default function ProjectListView({
                     <div className="min-w-0">
                       <p className="truncate text-sm text-foreground/80">{customerName}</p>
                       <div className="mt-2 flex flex-wrap gap-1.5">
-                        {members.slice(0, 4).map((member) => {
-                          const label = getUserDisplayName({
-                            displayName: member.display_name,
-                            email: member.email,
-                            handle: member.handle,
-                            userId: member.user_id
-                          });
+                        {memberVisuals.slice(0, 5).map((member) => {
+                          const label = getMemberLabel(member);
+                          const isResponsible = member.user_id === responsible?.user_id;
                           return (
                             <ProfileBadge
                               key={`${project.id}-${member.user_id}`}
@@ -361,23 +364,29 @@ export default function ProjectListView({
                               color={member.color}
                               avatarUrl={member.avatar_url}
                               emoji={member.emoji}
-                              className="h-7 w-7 shrink-0 border border-background"
+                              className={`h-7 w-7 shrink-0 border border-background ${isResponsible ? 'ring-2 ring-primary ring-offset-2 ring-offset-background' : ''}`}
                               textClassName="text-[10px] font-semibold text-white"
                             />
                           );
                         })}
-                        {members.length > 4 ? (
+                        {memberVisuals.length > 5 ? (
                           <span className="inline-flex h-7 min-w-7 items-center justify-center rounded-full border border-border/70 bg-muted/30 px-1.5 text-[11px] text-foreground/65">
-                            +{members.length - 4}
+                            +{memberVisuals.length - 5}
                           </span>
                         ) : null}
                       </div>
+                      {responsible ? (
+                        <p className="mt-2 truncate text-xs text-foreground/55">
+                          Ansvarig: {getMemberLabel(responsible)}
+                        </p>
+                      ) : (
+                        <p className="mt-2 text-xs text-foreground/45">Ansvarig saknas</p>
+                      )}
                     </div>
                     <div className="space-y-2">
                       <Badge className={statusTone(project.status)}>{statusLabel}</Badge>
                       <p className="text-xs text-foreground/55">{project.end_date ? `Slut ${formatProjectDate(project.end_date)}` : 'Inget slutdatum'}</p>
                     </div>
-                    <div className="min-w-0 text-sm text-foreground/75">{responsibleLabel}</div>
                     <div className="text-sm text-foreground/75">{updatedAgo === 0 ? 'Idag' : `${updatedAgo} d sedan`}</div>
                   </Link>
                 );
