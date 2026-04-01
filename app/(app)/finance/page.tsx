@@ -16,6 +16,7 @@ import { useFinanceOverview } from '@/features/finance/financeQueries';
 import { canViewFinance, canWriteFinance } from '@/lib/auth/capabilities';
 import { vatReport } from '@/lib/rpc';
 import { createClient } from '@/lib/supabase/client';
+import { useBreakpointMode } from '@/lib/ui/useBreakpointMode';
 import BankReconciliationCard from '@/features/finance/BankReconciliationCard';
 
 type StatusFilter = 'all' | 'booked' | 'voided';
@@ -147,6 +148,7 @@ export default function FinancePage() {
   const { role, companyId, capabilities } = useAppContext();
   const supabase = useMemo(() => createClient(), []);
   const query = useFinanceOverview(companyId);
+  const mode = useBreakpointMode();
   const canReadFinance = canViewFinance(role, capabilities);
   const canEditFinance = canWriteFinance(role, capabilities);
 
@@ -370,6 +372,192 @@ export default function FinancePage() {
     statusFilter !== 'all' ||
     sourceFilter !== 'all' ||
     attachmentFilter !== 'all';
+
+  if (mode === 'mobile') {
+    return (
+      <section className="space-y-4">
+        <Card className="overflow-hidden border-border/70 bg-gradient-to-br from-card via-card to-muted/20">
+          <CardContent className="space-y-4 p-4">
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.18em] text-foreground/45">
+                <Wallet className="h-3.5 w-3.5" />
+                <span>Ekonomi</span>
+              </div>
+              <div>
+                <h1 className="text-xl font-semibold tracking-tight">Snabbregistrering och kontroll</h1>
+                <p className="text-sm text-foreground/65">
+                  Mobilen fokuserar på att lägga till verifikationer, ladda upp underlag och fånga sådant som kräver åtgärd.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              {canEditFinance ? (
+                <>
+                  <MobileFinanceAction href={'/finance/verifications/new' as Route} label="Ny verifikation" />
+                  <MobileFinanceAction href={'/finance/verifications/drafts' as Route} label="Utkast" variant="secondary" />
+                </>
+              ) : null}
+              <MobileFinanceAction href={'/receivables' as Route} label="Kundreskontra" variant="outline" />
+              <MobileFinanceAction href={'/payables' as Route} label="Leverantörsreskontra" variant="outline" />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <MiniStatCard
+                icon={Filter}
+                title="Att åtgärda"
+                value={String(totalTodoCount)}
+                detail={hiddenCount > 0 ? `${hiddenCount} dolda kort` : 'Inget dolt'}
+                compact
+                tone="rose"
+              />
+              <MiniStatCard
+                icon={FileText}
+                title="Saknar underlag"
+                value={String(stats.withoutAttachmentCount)}
+                detail={`${stats.withAttachmentCount} med bilaga`}
+                compact
+                tone="amber"
+              />
+              <MiniStatCard
+                icon={ClipboardList}
+                title="Verifikationer"
+                value={String(stats.allCount)}
+                detail={`${stats.voidedCount} makulerade`}
+                compact
+                tone="blue"
+              />
+              <MiniStatCard
+                icon={BarChart3}
+                title="Moms ruta 49"
+                value={money(vat49)}
+                detail={`${monthRange.start} - ${monthRange.end}`}
+                compact
+                tone="emerald"
+              />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle>Det här kräver åtgärd</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <TodoCard
+              title="Obokförda fakturor"
+              count={todo.unbookedInvoices.length}
+              hidden={dismissed.unbooked_invoices}
+              dismissedAt={dismissedAt.unbooked_invoices}
+              onDone={() => markTodoDone('unbooked_invoices')}
+              onUndo={() => undoTodoDone('unbooked_invoices')}
+            >
+              {todo.unbookedInvoices.length === 0 ? (
+                <p className="text-sm text-foreground/70">Inga obokförda fakturor.</p>
+              ) : (
+                <div className="space-y-2">
+                  {todo.unbookedInvoices.slice(0, 4).map((inv) => (
+                    <Link key={inv.id} href={`/invoices/${inv.id}`} className="block rounded-xl border border-border/70 bg-muted/20 p-3 text-sm">
+                      <p className="font-medium">{inv.invoice_no}</p>
+                      <p className="text-foreground/70">{money(Number(inv.total))} {inv.currency}</p>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </TodoCard>
+
+            <TodoCard
+              title="Förfallna kundfakturor"
+              count={todo.overdueInvoices.length}
+              hidden={dismissed.overdue_invoices}
+              dismissedAt={dismissedAt.overdue_invoices}
+              onDone={() => markTodoDone('overdue_invoices')}
+              onUndo={() => undoTodoDone('overdue_invoices')}
+            >
+              {todo.overdueInvoices.length === 0 ? (
+                <p className="text-sm text-foreground/70">Inga förfallna fakturor.</p>
+              ) : (
+                <div className="space-y-2">
+                  {todo.overdueInvoices.slice(0, 4).map((inv) => (
+                    <Link key={inv.id} href={`/invoices/${inv.id}`} className="block rounded-xl border border-border/70 bg-muted/20 p-3 text-sm">
+                      <p className="font-medium">{inv.invoice_no}</p>
+                      <p className="text-foreground/70">Förfallodag: {formatDate(inv.due_date)}</p>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </TodoCard>
+
+            <TodoCard
+              title="Verifikationer utan bilaga"
+              count={todo.verificationsWithoutAttachment.length}
+              hidden={dismissed.verifications_without_attachment}
+              dismissedAt={dismissedAt.verifications_without_attachment}
+              onDone={() => markTodoDone('verifications_without_attachment')}
+              onUndo={() => undoTodoDone('verifications_without_attachment')}
+            >
+              {todo.verificationsWithoutAttachment.length === 0 ? (
+                <p className="text-sm text-foreground/70">Alla bokförda verifikationer har bilaga.</p>
+              ) : (
+                <div className="space-y-2">
+                  {todo.verificationsWithoutAttachment.slice(0, 4).map((row) => (
+                    <Link key={row.id} href={`/finance/verifications/${row.id}`} className="block rounded-xl border border-border/70 bg-muted/20 p-3 text-sm">
+                      <p className="font-medium">{verificationNumberLabel(row.fiscal_year, row.verification_no)}</p>
+                      <p className="truncate text-foreground/70">{row.description}</p>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </TodoCard>
+
+            {hiddenCount > 0 ? (
+              <Button type="button" variant="outline" className="w-full" onClick={resetAllTodoCards}>
+                Visa alla dolda kort ({hiddenCount})
+              </Button>
+            ) : null}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle>Senaste verifikationerna</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="grid gap-2">
+              {filteredRows.length === 0 ? (
+                <p className="text-sm text-foreground/70">Inga verifikationer att visa.</p>
+              ) : (
+                filteredRows.slice(0, 6).map((row) => (
+                  <Link key={row.id} href={`/finance/verifications/${row.id}`} className="block">
+                    <div className="rounded-xl border border-border/70 bg-card/70 p-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium">{verificationNumberLabel(row.fiscal_year, row.verification_no)}</p>
+                          <p className="mt-1 truncate text-sm text-foreground/70">{row.description}</p>
+                        </div>
+                        <Badge>{statusLabel(row.status)}</Badge>
+                      </div>
+                      <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                        <ReviewFact label="Datum" value={formatDate(row.date)} />
+                        <ReviewFact label="Belopp" value={money(Number(row.total))} />
+                        <ReviewFact label="Källa" value={sourceLabel(row.source)} />
+                        <ReviewFact label="Underlag" value={row.attachment_path ? 'Bilaga finns' : 'Saknas'} />
+                      </div>
+                    </div>
+                  </Link>
+                ))
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <MobileFinanceAction href={'/finance/verifications/drafts' as Route} label="Utkast" variant="outline" />
+              <MobileFinanceAction href={'/reports' as Route} label="Rapporter" variant="outline" />
+            </div>
+          </CardContent>
+        </Card>
+      </section>
+    );
+  }
 
   return (
     <section className="space-y-4">
@@ -922,6 +1110,22 @@ export default function FinancePage() {
         </div>
       )}
     </section>
+  );
+}
+
+function MobileFinanceAction({
+  href,
+  label,
+  variant = 'default'
+}: {
+  href: Route;
+  label: string;
+  variant?: 'default' | 'secondary' | 'outline';
+}) {
+  return (
+    <Button asChild variant={variant} className="h-auto min-h-11 whitespace-normal py-3 text-center">
+      <Link href={href}>{label}</Link>
+    </Button>
   );
 }
 

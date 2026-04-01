@@ -24,7 +24,7 @@ export default function MobileShell({
     <div className="min-h-screen lg:hidden">
       <MobileHeader role={role} companyName={companyName} userEmail={userEmail} />
       <OfflineBanner />
-      <main className="px-4 pb-[calc(9.5rem+env(safe-area-inset-bottom))] pt-4">
+      <main className="px-4 pt-4 pb-[calc(10rem+env(safe-area-inset-bottom))] scroll-pb-[calc(11rem+env(safe-area-inset-bottom))]">
         <MfaReminder />
         {children}
       </main>

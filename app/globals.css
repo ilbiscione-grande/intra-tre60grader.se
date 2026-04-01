@@ -118,11 +118,16 @@ body {
   scrollbar-gutter: stable;
 }
 
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
 body {
   margin: 0;
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif;
   background: hsl(var(--background));
   color: hsl(var(--foreground));
+  overscroll-behavior-y: none;
 }
 
 a {
@@ -145,6 +150,12 @@ a {
 
   body {
     @apply bg-background text-foreground antialiased;
+  }
+
+  input,
+  select,
+  textarea {
+    font-size: 16px;
   }
 }
 

@@ -16,25 +16,26 @@ import type { Capability, Role } from '@/lib/types';
 type MenuItem = {
   href: Route;
   label: string;
+  description: string;
   visible: (role: Role, capabilities: Capability[]) => boolean;
   icon: React.ComponentType<{ className?: string }>;
   group: 'arbete' | 'relationer' | 'ekonomi' | 'ovrigt';
 };
 
 const menuItems: MenuItem[] = [
-  { href: '/todo' as Route, label: 'Att göra', visible: () => true, icon: ListTodo, group: 'arbete' },
-  { href: '/projects', label: 'Projekt', visible: () => true, icon: BriefcaseBusiness, group: 'arbete' },
-  { href: '/sync', label: 'Synk', visible: () => true, icon: Activity, group: 'arbete' },
-  { href: '/customers', label: 'Kunder', visible: (role, capabilities) => canAccessCustomers(role, capabilities), icon: Building2, group: 'relationer' },
-  { href: '/orders', label: 'Ordrar', visible: (role, capabilities) => canAccessOrders(role, capabilities), icon: ScrollText, group: 'relationer' },
-  { href: '/team', label: 'Medlemmar', visible: (role, capabilities) => canAccessTeam(role, capabilities), icon: Shield, group: 'relationer' },
-  { href: '/finance', label: 'Ekonomi', visible: (role, capabilities) => canAccessFinance(role, capabilities), icon: Activity, group: 'ekonomi' },
-  { href: '/invoices', label: 'Fakturor', visible: (role, capabilities) => canAccessFinance(role, capabilities), icon: Receipt, group: 'ekonomi' },
-  { href: '/receivables', label: 'Kundreskontra', visible: (role, capabilities) => canAccessFinance(role, capabilities), icon: WalletCards, group: 'ekonomi' },
-  { href: '/payables', label: 'Leverantörsreskontra', visible: (role, capabilities) => canAccessFinance(role, capabilities), icon: Landmark, group: 'ekonomi' },
-  { href: '/reports', label: 'Rapporter', visible: (role, capabilities) => canAccessReports(role, capabilities), icon: BarChart3, group: 'ekonomi' },
-  { href: '/help' as Route, label: 'Hjälp', visible: () => true, icon: CircleHelp, group: 'ovrigt' },
-  { href: '/settings', label: 'Inställningar', visible: () => true, icon: Settings, group: 'ovrigt' }
+  { href: '/todo' as Route, label: 'Att göra', description: 'Det som kräver uppmärksamhet nu.', visible: () => true, icon: ListTodo, group: 'arbete' },
+  { href: '/projects', label: 'Projekt', description: 'Projekt, status, uppgifter och uppdateringar.', visible: () => true, icon: BriefcaseBusiness, group: 'arbete' },
+  { href: '/sync', label: 'Synk', description: 'Import, bank och integrationsflöden.', visible: () => true, icon: Activity, group: 'arbete' },
+  { href: '/customers', label: 'Kunder', description: 'Kundöversikt, kundkort och relationer.', visible: (role, capabilities) => canAccessCustomers(role, capabilities), icon: Building2, group: 'relationer' },
+  { href: '/orders', label: 'Ordrar', description: 'Orderlista, orderdetaljer och kopplingar.', visible: (role, capabilities) => canAccessOrders(role, capabilities), icon: ScrollText, group: 'relationer' },
+  { href: '/team', label: 'Medlemmar', description: 'Team, roller och medlemsåtkomst.', visible: (role, capabilities) => canAccessTeam(role, capabilities), icon: Shield, group: 'relationer' },
+  { href: '/finance', label: 'Ekonomi', description: 'Verifikationer, lägesbild och snabbregistrering.', visible: (role, capabilities) => canAccessFinance(role, capabilities), icon: Activity, group: 'ekonomi' },
+  { href: '/invoices', label: 'Fakturor', description: 'Kundfakturor och uppföljning.', visible: (role, capabilities) => canAccessFinance(role, capabilities), icon: Receipt, group: 'ekonomi' },
+  { href: '/receivables', label: 'Kundreskontra', description: 'Öppna kundfordringar och avstämning.', visible: (role, capabilities) => canAccessFinance(role, capabilities), icon: WalletCards, group: 'ekonomi' },
+  { href: '/payables', label: 'Leverantörsreskontra', description: 'Öppna leverantörsfakturor och utbetalningar.', visible: (role, capabilities) => canAccessFinance(role, capabilities), icon: Landmark, group: 'ekonomi' },
+  { href: '/reports', label: 'Rapporter', description: 'Ekonomi- och verksamhetsrapporter.', visible: (role, capabilities) => canAccessReports(role, capabilities), icon: BarChart3, group: 'ekonomi' },
+  { href: '/help' as Route, label: 'Hjälp', description: 'Guider, svar och dokumentation.', visible: () => true, icon: CircleHelp, group: 'ovrigt' },
+  { href: '/settings', label: 'Inställningar', description: 'Bolag, profiler och appinställningar.', visible: () => true, icon: Settings, group: 'ovrigt' }
 ];
 
 export default function MobileBottomNav({ role, capabilities }: { role: Role; capabilities: Capability[] }) {
@@ -42,15 +43,25 @@ export default function MobileBottomNav({ role, capabilities }: { role: Role; ca
   const router = useRouter();
   const { hasActiveTimer, openControlsDialog, openStartDialog } = useTimeTracker();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [menuSearch, setMenuSearch] = useState('');
   const visibleMenuItems = menuItems.filter((item) => item.visible(role, capabilities));
+  const normalizedMenuSearch = menuSearch.trim().toLowerCase();
+  const filteredMenuItems = useMemo(
+    () =>
+      visibleMenuItems.filter((item) => {
+        if (!normalizedMenuSearch) return true;
+        return `${item.label} ${item.description}`.toLowerCase().includes(normalizedMenuSearch);
+      }),
+    [normalizedMenuSearch, visibleMenuItems]
+  );
   const groupedMenuItems = useMemo(
     () => ({
-      arbete: visibleMenuItems.filter((item) => item.group === 'arbete'),
-      relationer: visibleMenuItems.filter((item) => item.group === 'relationer'),
-      ekonomi: visibleMenuItems.filter((item) => item.group === 'ekonomi'),
-      ovrigt: visibleMenuItems.filter((item) => item.group === 'ovrigt')
+      arbete: filteredMenuItems.filter((item) => item.group === 'arbete'),
+      relationer: filteredMenuItems.filter((item) => item.group === 'relationer'),
+      ekonomi: filteredMenuItems.filter((item) => item.group === 'ekonomi'),
+      ovrigt: filteredMenuItems.filter((item) => item.group === 'ovrigt')
     }),
-    [visibleMenuItems]
+    [filteredMenuItems]
   );
 
   useEffect(() => {
@@ -118,8 +129,27 @@ export default function MobileBottomNav({ role, capabilities }: { role: Role; ca
         </div>
       </nav>
 
-      <ActionSheet open={menuOpen} onClose={() => setMenuOpen(false)} title="Meny" description="Full åtkomst till appens alla avdelningar.">
+      <ActionSheet
+        open={menuOpen}
+        onClose={() => {
+          setMenuOpen(false);
+          setMenuSearch('');
+        }}
+        title="Meny"
+        description="Alla avdelningar och genvägar för mobil."
+      >
         <div className="space-y-4">
+          <div className="rounded-2xl border border-border/70 bg-muted/15 p-3">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-foreground/55">Hitta sida</p>
+            <input
+              type="text"
+              value={menuSearch}
+              onChange={(event) => setMenuSearch(event.target.value)}
+              placeholder="Sök projekt, ekonomi, kunder..."
+              className="mt-2 h-11 w-full rounded-xl border border-border bg-background px-3 text-sm outline-none ring-0 placeholder:text-foreground/45"
+            />
+          </div>
+
           <MenuSection
             title="Arbete"
             items={groupedMenuItems.arbete}
@@ -177,6 +207,11 @@ export default function MobileBottomNav({ role, capabilities }: { role: Role; ca
             pathname={pathname}
             onNavigate={() => setMenuOpen(false)}
           />
+          {filteredMenuItems.length === 0 ? (
+            <div className="rounded-2xl border border-border/70 bg-muted/15 p-4 text-sm text-foreground/70">
+              Ingen sida matchar sökningen.
+            </div>
+          ) : null}
         </div>
       </ActionSheet>
     </>
@@ -201,7 +236,7 @@ function MenuSection({
   return (
     <div className="space-y-2">
       <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-foreground/55">{title}</p>
-      <div className="grid grid-cols-2 gap-2">
+      <div className="space-y-2">
         {items.map((item) => {
           const Icon = item.icon;
           const active = pathname?.startsWith(item.href);
@@ -215,11 +250,16 @@ function MenuSection({
               onTouchStart={() => router.prefetch(item.href)}
               className={cn(
                 buttonVariants({ variant: active ? 'default' : 'outline', size: 'sm' }),
-                'h-11 justify-start rounded-2xl px-3 text-sm'
+                'h-auto min-h-14 justify-start rounded-2xl px-3 py-3 text-left text-sm'
               )}
             >
-              <Icon className="mr-2 h-4 w-4 shrink-0" />
-              <span className="truncate">{item.label}</span>
+              <Icon className="mr-3 h-4 w-4 shrink-0 self-start" />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate font-medium">{item.label}</span>
+                <span className={cn('mt-0.5 block whitespace-normal text-xs', active ? 'text-primary-foreground/80' : 'text-foreground/60')}>
+                  {item.description}
+                </span>
+              </span>
             </Link>
           );
         })}
