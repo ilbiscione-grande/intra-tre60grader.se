@@ -388,10 +388,10 @@ export default function ProjectsPage() {
           </>
         ) : null}
         <SectionErrorBoundary title="Projektflöde">
-          {viewMode === 'board' ? (
-            <ProjectBoardMobile companyId={companyId} searchTerm={projectSearch} statusFilter={statusFilter} currentUserId={currentUserId} selectedMemberIds={selectedMemberIds} startDateFilter={startDateFilter} endDateFilter={endDateFilter} />
-          ) : (
-            <ProjectListView companyId={companyId} searchTerm={projectSearch} statusFilter={statusFilter} currentUserId={currentUserId} selectedMemberIds={selectedMemberIds} startDateFilter={startDateFilter} endDateFilter={endDateFilter} />
+        {viewMode === 'board' ? (
+          <ProjectBoardMobile companyId={companyId} searchTerm={projectSearch} statusFilter={statusFilter} currentUserId={currentUserId} selectedMemberIds={selectedMemberIds} startDateFilter={startDateFilter} endDateFilter={endDateFilter} />
+        ) : (
+            <ProjectListView companyId={companyId} searchTerm={projectSearch} statusFilter={statusFilter} onStatusFilterChange={setStatusFilter} statusOptions={statusOptions} selectedMemberIds={selectedMemberIds} startDateFilter={startDateFilter} endDateFilter={endDateFilter} />
           )}
         </SectionErrorBoundary>
 
@@ -436,7 +436,7 @@ export default function ProjectsPage() {
         {viewMode === 'board' ? (
           <ProjectBoardDesktop companyId={companyId} searchTerm={projectSearch} statusFilter={statusFilter} currentUserId={currentUserId} selectedMemberIds={selectedMemberIds} startDateFilter={startDateFilter} endDateFilter={endDateFilter} />
         ) : (
-          <ProjectListView companyId={companyId} searchTerm={projectSearch} statusFilter={statusFilter} currentUserId={currentUserId} selectedMemberIds={selectedMemberIds} startDateFilter={startDateFilter} endDateFilter={endDateFilter} />
+          <ProjectListView companyId={companyId} searchTerm={projectSearch} statusFilter={statusFilter} onStatusFilterChange={setStatusFilter} statusOptions={statusOptions} selectedMemberIds={selectedMemberIds} startDateFilter={startDateFilter} endDateFilter={endDateFilter} />
         )}
       </SectionErrorBoundary>
 
