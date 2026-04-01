@@ -23,7 +23,7 @@ import ActionSheet from '@/components/common/ActionSheet';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { PROJECT_COLUMN_COLOR_OPTIONS, getProjectColumnBackground } from '@/features/projects/columnColors';
+import { PROJECT_COLUMN_COLOR_OPTIONS, getProjectColumnAccent, getProjectColumnBackground } from '@/features/projects/columnColors';
 import { getUserDisplayName } from '@/features/profile/profileBadge';
 import ProjectCard from '@/features/projects/ProjectCard';
 import { useMoveProject, useProjectActivitySummaries, useProjectColumns, useProjectCustomers, useProjectMembers, useProjects, useUpdateProjectWorkflowStatus } from '@/features/projects/projectQueries';
@@ -169,11 +169,12 @@ function ActiveMobileColumn({
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: columnId(status) });
   const backgroundColor = getProjectColumnBackground(bgColor);
+  const accentColor = getProjectColumnAccent(bgColor);
 
   return (
     <section
       ref={setNodeRef}
-      className={`rounded-[22px] border p-4 shadow-sm transition ${
+      className={`overflow-hidden rounded-[22px] border shadow-sm transition ${
         isOver
           ? 'border-primary/70 bg-primary/5 ring-2 ring-primary/25'
           : isLocked
@@ -182,6 +183,8 @@ function ActiveMobileColumn({
       }`}
       style={{ backgroundColor }}
     >
+      {accentColor ? <div className="h-1.5 w-full" style={{ backgroundColor: accentColor }} /> : null}
+      <div className="p-4">
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
           <h3 className="text-lg font-semibold">{title}</h3>
@@ -192,6 +195,7 @@ function ActiveMobileColumn({
         <Badge>{count}</Badge>
       </div>
       {children}
+      </div>
     </section>
   );
 }

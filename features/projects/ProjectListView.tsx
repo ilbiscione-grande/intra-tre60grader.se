@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import type { Route } from 'next';
 import { useMemo, useState } from 'react';
 import { AlertTriangle, ArrowDown, ArrowUp, Clock3, FolderKanban, UserRound } from 'lucide-react';
@@ -115,6 +116,7 @@ export default function ProjectListView({
   const [sortKey, setSortKey] = useState<SortKey>('updated_at');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const { role } = useAppContext();
+  const router = useRouter();
   const queryClient = useQueryClient();
   const canManageMembers = role !== 'auditor';
   const projectsQuery = useProjects(companyId);
@@ -354,8 +356,11 @@ export default function ProjectListView({
               const statusLabel = columns.find((column) => column.key === (project.workflow_status ?? project.status))?.title ?? project.workflow_status ?? project.status;
 
               return (
-                <div key={project.id} className="relative rounded-2xl border border-border/70 bg-card p-4 transition hover:border-primary/35 hover:bg-muted/15">
-                  <Link href={`/projects/${project.id}` as Route} className="absolute inset-0 z-10 rounded-[inherit]" aria-label={`Öppna projekt ${project.title}`} />
+                <div
+                  key={project.id}
+                  className="relative cursor-pointer rounded-2xl border border-border/70 bg-card p-4 transition hover:border-primary/35 hover:bg-muted/15"
+                  onClick={() => router.push(`/projects/${project.id}` as Route)}
+                >
                   <div className="relative z-20 flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="text-sm font-semibold">{project.title}</p>
@@ -433,13 +438,9 @@ export default function ProjectListView({
                 return (
                   <div
                     key={project.id}
-                    className="relative"
+                    className="relative cursor-pointer"
+                    onClick={() => router.push(`/projects/${project.id}` as Route)}
                   >
-                    <Link
-                      href={`/projects/${project.id}` as Route}
-                      className="absolute inset-0 z-10"
-                      aria-label={`Öppna projekt ${project.title}`}
-                    />
                     <div className="relative z-20 grid grid-cols-[minmax(0,2.1fr)_130px_minmax(0,1fr)_minmax(0,1.25fr)_160px_130px] gap-4 px-5 py-4 transition hover:bg-muted/20">
                     <div className="min-w-0">
                       <p className="truncate font-medium text-foreground">{project.title}</p>

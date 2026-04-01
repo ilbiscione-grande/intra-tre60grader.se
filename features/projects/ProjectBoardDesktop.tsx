@@ -27,7 +27,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { PROJECT_COLUMN_COLOR_OPTIONS, getProjectColumnBackground } from '@/features/projects/columnColors';
+import { PROJECT_COLUMN_COLOR_OPTIONS, getProjectColumnAccent, getProjectColumnBackground } from '@/features/projects/columnColors';
 import { getUserDisplayName } from '@/features/profile/profileBadge';
 import ProjectCard from '@/features/projects/ProjectCard';
 import { useMoveProject, useProjectActivitySummaries, useProjectColumns, useProjectCustomers, useProjectMembers, useProjects, useUpdateProjectWorkflowStatus } from '@/features/projects/projectQueries';
@@ -135,9 +135,15 @@ function ColumnDropZone({
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: columnId(status) });
   const backgroundColor = getProjectColumnBackground(bgColor);
+  const accentColor = getProjectColumnAccent(bgColor);
 
   return (
-    <Card ref={setNodeRef} className={`min-w-[260px] ${isOver ? 'ring-2 ring-primary/50' : ''}`} style={{ backgroundColor }}>
+    <Card
+      ref={setNodeRef}
+      className={`min-w-[260px] overflow-hidden ${isOver ? 'ring-2 ring-primary/50' : ''}`}
+      style={{ backgroundColor }}
+    >
+      {accentColor ? <div className="h-1.5 w-full" style={{ backgroundColor: accentColor }} /> : null}
       <CardContent className="p-3">
         <div className="mb-3 flex items-center justify-between gap-2">
           <div className="min-w-0">
