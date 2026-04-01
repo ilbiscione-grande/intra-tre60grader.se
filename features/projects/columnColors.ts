@@ -8,10 +8,35 @@ export const PROJECT_COLUMN_COLOR_OPTIONS = [
   { value: 'rose', label: 'Rosa', background: 'rgba(251, 113, 133, 0.2)', accent: 'rgba(244, 63, 94, 0.62)' }
 ] as const;
 
-export function getProjectColumnBackground(color: string | null | undefined) {
-  return PROJECT_COLUMN_COLOR_OPTIONS.find((option) => option.value === (color ?? ''))?.background;
+const DEFAULT_STATUS_COLOR_MAP: Record<string, { background: string; accent: string }> = {
+  todo: {
+    background: 'rgba(59, 130, 246, 0.08)',
+    accent: 'rgba(59, 130, 246, 0.42)'
+  },
+  in_progress: {
+    background: 'rgba(245, 158, 11, 0.08)',
+    accent: 'rgba(245, 158, 11, 0.45)'
+  },
+  review: {
+    background: 'rgba(168, 85, 247, 0.08)',
+    accent: 'rgba(168, 85, 247, 0.45)'
+  },
+  done: {
+    background: 'rgba(34, 197, 94, 0.08)',
+    accent: 'rgba(34, 197, 94, 0.42)'
+  }
+};
+
+export function getProjectColumnBackground(color: string | null | undefined, status?: string | null) {
+  const explicit = PROJECT_COLUMN_COLOR_OPTIONS.find((option) => option.value === (color ?? ''))?.background;
+  if (explicit) return explicit;
+  if (status) return DEFAULT_STATUS_COLOR_MAP[status]?.background;
+  return undefined;
 }
 
-export function getProjectColumnAccent(color: string | null | undefined) {
-  return PROJECT_COLUMN_COLOR_OPTIONS.find((option) => option.value === (color ?? ''))?.accent;
+export function getProjectColumnAccent(color: string | null | undefined, status?: string | null) {
+  const explicit = PROJECT_COLUMN_COLOR_OPTIONS.find((option) => option.value === (color ?? ''))?.accent;
+  if (explicit) return explicit;
+  if (status) return DEFAULT_STATUS_COLOR_MAP[status]?.accent;
+  return undefined;
 }

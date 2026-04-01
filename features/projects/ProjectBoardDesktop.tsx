@@ -134,8 +134,8 @@ function ColumnDropZone({
   dragHandle: React.ReactNode;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: columnId(status) });
-  const backgroundColor = getProjectColumnBackground(bgColor);
-  const accentColor = getProjectColumnAccent(bgColor);
+  const backgroundColor = getProjectColumnBackground(bgColor, status);
+  const accentColor = getProjectColumnAccent(bgColor, status);
 
   return (
     <Card

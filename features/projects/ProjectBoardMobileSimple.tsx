@@ -168,8 +168,8 @@ function ActiveMobileColumn({
   total: number;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: columnId(status) });
-  const backgroundColor = getProjectColumnBackground(bgColor);
-  const accentColor = getProjectColumnAccent(bgColor);
+  const backgroundColor = getProjectColumnBackground(bgColor, status);
+  const accentColor = getProjectColumnAccent(bgColor, status);
 
   return (
     <section
@@ -745,7 +745,7 @@ export default function ProjectBoardMobileSimple({
             Byt namn
           </Button>
           <Button type="button" variant="outline" className="h-12 justify-start rounded-2xl" onClick={() => { setColumnSheetOpen(false); setColorColumnOpen(true); }}>
-            <div className="mr-2 h-4 w-4 rounded-full border" style={{ backgroundColor: getProjectColumnBackground(activeColumn?.bg_color) }} />
+            <div className="mr-2 h-4 w-4 rounded-full border" style={{ backgroundColor: getProjectColumnBackground(activeColumn?.bg_color, activeColumn?.key) }} />
             Ändra bakgrund
           </Button>
           <Button type="button" variant="outline" className="h-12 justify-start rounded-2xl" onClick={() => { setColumnSheetOpen(false); setDeleteColumnOpen(true); }} disabled={columns.length <= 1}>
