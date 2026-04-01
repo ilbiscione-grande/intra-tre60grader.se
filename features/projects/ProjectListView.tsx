@@ -2,10 +2,14 @@
 
 import Link from 'next/link';
 import type { Route } from 'next';
-import { useMemo } from 'react';
-import { AlertTriangle, Clock3, FolderKanban, UserRound } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { AlertTriangle, ArrowDown, ArrowUp, Clock3, FolderKanban, UserRound } from 'lucide-react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import ProfileBadge from '@/components/common/ProfileBadge';
+import { useAppContext } from '@/components/providers/AppContext';
 import { Badge } from '@/components/ui/badge';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { useProjectActivitySummaries, useProjectColumns, useProjectCustomers, useProjectMembers, useProjects, type ProjectActivitySummary } from '@/features/projects/projectQueries';
 import { getUserDisplayName } from '@/features/profile/profileBadge';
 
@@ -49,6 +53,9 @@ function statusTone(status: string) {
   };
   return map[status] ?? 'border-border/70 bg-muted/40 text-foreground/80';
 }
+
+type SortKey = 'title' | 'created_at' | 'customer' | 'team' | 'status' | 'updated_at';
+type SortDirection = 'desc' | 'asc';
 
 function SummaryMetric({
   icon: Icon,
@@ -105,6 +112,11 @@ export default function ProjectListView({
   startDateFilter?: string;
   endDateFilter?: string;
 }) {
+  const [sortKey, setSortKey] = useState<SortKey>('updated_at');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+  const { role } = useAppContext();
+  const queryClient = useQueryClient();
+  const canManageMembers = role !== 'auditor';
   const projectsQuery = useProjects(companyId);
   const columnsQuery = useProjectColumns(companyId);
   const customersQuery = useProjectCustomers(companyId);
@@ -190,6 +202,50 @@ export default function ProjectListView({
     () => contextFilteredProjects.filter((project) => (statusFilter === 'all' ? true : project.status === statusFilter)),
     [contextFilteredProjects, statusFilter]
   );
+  const sortedProjects = useMemo(() => {
+    const getComparableValue = (project: (typeof filteredProjects)[number], key: SortKey) => {
+      const members = membersByProjectId.get(project.id) ?? [];
+      const responsible = availableMembers.find((member) => member.user_id === project.responsible_user_id) ?? null;
+
+      switch (key) {
+        case 'title':
+          return project.title.toLocaleLowerCase('sv');
+        case 'created_at':
+          return new Date(project.created_at).getTime();
+        case 'customer':
+          return (customerById.get(project.customer_id ?? '') ?? '').toLocaleLowerCase('sv');
+        case 'team': {
+          const responsibleLabel = responsible ? getMemberLabel(responsible) : '';
+          const teamLabels = members.map((member) => getMemberLabel(member)).join(' ');
+          return `${responsibleLabel} ${teamLabels}`.trim().toLocaleLowerCase('sv');
+        }
+        case 'status':
+          return (columns.find((column) => column.key === (project.workflow_status ?? project.status))?.title ?? project.workflow_status ?? project.status).toLocaleLowerCase('sv');
+        case 'updated_at':
+          return new Date(project.updated_at).getTime();
+        default:
+          return '';
+      }
+    };
+
+    return [...filteredProjects].sort((a, b) => {
+      const left = getComparableValue(a, sortKey);
+      const right = getComparableValue(b, sortKey);
+
+      let result = 0;
+      if (typeof left === 'number' && typeof right === 'number') {
+        result = left - right;
+      } else {
+        result = String(left).localeCompare(String(right), 'sv', { sensitivity: 'base' });
+      }
+
+      if (result === 0) {
+        result = new Date(a.updated_at).getTime() - new Date(b.updated_at).getTime();
+      }
+
+      return sortDirection === 'desc' ? -result : result;
+    });
+  }, [availableMembers, columns, customerById, filteredProjects, membersByProjectId, sortDirection, sortKey]);
 
   const metrics = useMemo(() => {
     const today = todayIso();
@@ -215,6 +271,36 @@ export default function ProjectListView({
     }
     return counts;
   }, [contextFilteredProjects]);
+
+  const removeMemberMutation = useMutation({
+    mutationFn: async ({ projectId, userId }: { projectId: string; userId: string }) => {
+      const res = await fetch(
+        `/api/project-members?companyId=${encodeURIComponent(companyId)}&projectId=${encodeURIComponent(projectId)}&userId=${encodeURIComponent(userId)}`,
+        { method: 'DELETE' }
+      );
+
+      const body = (await res.json().catch(() => null)) as { error?: string } | null;
+      if (!res.ok) {
+        throw new Error(body?.error ?? 'Kunde inte uppdatera projektmedlemmar');
+      }
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['project-members', companyId] });
+      toast.success('Medlem borttagen från projektet');
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : 'Kunde inte ta bort medlem');
+    }
+  });
+
+  function toggleSort(nextKey: SortKey) {
+    if (sortKey === nextKey) {
+      setSortDirection((current) => (current === 'desc' ? 'asc' : 'desc'));
+      return;
+    }
+    setSortKey(nextKey);
+    setSortDirection('desc');
+  }
 
   if (projectsQuery.isLoading) {
     return <p className="rounded-lg bg-muted p-4 text-sm text-foreground/70">Laddar projekt...</p>;
@@ -250,14 +336,14 @@ export default function ProjectListView({
         })}
       </div>
 
-      {filteredProjects.length === 0 ? (
+      {sortedProjects.length === 0 ? (
         <p className="rounded-lg bg-muted p-4 text-sm text-foreground/70">
           {search || statusFilter !== 'all' || selectedMemberIds.length > 0 || startDateFilter || endDateFilter ? 'Inga projekt matchar filtret.' : 'Inga projekt ännu.'}
         </p>
       ) : (
         <>
           <div className="space-y-3 md:hidden">
-            {filteredProjects.map((project) => {
+            {sortedProjects.map((project) => {
               const members = membersByProjectId.get(project.id) ?? [];
               const responsible = availableMembers.find((member) => member.user_id === project.responsible_user_id) ?? null;
               const memberVisuals = responsible
@@ -268,8 +354,9 @@ export default function ProjectListView({
               const statusLabel = columns.find((column) => column.key === (project.workflow_status ?? project.status))?.title ?? project.workflow_status ?? project.status;
 
               return (
-                <Link key={project.id} href={`/projects/${project.id}` as Route} className="block rounded-2xl border border-border/70 bg-card p-4 transition hover:border-primary/35 hover:bg-muted/15">
-                  <div className="flex items-start justify-between gap-3">
+                <div key={project.id} className="relative rounded-2xl border border-border/70 bg-card p-4 transition hover:border-primary/35 hover:bg-muted/15">
+                  <Link href={`/projects/${project.id}` as Route} className="absolute inset-0 z-10 rounded-[inherit]" aria-label={`Öppna projekt ${project.title}`} />
+                  <div className="relative z-20 flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="text-sm font-semibold">{project.title}</p>
                       <p className="mt-1 text-xs text-foreground/60">{customerName}</p>
@@ -295,39 +382,44 @@ export default function ProjectListView({
                     <MiniFact label="Uppdaterad" value={updatedAgo === 0 ? 'Idag' : `${updatedAgo} d sedan`} />
                   </div>
                   {memberVisuals.length > 0 ? (
-                    <div className="mt-3 flex flex-wrap gap-1.5">
+                    <div className="relative z-20 mt-3 flex flex-wrap gap-1.5">
                       {memberVisuals.slice(0, 6).map((member) => {
                         const label = getMemberLabel(member);
                         const isResponsible = member.user_id === responsible?.user_id;
                         return (
-                          <ProfileBadge
+                          <MemberAvatarMenu
                             key={`${project.id}-${member.user_id}`}
+                            projectId={project.id}
+                            userId={member.user_id}
                             label={label}
                             color={member.color}
                             avatarUrl={member.avatar_url}
                             emoji={member.emoji}
-                            className={`h-7 w-7 shrink-0 border border-background ${isResponsible ? 'ring-2 ring-primary ring-offset-2 ring-offset-background' : ''}`}
-                            textClassName="text-[10px] font-semibold text-white"
+                            isResponsible={isResponsible}
+                            canManageMembers={canManageMembers}
+                            isRemoving={removeMemberMutation.isPending}
+                            onRemove={() => removeMemberMutation.mutate({ projectId: project.id, userId: member.user_id })}
                           />
                         );
                       })}
                     </div>
                   ) : null}
-                </Link>
+                </div>
               );
             })}
           </div>
 
           <div className="hidden overflow-hidden rounded-2xl border border-border/70 md:block">
-            <div className="grid grid-cols-[minmax(0,2.2fr)_130px_minmax(0,1.45fr)_160px_130px] gap-4 bg-muted/30 px-5 py-3 text-xs font-semibold uppercase tracking-[0.16em] text-foreground/45">
-              <span>Projekt</span>
-              <span>Skapad</span>
-              <span>Kund / Team</span>
-              <span>Status</span>
-              <span>Uppdaterad</span>
+            <div className="grid grid-cols-[minmax(0,2.1fr)_130px_minmax(0,1fr)_minmax(0,1.25fr)_160px_130px] gap-4 bg-muted/30 px-5 py-3 text-xs font-semibold uppercase tracking-[0.16em] text-foreground/45">
+              <SortHeader label="Projekt" columnKey="title" sortKey={sortKey} sortDirection={sortDirection} onClick={toggleSort} />
+              <SortHeader label="Skapad" columnKey="created_at" sortKey={sortKey} sortDirection={sortDirection} onClick={toggleSort} />
+              <SortHeader label="Kund" columnKey="customer" sortKey={sortKey} sortDirection={sortDirection} onClick={toggleSort} />
+              <SortHeader label="Team" columnKey="team" sortKey={sortKey} sortDirection={sortDirection} onClick={toggleSort} />
+              <SortHeader label="Status" columnKey="status" sortKey={sortKey} sortDirection={sortDirection} onClick={toggleSort} />
+              <SortHeader label="Uppdaterad" columnKey="updated_at" sortKey={sortKey} sortDirection={sortDirection} onClick={toggleSort} />
             </div>
             <div className="divide-y divide-border/70 bg-card/70">
-              {filteredProjects.map((project) => {
+              {sortedProjects.map((project) => {
                 const members = membersByProjectId.get(project.id) ?? [];
                 const responsible = availableMembers.find((member) => member.user_id === project.responsible_user_id) ?? null;
                 const memberVisuals = responsible
@@ -339,11 +431,16 @@ export default function ProjectListView({
                 const statusLabel = columns.find((column) => column.key === (project.workflow_status ?? project.status))?.title ?? project.workflow_status ?? project.status;
 
                 return (
-                  <Link
+                  <div
                     key={project.id}
-                    href={`/projects/${project.id}` as Route}
-                    className="grid grid-cols-[minmax(0,2.2fr)_130px_minmax(0,1.45fr)_160px_130px] gap-4 px-5 py-4 transition hover:bg-muted/20"
+                    className="relative"
                   >
+                    <Link
+                      href={`/projects/${project.id}` as Route}
+                      className="absolute inset-0 z-10"
+                      aria-label={`Öppna projekt ${project.title}`}
+                    />
+                    <div className="relative z-20 grid grid-cols-[minmax(0,2.1fr)_130px_minmax(0,1fr)_minmax(0,1.25fr)_160px_130px] gap-4 px-5 py-4 transition hover:bg-muted/20">
                     <div className="min-w-0">
                       <p className="truncate font-medium text-foreground">{project.title}</p>
                       <p className="mt-1 truncate text-xs text-foreground/60">
@@ -353,19 +450,25 @@ export default function ProjectListView({
                     <div className="text-sm text-foreground/75">{formatProjectDate(project.created_at)}</div>
                     <div className="min-w-0">
                       <p className="truncate text-sm text-foreground/80">{customerName}</p>
-                      <div className="mt-2 flex flex-wrap gap-1.5">
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap gap-1.5">
                         {memberVisuals.slice(0, 5).map((member) => {
                           const label = getMemberLabel(member);
                           const isResponsible = member.user_id === responsible?.user_id;
                           return (
-                            <ProfileBadge
+                            <MemberAvatarMenu
                               key={`${project.id}-${member.user_id}`}
+                              projectId={project.id}
+                              userId={member.user_id}
                               label={label}
                               color={member.color}
                               avatarUrl={member.avatar_url}
                               emoji={member.emoji}
-                              className={`h-7 w-7 shrink-0 border border-background ${isResponsible ? 'ring-2 ring-primary ring-offset-2 ring-offset-background' : ''}`}
-                              textClassName="text-[10px] font-semibold text-white"
+                              isResponsible={isResponsible}
+                              canManageMembers={canManageMembers}
+                              isRemoving={removeMemberMutation.isPending}
+                              onRemove={() => removeMemberMutation.mutate({ projectId: project.id, userId: member.user_id })}
                             />
                           );
                         })}
@@ -388,7 +491,8 @@ export default function ProjectListView({
                       <p className="text-xs text-foreground/55">{project.end_date ? `Slut ${formatProjectDate(project.end_date)}` : 'Inget slutdatum'}</p>
                     </div>
                     <div className="text-sm text-foreground/75">{updatedAgo === 0 ? 'Idag' : `${updatedAgo} d sedan`}</div>
-                  </Link>
+                    </div>
+                  </div>
                 );
               })}
             </div>
@@ -405,5 +509,108 @@ function MiniFact({ label, value }: { label: string; value: string }) {
       <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">{label}</p>
       <p className="mt-1 text-sm font-medium text-foreground/85">{value}</p>
     </div>
+  );
+}
+
+function SortHeader({
+  label,
+  columnKey,
+  sortKey,
+  sortDirection,
+  onClick
+}: {
+  label: string;
+  columnKey: SortKey;
+  sortKey: SortKey;
+  sortDirection: SortDirection;
+  onClick: (columnKey: SortKey) => void;
+}) {
+  const active = sortKey === columnKey;
+
+  return (
+    <button
+      type="button"
+      onClick={() => onClick(columnKey)}
+      className={`inline-flex min-w-0 items-center gap-1 text-left transition ${active ? 'text-foreground' : 'text-foreground/45 hover:text-foreground/75'}`}
+    >
+      <span className="truncate">{label}</span>
+      {active ? (
+        sortDirection === 'desc' ? <ArrowDown className="h-3.5 w-3.5 shrink-0" /> : <ArrowUp className="h-3.5 w-3.5 shrink-0" />
+      ) : null}
+    </button>
+  );
+}
+
+function MemberAvatarMenu({
+  projectId,
+  userId,
+  label,
+  color,
+  avatarUrl,
+  emoji,
+  isResponsible,
+  canManageMembers,
+  isRemoving,
+  onRemove
+}: {
+  projectId: string;
+  userId: string;
+  label: string;
+  color: string | null;
+  avatarUrl: string | null;
+  emoji: string | null;
+  isResponsible: boolean;
+  canManageMembers: boolean;
+  isRemoving: boolean;
+  onRemove: () => void;
+}) {
+  return (
+    <DropdownMenu modal={false}>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          className="rounded-full"
+          aria-label={isResponsible ? `Ansvarig: ${label}` : label}
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+          }}
+        >
+          <ProfileBadge
+            label={label}
+            color={color ?? undefined}
+            avatarUrl={avatarUrl}
+            emoji={emoji}
+            className={`h-7 w-7 shrink-0 border border-background ${isResponsible ? 'ring-2 ring-primary ring-offset-2 ring-offset-background' : ''}`}
+            textClassName="text-[10px] font-semibold text-white"
+          />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" side="top" sideOffset={8} className="z-[260] w-52">
+        <div className="px-2 pb-2 pt-1">
+          <p className="truncate text-sm font-medium text-foreground">{label}</p>
+          <p className="text-[11px] uppercase tracking-[0.16em] text-foreground/45">
+            {isResponsible ? 'Ansvarig medlem' : 'Projektmedlem'}
+          </p>
+        </div>
+        <DropdownMenuItem asChild>
+          <Link href={`/team` as Route} onClick={(event) => event.stopPropagation()}>
+            Gå till medlemsprofil
+          </Link>
+        </DropdownMenuItem>
+        {canManageMembers && !isResponsible ? (
+          <DropdownMenuItem
+            disabled={isRemoving}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onRemove();
+            }}
+          >
+            Ta bort medlem
+          </DropdownMenuItem>
+        ) : null}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
