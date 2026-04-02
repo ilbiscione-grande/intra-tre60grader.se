@@ -44,6 +44,13 @@ const NEW_PROJECT_VALUE = '__new_project__';
 const NEW_TASK_VALUE = '__new_task__';
 const NONE_TASK_VALUE = 'none';
 
+function currentTimeValue() {
+  const now = new Date();
+  const hours = String(now.getHours()).padStart(2, '0');
+  const minutes = String(now.getMinutes()).padStart(2, '0');
+  return `${hours}:${minutes}`;
+}
+
 function getStorageKey(companyId: string) {
   return `${STORAGE_PREFIX}:${companyId}`;
 }
@@ -94,6 +101,7 @@ export function TimeTrackerProvider({ children }: { children: React.ReactNode })
   const [newProjectTitle, setNewProjectTitle] = useState('');
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [timerNote, setTimerNote] = useState('');
+  const [timerStartTime, setTimerStartTime] = useState(() => currentTimeValue());
   const [activeTimer, setActiveTimer] = useState<ActiveTimer | null>(null);
   const [localTimerSnapshot, setLocalTimerSnapshot] = useState<ActiveTimer | null>(null);
   const [now, setNow] = useState(() => Date.now());
@@ -294,6 +302,7 @@ export function TimeTrackerProvider({ children }: { children: React.ReactNode })
     if (!selectedProjectId) {
       setSelectedProjectId(projectsQuery.data?.[0]?.id ?? NEW_PROJECT_VALUE);
     }
+    setTimerStartTime((current) => current || currentTimeValue());
   }, [projectsQuery.data, selectedProjectId, startDialogOpen]);
 
   const elapsedMs = activeTimer ? buildElapsedMs(activeTimer, now) : 0;
@@ -321,6 +330,7 @@ export function TimeTrackerProvider({ children }: { children: React.ReactNode })
     setNewProjectTitle('');
     setNewTaskTitle('');
     setTimerNote('');
+    setTimerStartTime(currentTimeValue());
   }
 
   async function handleStartTimer() {
@@ -403,7 +413,16 @@ export function TimeTrackerProvider({ children }: { children: React.ReactNode })
         await queryClient.invalidateQueries({ queryKey: ['project-time-tasks', companyId, resolvedProjectId] });
       }
 
-      const startedAt = new Date().toISOString();
+      const [startHourRaw, startMinuteRaw] = timerStartTime.split(':', 2);
+      const startHour = Number.parseInt(startHourRaw ?? '', 10);
+      const startMinute = Number.parseInt(startMinuteRaw ?? '', 10);
+      const startDate = new Date();
+
+      if (Number.isFinite(startHour) && Number.isFinite(startMinute)) {
+        startDate.setHours(startHour, startMinute, 0, 0);
+      }
+
+      const startedAt = startDate.toISOString();
       const nextTimer = {
         companyId,
         projectId: resolvedProjectId,
@@ -523,6 +542,18 @@ export function TimeTrackerProvider({ children }: { children: React.ReactNode })
           <Input value={newTaskTitle} onChange={(event) => setNewTaskTitle(event.target.value)} placeholder="Uppgiftstitel" />
         </label>
       ) : null}
+
+      <label className="space-y-1 block">
+        <span className="text-sm">Starta från klockan</span>
+        <Input
+          type="time"
+          value={timerStartTime}
+          onChange={(event) => setTimerStartTime(event.target.value)}
+        />
+        <p className="text-xs text-foreground/55">
+          Lämna aktuell tid vald för att starta nu, eller välj ett tidigare/senare klockslag.
+        </p>
+      </label>
 
       <label className="space-y-1 block">
         <span className="text-sm">Anteckning</span>
