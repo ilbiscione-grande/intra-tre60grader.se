@@ -102,7 +102,8 @@ export default function ProjectListView({
   statusOptions = [],
   selectedMemberIds = [],
   startDateFilter = '',
-  endDateFilter = ''
+  endDateFilter = '',
+  showSummaryMetrics = true
 }: {
   companyId: string;
   searchTerm?: string;
@@ -112,6 +113,7 @@ export default function ProjectListView({
   selectedMemberIds?: string[];
   startDateFilter?: string;
   endDateFilter?: string;
+  showSummaryMetrics?: boolean;
 }) {
   const [sortKey, setSortKey] = useState<SortKey>('updated_at');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
@@ -310,12 +312,14 @@ export default function ProjectListView({
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <SummaryMetric icon={FolderKanban} title="Projekt" value={String(metrics.total)} helper="Projekt i aktuellt urval" tone="blue" />
-        <SummaryMetric icon={AlertTriangle} title="Försenade" value={String(metrics.overdue)} helper="Har passerat slutdatum" tone="amber" />
-        <SummaryMetric icon={Clock3} title="Ej uppdaterade" value={String(metrics.stale)} helper="Ingen aktivitet på 7 dagar" tone="violet" />
-        <SummaryMetric icon={UserRound} title="Utan ansvarig" value={String(metrics.withoutOwner)} helper={`${metrics.completed} klara projekt i urvalet`} tone="emerald" />
-      </div>
+      {showSummaryMetrics ? (
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <SummaryMetric icon={FolderKanban} title="Projekt" value={String(metrics.total)} helper="Projekt i aktuellt urval" tone="blue" />
+          <SummaryMetric icon={AlertTriangle} title="Försenade" value={String(metrics.overdue)} helper="Har passerat slutdatum" tone="amber" />
+          <SummaryMetric icon={Clock3} title="Ej uppdaterade" value={String(metrics.stale)} helper="Ingen aktivitet på 7 dagar" tone="violet" />
+          <SummaryMetric icon={UserRound} title="Utan ansvarig" value={String(metrics.withoutOwner)} helper={`${metrics.completed} klara projekt i urvalet`} tone="emerald" />
+        </div>
+      ) : null}
 
       <div className="flex flex-wrap items-center gap-2 border-b border-border/70 pb-2">
         {resolvedStatusOptions.map((option) => {

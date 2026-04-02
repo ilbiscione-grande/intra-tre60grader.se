@@ -23,6 +23,7 @@ import { createClient } from '@/lib/supabase/client';
 import { useBreakpointMode } from '@/lib/ui/useBreakpointMode';
 
 type ProjectViewMode = 'board' | 'list';
+type MobileQuickFilter = 'all' | 'mine';
 
 const PROJECT_VIEW_MODE_KEY = 'projects_view_mode';
 
@@ -32,7 +33,8 @@ export default function ProjectsPage() {
   const canSeeProjectSummary = canViewProjectSummary(role, capabilities);
   const [showSummary, setShowSummary] = useState(false);
   const [showAutomation, setShowAutomation] = useState(false);
-  const [viewMode, setViewMode] = useState<ProjectViewMode>('board');
+  const [viewMode, setViewMode] = useState<ProjectViewMode>(mode === 'mobile' ? 'list' : 'board');
+  const [mobileQuickFilter, setMobileQuickFilter] = useState<MobileQuickFilter>('all');
   const [projectSearch, setProjectSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
@@ -64,8 +66,10 @@ export default function ProjectsPage() {
     const stored = window.localStorage.getItem(PROJECT_VIEW_MODE_KEY);
     if (stored === 'board' || stored === 'list') {
       setViewMode(stored);
+      return;
     }
-  }, []);
+    setViewMode(mode === 'mobile' ? 'list' : 'board');
+  }, [mode]);
 
   useEffect(() => {
     let cancelled = false;
@@ -140,6 +144,21 @@ export default function ProjectsPage() {
   function toggleSelectedMember(userId: string) {
     setSelectedMemberIds((current) => (current.includes(userId) ? current.filter((id) => id !== userId) : [...current, userId]));
   }
+
+  useEffect(() => {
+    if (mode !== 'mobile') return;
+    if (!currentUserId) return;
+
+    if (mobileQuickFilter === 'mine') {
+      setSelectedMemberIds((current) => (current.length === 1 && current[0] === currentUserId ? current : [currentUserId]));
+      return;
+    }
+
+    setSelectedMemberIds((current) => {
+      if (current.length === 1 && current[0] === currentUserId) return [];
+      return current;
+    });
+  }, [currentUserId, mobileQuickFilter, mode]);
 
   const hasActiveFilters =
     statusFilter !== 'all' || selectedMemberIds.length > 0 || Boolean(startDateFilter) || Boolean(endDateFilter);
@@ -336,6 +355,57 @@ export default function ProjectsPage() {
     </DropdownMenu>
   );
 
+  const mobileQuickFilters =
+    mode === 'mobile' ? (
+      <div className="flex flex-wrap gap-2">
+        <Button
+          type="button"
+          variant={mobileQuickFilter === 'all' ? 'default' : 'outline'}
+          size="sm"
+          className="h-8 rounded-full px-3 text-xs"
+          onClick={() => setMobileQuickFilter('all')}
+        >
+          Alla projekt
+        </Button>
+        <Button
+          type="button"
+          variant={mobileQuickFilter === 'mine' ? 'default' : 'outline'}
+          size="sm"
+          className="h-8 rounded-full px-3 text-xs"
+          onClick={() => setMobileQuickFilter('mine')}
+        >
+          Mina projekt
+        </Button>
+        {[
+          statusOptions.find((option) => option.key === 'in_progress'),
+          statusOptions.find((option) => option.key === 'review'),
+          statusOptions.find((option) => option.key === 'todo'),
+          statusOptions.find((option) => option.key === 'done')
+        ]
+          .filter((option): option is { key: string; title: string } => Boolean(option))
+          .map((option) => (
+          <Button
+            key={option.key}
+            type="button"
+            variant={statusFilter === option.key ? 'default' : 'outline'}
+            size="sm"
+            className="h-8 rounded-full px-3 text-xs"
+            onClick={() => setStatusFilter((current) => (current === option.key ? 'all' : option.key))}
+          >
+            {option.key === 'in_progress'
+              ? 'Pågående'
+              : option.key === 'review'
+                ? 'Granskning'
+                : option.key === 'todo'
+                  ? 'Att göra'
+                  : option.key === 'done'
+                    ? 'Klara'
+                    : option.title}
+          </Button>
+        ))}
+      </div>
+    ) : null;
+
   const desktopViewModeToggle = (
     <div className="inline-flex items-center rounded-full border border-border bg-muted/20 p-1">
       <button
@@ -368,7 +438,7 @@ export default function ProjectsPage() {
       <div className="space-y-4">
         {searchMenuOpen ? <div className="fixed inset-0 z-[100] bg-background/25 backdrop-blur-[3px]" aria-hidden /> : null}
         <div className="relative flex items-center gap-1.5">
-          {summaryToggle}
+          {viewMode === 'board' ? summaryToggle : null}
           {automationTrigger}
           {mobileViewModeTrigger}
           <SectionErrorBoundary title="Skapa projekt">
@@ -376,8 +446,9 @@ export default function ProjectsPage() {
           </SectionErrorBoundary>
           {searchPanel}
         </div>
+        {mobileQuickFilters}
         {activeFiltersBar}
-        {canSeeProjectSummary && showSummary ? (
+        {viewMode === 'board' && canSeeProjectSummary && showSummary ? (
           <>
             <SectionErrorBoundary title="Projektöversikt">
               <ProjectOverviewKpis companyId={companyId} />
@@ -391,7 +462,7 @@ export default function ProjectsPage() {
         {viewMode === 'board' ? (
           <ProjectBoardMobile companyId={companyId} searchTerm={projectSearch} statusFilter={statusFilter} currentUserId={currentUserId} selectedMemberIds={selectedMemberIds} startDateFilter={startDateFilter} endDateFilter={endDateFilter} />
         ) : (
-            <ProjectListView companyId={companyId} searchTerm={projectSearch} statusFilter={statusFilter} onStatusFilterChange={setStatusFilter} statusOptions={statusOptions} selectedMemberIds={selectedMemberIds} startDateFilter={startDateFilter} endDateFilter={endDateFilter} />
+            <ProjectListView companyId={companyId} searchTerm={projectSearch} statusFilter={statusFilter} onStatusFilterChange={setStatusFilter} statusOptions={statusOptions} selectedMemberIds={selectedMemberIds} startDateFilter={startDateFilter} endDateFilter={endDateFilter} showSummaryMetrics={false} />
           )}
         </SectionErrorBoundary>
 
