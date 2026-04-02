@@ -26,11 +26,13 @@ export default function AppShell({
   const isFullscreenFlow = pathname === '/finance/verifications/new';
 
   const mode =
-    interfaceMode === 'auto'
-      ? breakpointMode
-      : interfaceMode === 'mobile'
-        ? 'mobile'
-        : 'desktop';
+    breakpointMode === 'mobile'
+      ? 'mobile'
+      : interfaceMode === 'auto'
+        ? breakpointMode
+        : interfaceMode === 'mobile'
+          ? 'mobile'
+          : 'desktop';
 
   if (isFullscreenFlow) {
     return (
