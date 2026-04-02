@@ -96,15 +96,18 @@ export function getSecondaryMobileQuickActions(role: Role, capabilities: Capabil
 export function getDesktopQuickCreateItems(role: Role, capabilities: Capability[]) {
   return [
     {
+      id: 'project',
       href: '/projects?create=project' as Route,
       label: 'Nytt projekt',
       icon: BriefcaseBusiness
     },
     ...mobileQuickActionDefinitions
-      .filter((item) => item.id !== 'time' && item.href && item.visible(role, capabilities))
+      .filter((item) => item.id !== 'time' && item.visible(role, capabilities))
       .map((item) => ({
+        id: item.id,
         href: item.href as Route,
         label: item.label,
+        description: item.description,
         icon: item.icon
       }))
   ];
