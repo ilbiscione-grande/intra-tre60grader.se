@@ -2,14 +2,18 @@
 
 import Link from 'next/link';
 import type { Route } from 'next';
-import { useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMemo, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { ArrowRight, BriefcaseBusiness, Camera, CheckCircle2, CheckSquare2, Clock3, FileWarning, FilePlus2, ReceiptText, ShieldAlert, Timer, Wallet } from 'lucide-react';
+import ActionSheet from '@/components/common/ActionSheet';
 import { useAppContext } from '@/components/providers/AppContext';
 import { useTimeTracker } from '@/components/providers/TimeTrackerProvider';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { canViewFinance } from '@/lib/auth/capabilities';
 import { getPrimaryMobileQuickActions, getSecondaryMobileQuickActions } from '@/lib/mobile/quickActions';
 import { createClient } from '@/lib/supabase/client';
@@ -95,6 +99,7 @@ function verificationNumberLabel(fiscalYear: number | null, verificationNo: numb
 
 export default function TodoPage() {
   const { companyId, role, capabilities } = useAppContext();
+  const queryClient = useQueryClient();
   const mode = useBreakpointMode();
   const { hasActiveTimer, openControlsDialog, openStartDialog } = useTimeTracker();
   const canReadFinance = canViewFinance(role, capabilities);
@@ -103,6 +108,13 @@ export default function TodoPage() {
   const supabase = useMemo(() => createClient(), []);
   const today = startOfToday();
   const now = new Date();
+  const [taskDialogOpen, setTaskDialogOpen] = useState(false);
+  const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
+  const [selectedProjectId, setSelectedProjectId] = useState('');
+  const [taskTitle, setTaskTitle] = useState('');
+  const [taskDescription, setTaskDescription] = useState('');
+  const [updateContent, setUpdateContent] = useState('');
+  const [submitting, setSubmitting] = useState<null | 'task' | 'update'>(null);
 
   const currentUserQuery = useQuery<string | null>({
     queryKey: ['todo-current-user', companyId],
@@ -457,9 +469,123 @@ export default function TodoPage() {
   );
   const primaryQuickActions = getPrimaryMobileQuickActions(role, capabilities, hasActiveTimer);
   const secondaryQuickActions = getSecondaryMobileQuickActions(role, capabilities, hasActiveTimer);
+  const projectOptions = visibleProjects.map((project) => ({
+    value: project.id,
+    label: project.title
+  }));
+
+  function resetTaskDialog() {
+    setTaskDialogOpen(false);
+    setSelectedProjectId('');
+    setTaskTitle('');
+    setTaskDescription('');
+  }
+
+  function resetUpdateDialog() {
+    setUpdateDialogOpen(false);
+    setSelectedProjectId('');
+    setUpdateContent('');
+  }
+
+  function handleQuickAction(actionId: string, href?: Route) {
+    if (actionId === 'time') {
+      if (hasActiveTimer) openControlsDialog();
+      else openStartDialog();
+      return;
+    }
+
+    if (actionId === 'task') {
+      setTaskDialogOpen(true);
+      return;
+    }
+
+    if (actionId === 'update') {
+      setUpdateDialogOpen(true);
+      return;
+    }
+
+    if (href) {
+      window.location.href = href;
+    }
+  }
+
+  async function submitTask() {
+    if (!selectedProjectId || !taskTitle.trim()) {
+      toast.error('Välj projekt och ange en titel');
+      return;
+    }
+
+    try {
+      setSubmitting('task');
+      const res = await fetch('/api/project-tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          companyId,
+          projectId: selectedProjectId,
+          title: taskTitle.trim(),
+          description: taskDescription.trim() || null
+        })
+      });
+
+      const body = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(body?.error ?? 'Kunde inte skapa uppgift');
+
+      await queryClient.invalidateQueries({ queryKey: ['todo-project-tasks', companyId] });
+      await queryClient.invalidateQueries({ queryKey: ['projects', companyId] });
+      toast.success('Uppgift skapad');
+      resetTaskDialog();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Kunde inte skapa uppgift');
+    } finally {
+      setSubmitting(null);
+    }
+  }
+
+  async function submitUpdate() {
+    if (!selectedProjectId || !updateContent.trim()) {
+      toast.error('Välj projekt och skriv en uppdatering');
+      return;
+    }
+
+    try {
+      setSubmitting('update');
+      const {
+        data: { user },
+        error: userError
+      } = await supabase.auth.getUser();
+
+      if (userError || !user?.id) {
+        throw new Error('Kunde inte identifiera användaren för uppdateringen.');
+      }
+
+      const { error } = await supabase.from('project_updates').insert({
+        company_id: companyId,
+        project_id: selectedProjectId,
+        parent_id: null,
+        created_by: user.id,
+        content: updateContent.trim()
+      });
+
+      if (error) throw error;
+
+      await queryClient.invalidateQueries({ queryKey: ['todo-project-watch', companyId] });
+      await queryClient.invalidateQueries({ queryKey: ['project-updates', companyId, selectedProjectId] });
+      await queryClient.invalidateQueries({ queryKey: ['project-updates-activity', companyId, selectedProjectId] });
+      await queryClient.invalidateQueries({ queryKey: ['project-activity-summaries', companyId] });
+      await queryClient.invalidateQueries({ queryKey: ['projects', companyId] });
+      toast.success('Uppdatering skapad');
+      resetUpdateDialog();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Kunde inte skapa uppdatering');
+    } finally {
+      setSubmitting(null);
+    }
+  }
 
   if (mode === 'mobile') {
     return (
+      <>
       <section className="space-y-4">
         <Card className="overflow-hidden border-border/70 bg-gradient-to-br from-card via-card to-muted/20">
           <CardContent className="space-y-4 p-4">
@@ -486,16 +612,12 @@ export default function TodoPage() {
 
             <div className="grid grid-cols-2 gap-2">
               {primaryQuickActions.map((item) =>
-                item.id === 'time' ? (
-                  <QuickActionButton
-                    key={item.id}
-                    icon={item.icon}
-                    label={item.label}
-                    onClick={() => (hasActiveTimer ? openControlsDialog() : openStartDialog())}
-                  />
-                ) : (
-                  <QuickActionLink key={item.id} icon={item.icon} label={item.label} href={item.href as Route} />
-                )
+                <QuickActionButton
+                  key={item.id}
+                  icon={item.icon}
+                  label={item.label}
+                  onClick={() => handleQuickAction(item.id, item.href as Route | undefined)}
+                />
               )}
             </div>
           </CardContent>
@@ -626,12 +748,48 @@ export default function TodoPage() {
             </CardHeader>
             <CardContent className="grid grid-cols-2 gap-2">
               {secondaryQuickActions.map((item) => (
-                <QuickActionLink key={item.id} icon={item.icon} label={item.label} href={item.href as Route} />
+                <QuickActionButton
+                  key={item.id}
+                  icon={item.icon}
+                  label={item.label}
+                  onClick={() => handleQuickAction(item.id, item.href as Route | undefined)}
+                />
               ))}
             </CardContent>
           </Card>
         ) : null}
       </section>
+
+      <ActionSheet open={taskDialogOpen} onClose={resetTaskDialog} title="Ny uppgift" description="Välj projekt och lägg till en uppgift direkt.">
+        <div className="space-y-4">
+          <ProjectSelectField projectOptions={projectOptions} selectedProjectId={selectedProjectId} setSelectedProjectId={setSelectedProjectId} />
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Titel</label>
+            <Input value={taskTitle} onChange={(event) => setTaskTitle(event.target.value)} placeholder="Vad ska göras?" />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Beskrivning</label>
+            <Textarea value={taskDescription} onChange={(event) => setTaskDescription(event.target.value)} placeholder="Valfri beskrivning" rows={4} />
+          </div>
+          <Button type="button" onClick={submitTask} disabled={submitting === 'task' || projectOptions.length === 0} className="w-full">
+            {submitting === 'task' ? 'Skapar...' : 'Skapa uppgift'}
+          </Button>
+        </div>
+      </ActionSheet>
+
+      <ActionSheet open={updateDialogOpen} onClose={resetUpdateDialog} title="Ny uppdatering" description="Välj projekt och skriv uppdateringen direkt här.">
+        <div className="space-y-4">
+          <ProjectSelectField projectOptions={projectOptions} selectedProjectId={selectedProjectId} setSelectedProjectId={setSelectedProjectId} />
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Uppdatering</label>
+            <Textarea value={updateContent} onChange={(event) => setUpdateContent(event.target.value)} placeholder="Skriv en projektuppdatering" rows={5} />
+          </div>
+          <Button type="button" onClick={submitUpdate} disabled={submitting === 'update' || projectOptions.length === 0} className="w-full">
+            {submitting === 'update' ? 'Sparar...' : 'Skapa uppdatering'}
+          </Button>
+        </div>
+      </ActionSheet>
+      </>
     );
   }
 
@@ -906,6 +1064,34 @@ function QuickActionButton({
       </span>
       <span className="text-sm font-medium leading-tight">{label}</span>
     </button>
+  );
+}
+
+function ProjectSelectField({
+  projectOptions,
+  selectedProjectId,
+  setSelectedProjectId
+}: {
+  projectOptions: Array<{ value: string; label: string }>;
+  selectedProjectId: string;
+  setSelectedProjectId: (value: string) => void;
+}) {
+  return (
+    <div className="space-y-2">
+      <label className="text-sm font-medium">Projekt</label>
+      <select
+        value={selectedProjectId}
+        onChange={(event) => setSelectedProjectId(event.target.value)}
+        className="h-11 w-full rounded-xl border border-border bg-background px-3 text-sm outline-none"
+      >
+        <option value="">Välj projekt</option>
+        {projectOptions.map((project) => (
+          <option key={project.value} value={project.value}>
+            {project.label}
+          </option>
+        ))}
+      </select>
+    </div>
   );
 }
 
