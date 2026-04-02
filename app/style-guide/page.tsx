@@ -4,7 +4,6 @@ import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { Bell, ChartColumn, FolderKanban, HandCoins, Users } from 'lucide-react';
 import DesktopSidebar from '@/components/nav/DesktopSidebar';
-import MobileBottomNav from '@/components/nav/MobileBottomNav';
 import { AppButton } from '@/components/system/AppButton';
 import { AppCard } from '@/components/system/AppCard';
 import { ActionSheet } from '@/components/system/ActionSheet';
@@ -300,10 +299,6 @@ export default function StyleGuidePage() {
           </div>
         </div>
       </ActionSheet>
-
-      <div className="block lg:hidden" aria-hidden>
-        <MobileBottomNav role="admin" capabilities={['finance', 'project_lead', 'reporting', 'team_admin']} />
-      </div>
       <div className="hidden lg:block rounded-card border bg-card p-4">
         <p className="text-sm text-muted-foreground">Desktop topbar area for expanded mode</p>
         <div className="mt-2 flex min-h-action items-center justify-between rounded-lg border bg-background px-3">
