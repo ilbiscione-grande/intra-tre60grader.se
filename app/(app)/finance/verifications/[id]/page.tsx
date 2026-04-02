@@ -3,6 +3,8 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
+import { toast } from 'sonner';
+import MobileAttachmentPicker from '@/components/common/MobileAttachmentPicker';
 import RoleGate from '@/components/common/RoleGate';
 import { useAppContext } from '@/components/providers/AppContext';
 import { Button } from '@/components/ui/button';
@@ -14,7 +16,7 @@ import {
   useVerificationById,
   useVoidVerification
 } from '@/features/finance/financeQueries';
-import { createAttachmentSignedUrl } from '@/features/finance/attachmentStorage';
+import { createAttachmentSignedUrl, fileToAttachment, uploadVerificationAttachment } from '@/features/finance/attachmentStorage';
 import { createClient } from '@/lib/supabase/client';
 
 function sourceLabel(source: string | null) {
@@ -46,6 +48,7 @@ export default function VerificationDetailsPage() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [voidReason, setVoidReason] = useState('');
   const [reversalReason, setReversalReason] = useState('');
+  const [attachmentPending, setAttachmentPending] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -104,6 +107,36 @@ export default function VerificationDetailsPage() {
     if (currentUserId && actor === currentUserId) return 'Du';
     return `${actor.slice(0, 8)}...`;
   }, [query.data?.voided_by, currentUserId]);
+
+  async function handleAttachmentPick(file: File) {
+    if (!query.data) return;
+
+    try {
+      setAttachmentPending(true);
+      const supabase = createClient();
+      const attachment = await fileToAttachment(file);
+      const path = await uploadVerificationAttachment({
+        companyId,
+        draftId: query.data.id,
+        attachment
+      });
+
+      const { error } = await supabase
+        .from('verifications')
+        .update({ attachment_path: path })
+        .eq('company_id', companyId)
+        .eq('id', query.data.id);
+
+      if (error) throw error;
+
+      await query.refetch();
+      toast.success('Underlag uppladdat');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Kunde inte ladda upp underlag');
+    } finally {
+      setAttachmentPending(false);
+    }
+  }
 
   return (
     <RoleGate role={role} allow={['finance', 'admin', 'auditor']}>
@@ -208,20 +241,48 @@ export default function VerificationDetailsPage() {
             <Card className="space-y-2 p-4 text-sm">
               <p className="font-medium">Bilaga</p>
               {signedUrl ? (
-                <div className="flex flex-wrap gap-2">
-                  <Button asChild>
-                    <a href={signedUrl} target="_blank" rel="noreferrer">
-                      Öppna bilaga
-                    </a>
-                  </Button>
-                  <Button variant="secondary" asChild>
-                    <a href={signedUrl} download>
-                      Ladda ner
-                    </a>
-                  </Button>
+                <div className="space-y-3">
+                  <div className="flex flex-wrap gap-2">
+                    <Button asChild>
+                      <a href={signedUrl} target="_blank" rel="noreferrer">
+                        Öppna bilaga
+                      </a>
+                    </Button>
+                    <Button variant="secondary" asChild>
+                      <a href={signedUrl} download>
+                        Ladda ner
+                      </a>
+                    </Button>
+                  </div>
+                  {query.data.status !== 'voided' && role !== 'auditor' ? (
+                    <div className="space-y-2">
+                      <p className="text-xs text-muted-foreground">Byt eller komplettera underlaget om du har en bättre bild eller PDF.</p>
+                      {attachmentPending ? (
+                        <p className="text-xs text-muted-foreground">Laddar upp underlag...</p>
+                      ) : null}
+                      <MobileAttachmentPicker
+                        label="Underlag"
+                        valueLabel={query.data.attachment_path ? 'Bilaga finns' : undefined}
+                        onPick={handleAttachmentPick}
+                      />
+                    </div>
+                  ) : null}
                 </div>
               ) : (
-                <p className="text-muted-foreground">Ingen bilaga sparad.</p>
+                <div className="space-y-3">
+                  <p className="text-muted-foreground">Ingen bilaga sparad.</p>
+                  {query.data.status !== 'voided' && role !== 'auditor' ? (
+                    <div className="space-y-2">
+                      {attachmentPending ? (
+                        <p className="text-xs text-muted-foreground">Laddar upp underlag...</p>
+                      ) : null}
+                      <MobileAttachmentPicker
+                        label="Underlag"
+                        onPick={handleAttachmentPick}
+                      />
+                    </div>
+                  ) : null}
+                </div>
               )}
             </Card>
           </>

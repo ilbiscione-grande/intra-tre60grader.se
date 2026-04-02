@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import type { Route } from 'next';
 import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { BarChart3, ClipboardList, FileText, Filter, Wallet } from 'lucide-react';
 import { useAppContext } from '@/components/providers/AppContext';
@@ -149,6 +150,7 @@ export default function FinancePage() {
   const supabase = useMemo(() => createClient(), []);
   const query = useFinanceOverview(companyId);
   const mode = useBreakpointMode();
+  const searchParams = useSearchParams();
   const canReadFinance = canViewFinance(role, capabilities);
   const canEditFinance = canWriteFinance(role, capabilities);
 
@@ -165,6 +167,19 @@ export default function FinancePage() {
 
   const monthRange = useMemo(() => currentMonthRange(), []);
   const todayIso = new Date().toISOString().slice(0, 10);
+
+  useEffect(() => {
+    const nextView = searchParams.get('view');
+    const nextAttachment = searchParams.get('attachment');
+
+    if (nextView === 'overview' || nextView === 'verifications') {
+      setView(nextView);
+    }
+
+    if (nextAttachment === 'all' || nextAttachment === 'with' || nextAttachment === 'without') {
+      setAttachmentFilter(nextAttachment);
+    }
+  }, [searchParams]);
 
   const monthVatQuery = useQuery({
     queryKey: ['finance-month-vat', companyId, monthRange.start, monthRange.end],

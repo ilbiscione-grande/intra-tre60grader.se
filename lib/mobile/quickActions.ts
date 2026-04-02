@@ -55,8 +55,8 @@ const mobileQuickActionDefinitions: MobileQuickActionDefinition[] = [
   {
     id: 'attachment',
     label: 'Fota underlag',
-    description: 'Öppna verifikation och ladda upp underlag',
-    href: '/finance/verifications/new' as Route,
+    description: 'Välj befintlig verifikation och lägg till underlag',
+    href: '/finance?view=verifications&attachment=without' as Route,
     icon: Camera,
     visible: (role, capabilities) => canWriteFinance(role, capabilities)
   }
