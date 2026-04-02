@@ -483,10 +483,12 @@ export function TimeTrackerProvider({ children }: { children: React.ReactNode })
     setActiveTimer(null);
   }
 
+  const compactStartLayout = mode === 'mobile';
+
   const startDialogBody = (
-    <div className="space-y-4">
-      <label className="space-y-1 block">
-        <span className="text-sm">Projekt</span>
+    <div className={compactStartLayout ? 'space-y-3' : 'space-y-4'}>
+      <label className="block space-y-1">
+        <span className={compactStartLayout ? 'text-xs' : 'text-sm'}>Projekt</span>
         <Select
           value={selectedProjectId}
           onValueChange={(value) => {
@@ -510,54 +512,67 @@ export function TimeTrackerProvider({ children }: { children: React.ReactNode })
       </label>
 
       {selectedProjectId === NEW_PROJECT_VALUE ? (
-        <label className="space-y-1 block">
-          <span className="text-sm">Nytt projekt</span>
+        <label className="block space-y-1">
+          <span className={compactStartLayout ? 'text-xs' : 'text-sm'}>Nytt projekt</span>
           <Input value={newProjectTitle} onChange={(event) => setNewProjectTitle(event.target.value)} placeholder="Projektnamn" />
         </label>
       ) : null}
 
       {selectedProjectId && selectedProjectId !== NEW_PROJECT_VALUE ? (
-        <label className="space-y-1 block">
-          <span className="text-sm">Uppgift</span>
-          <Select value={selectedTaskId} onValueChange={setSelectedTaskId}>
-            <SelectTrigger>
-              <SelectValue placeholder="Välj uppgift" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={NONE_TASK_VALUE}>Ingen kopplad uppgift</SelectItem>
-              {(tasksQuery.data ?? []).map((task) => (
-                <SelectItem key={task.id} value={task.id}>
-                  {task.title}
-                </SelectItem>
-              ))}
-              <SelectItem value={NEW_TASK_VALUE}>+ Ny uppgift</SelectItem>
-            </SelectContent>
-          </Select>
-        </label>
+        <div className={compactStartLayout ? 'grid grid-cols-[minmax(0,1fr)_110px] gap-3' : 'space-y-4'}>
+          <label className="block space-y-1">
+            <span className={compactStartLayout ? 'text-xs' : 'text-sm'}>Uppgift</span>
+            <Select value={selectedTaskId} onValueChange={setSelectedTaskId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Välj uppgift" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NONE_TASK_VALUE}>Ingen kopplad uppgift</SelectItem>
+                {(tasksQuery.data ?? []).map((task) => (
+                  <SelectItem key={task.id} value={task.id}>
+                    {task.title}
+                  </SelectItem>
+                ))}
+                <SelectItem value={NEW_TASK_VALUE}>+ Ny uppgift</SelectItem>
+              </SelectContent>
+            </Select>
+          </label>
+
+          <label className="block space-y-1">
+            <span className={compactStartLayout ? 'text-xs' : 'text-sm'}>Starttid</span>
+            <Input
+              type="time"
+              value={timerStartTime}
+              onChange={(event) => setTimerStartTime(event.target.value)}
+            />
+          </label>
+        </div>
       ) : null}
 
       {selectedTaskId === NEW_TASK_VALUE ? (
-        <label className="space-y-1 block">
-          <span className="text-sm">Ny uppgift</span>
+        <label className="block space-y-1">
+          <span className={compactStartLayout ? 'text-xs' : 'text-sm'}>Ny uppgift</span>
           <Input value={newTaskTitle} onChange={(event) => setNewTaskTitle(event.target.value)} placeholder="Uppgiftstitel" />
         </label>
       ) : null}
 
-      <label className="space-y-1 block">
-        <span className="text-sm">Starta från klockan</span>
-        <Input
-          type="time"
-          value={timerStartTime}
-          onChange={(event) => setTimerStartTime(event.target.value)}
-        />
-        <p className="text-xs text-foreground/55">
-          Lämna aktuell tid vald för att starta nu, eller välj ett tidigare/senare klockslag.
-        </p>
-      </label>
+      {!selectedProjectId || selectedProjectId === NEW_PROJECT_VALUE ? (
+        <label className="block space-y-1">
+          <span className={compactStartLayout ? 'text-xs' : 'text-sm'}>Starttid</span>
+          <Input
+            type="time"
+            value={timerStartTime}
+            onChange={(event) => setTimerStartTime(event.target.value)}
+          />
+        </label>
+      ) : null}
 
-      <label className="space-y-1 block">
-        <span className="text-sm">Anteckning</span>
-        <Textarea value={timerNote} onChange={(event) => setTimerNote(event.target.value)} placeholder="Valfritt" rows={3} />
+      <label className="block space-y-1">
+        <div className="flex items-center justify-between gap-2">
+          <span className={compactStartLayout ? 'text-xs' : 'text-sm'}>Anteckning</span>
+          <span className="text-[11px] text-foreground/55">Tomt = start nu med aktuell tid</span>
+        </div>
+        <Textarea value={timerNote} onChange={(event) => setTimerNote(event.target.value)} placeholder="Valfritt" rows={compactStartLayout ? 2 : 3} />
       </label>
 
       <Button
