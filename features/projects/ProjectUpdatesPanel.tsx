@@ -209,13 +209,15 @@ export default function ProjectUpdatesPanel({
   projectId,
   isActive,
   onOpenUpdates,
-  highlightUpdateId
+  highlightUpdateId,
+  openComposerSignal = 0
 }: {
   companyId: string;
   projectId: string;
   isActive: boolean;
   onOpenUpdates: () => void;
   highlightUpdateId?: string | null;
+  openComposerSignal?: number;
 }) {
   const supabase = useMemo(() => createClient(), []);
   const db = supabase as unknown as {
@@ -581,6 +583,17 @@ export default function ProjectUpdatesPanel({
     if (!target) return;
     target.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }, [highlightUpdateId, isActive, updates]);
+
+  useEffect(() => {
+    if (!isActive || openComposerSignal <= 0) return;
+    setRootComposerVisible(true);
+    setExpandedComposer(false);
+    setRootAttachmentSheetOpen(false);
+    requestAnimationFrame(() => {
+      rootComposerCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+      requestAnimationFrame(() => document.getElementById('project-update-input')?.focus());
+    });
+  }, [isActive, openComposerSignal]);
 
   useEffect(() => {
     if (!rootComposerVisible) return;

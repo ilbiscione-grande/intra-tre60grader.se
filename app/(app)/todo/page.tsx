@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { canViewFinance } from '@/lib/auth/capabilities';
+import { getPrimaryMobileQuickActions, getSecondaryMobileQuickActions } from '@/lib/mobile/quickActions';
 import { createClient } from '@/lib/supabase/client';
 import { useBreakpointMode } from '@/lib/ui/useBreakpointMode';
 
@@ -454,6 +455,8 @@ export default function TodoPage() {
     ].filter((item): item is string => Boolean(item)),
     [longRunningTimerAlerts.length, overdueTaskAlerts.length, projectAlerts.length]
   );
+  const primaryQuickActions = getPrimaryMobileQuickActions(role, capabilities, hasActiveTimer);
+  const secondaryQuickActions = getSecondaryMobileQuickActions(role, capabilities, hasActiveTimer);
 
   if (mode === 'mobile') {
     return (
@@ -482,17 +485,17 @@ export default function TodoPage() {
             </div>
 
             <div className="grid grid-cols-2 gap-2">
-              <QuickActionButton
-                icon={hasActiveTimer ? Timer : Clock3}
-                label={hasActiveTimer ? 'Öppna timer' : 'Starta tid'}
-                onClick={() => (hasActiveTimer ? openControlsDialog() : openStartDialog())}
-              />
-              <QuickActionLink icon={CheckSquare2} label="Mina uppgifter" href={'/projects' as Route} />
-              <QuickActionLink icon={ReceiptText} label="Ny uppdatering" href={'/projects' as Route} />
-              {canReadFinance ? (
-                <QuickActionLink icon={FilePlus2} label="Ny verifikation" href={'/finance/verifications/new' as Route} />
-              ) : (
-                <QuickActionLink icon={BriefcaseBusiness} label="Projekt" href={'/projects' as Route} />
+              {primaryQuickActions.map((item) =>
+                item.id === 'time' ? (
+                  <QuickActionButton
+                    key={item.id}
+                    icon={item.icon}
+                    label={item.label}
+                    onClick={() => (hasActiveTimer ? openControlsDialog() : openStartDialog())}
+                  />
+                ) : (
+                  <QuickActionLink key={item.id} icon={item.icon} label={item.label} href={item.href as Route} />
+                )
               )}
             </div>
           </CardContent>
@@ -615,15 +618,16 @@ export default function TodoPage() {
           </CardContent>
         </Card>
 
-        {canReadFinance ? (
+        {canReadFinance && secondaryQuickActions.length > 0 ? (
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-base">Snabbregistrering</CardTitle>
               <p className="text-sm text-foreground/65">Mobilvänliga genvägar för ekonomi och underlag.</p>
             </CardHeader>
             <CardContent className="grid grid-cols-2 gap-2">
-              <QuickActionLink icon={FilePlus2} label="Verifikation" href={'/finance/verifications/new' as Route} />
-              <QuickActionLink icon={Camera} label="Foto/underlag" href={'/finance/verifications/new' as Route} />
+              {secondaryQuickActions.map((item) => (
+                <QuickActionLink key={item.id} icon={item.icon} label={item.label} href={item.href as Route} />
+              ))}
             </CardContent>
           </Card>
         ) : null}

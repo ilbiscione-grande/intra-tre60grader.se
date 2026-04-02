@@ -308,6 +308,7 @@ export default function ProjectDetailsPage() {
   const [pendingOrderStatus, setPendingOrderStatus] = useState<OrderStatus | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<OrderLineRow | null>(null);
   const [activeTab, setActiveTab] = useState<ProjectTab>('overview');
+  const [openUpdatesComposerSignal, setOpenUpdatesComposerSignal] = useState(0);
   const [memberSearch, setMemberSearch] = useState('');
   const [memberRoleFilter, setMemberRoleFilter] = useState<'all' | Role>('all');
   const [optimisticAssignedUserIds, setOptimisticAssignedUserIds] = useState<string[] | null>(null);
@@ -322,6 +323,11 @@ export default function ProjectDetailsPage() {
   });
   const { containerRef, registerItem } = useAutoScrollActiveTab(activeTab);
   const mobileActiveTab = getMobileProjectTab(activeTab);
+
+  function openProjectUpdateComposer() {
+    setActiveTab('updates');
+    setOpenUpdatesComposerSignal((current) => current + 1);
+  }
 
   useEffect(() => {
     const requestedTab = searchParams.get('tab');
@@ -1379,12 +1385,12 @@ export default function ProjectDetailsPage() {
           {mode === 'mobile' ? (
             <Card>
               <CardContent className="grid grid-cols-2 gap-2 p-3">
-                <Button type="button" variant="outline" className="justify-start rounded-2xl" onClick={() => setActiveTab('updates')}>
-                  Uppdateringar
-                </Button>
-                <Button type="button" variant="outline" className="justify-start rounded-2xl" onClick={() => setActiveTab('tasks')}>
-                  Uppgifter
-                </Button>
+                  <Button type="button" variant="outline" className="justify-start rounded-2xl" onClick={openProjectUpdateComposer}>
+                    Ny uppdatering
+                  </Button>
+                  <Button type="button" variant="outline" className="justify-start rounded-2xl" onClick={() => setActiveTab('tasks')}>
+                    Uppgifter
+                  </Button>
                 <Button type="button" variant="outline" className="justify-start rounded-2xl" onClick={() => setActiveTab('time')}>
                   Tid
                 </Button>
@@ -2124,6 +2130,7 @@ export default function ProjectDetailsPage() {
         isActive={activeTab === 'updates'}
         onOpenUpdates={() => setActiveTab('updates')}
         highlightUpdateId={searchParams.get('update')}
+        openComposerSignal={openUpdatesComposerSignal}
       />
 
       <Dialog open={cancelConfirmOpen} onOpenChange={setCancelConfirmOpen}>

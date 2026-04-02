@@ -307,6 +307,7 @@ export default function ProjectTasksPanel({
   const [mobileScope, setMobileScope] = useState<'mine' | 'overdue' | 'all'>('mine');
   const [createOpen, setCreateOpen] = useState(false);
   const [activeTaskMemberKey, setActiveTaskMemberKey] = useState<string | null>(null);
+  const [mobileTaskDetailId, setMobileTaskDetailId] = useState<string | null>(null);
   const mode = useBreakpointMode();
 
   const currentUserQuery = useQuery<string | null>({
@@ -412,6 +413,10 @@ export default function ProjectTasksPanel({
     if (mode !== 'mobile' || mobileScope === 'all') return doneTasks;
     return [];
   }, [doneTasks, mobileScope, mode]);
+  const mobileTaskDetail = useMemo(
+    () => (mobileTaskDetailId ? tasks.find((task) => task.id === mobileTaskDetailId) ?? null : null),
+    [mobileTaskDetailId, tasks]
+  );
 
   function addDraftSubtask() {
     const nextTitle = subtaskDraft.trim();
@@ -1014,7 +1019,7 @@ export default function ProjectTasksPanel({
                   </div>
                   <div className="flex items-center gap-2">
                     <Badge className={priorityTone(task.priority as TaskPriority)}>{priorityLabel(task.priority as TaskPriority)}</Badge>
-                    {canManageTasks(role) ? (
+                    {mode !== 'mobile' && canManageTasks(role) ? (
                       <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={() => deleteTaskMutation.mutate(task.id)} disabled={deleteTaskMutation.isPending}>
                         <Trash2 className="h-4 w-4" />
                       </Button>
@@ -1148,7 +1153,36 @@ export default function ProjectTasksPanel({
                   onToggle={(key) => setActiveTaskMemberKey((current) => (current === key ? null : key))}
                 />
 
-                {canManageTasks(role) ? (
+                {mode === 'mobile' ? (
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="rounded-xl"
+                      onClick={() =>
+                        updateTaskMutation.mutate({
+                          taskId: task.id,
+                          patch: { status: task.status === 'done' ? 'todo' : 'done' }
+                        })
+                      }
+                    >
+                      <CheckCircle2 className="mr-2 h-4 w-4" />
+                      {task.status === 'done' ? 'Öppna igen' : 'Markera klar'}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="rounded-xl border border-border/70 bg-muted/20"
+                      onClick={() => setMobileTaskDetailId(task.id)}
+                    >
+                      Visa detaljer
+                    </Button>
+                  </div>
+                ) : null}
+
+                {mode !== 'mobile' && canManageTasks(role) ? (
                   <div className="mt-3 space-y-3">
                     <div className="grid gap-2 md:grid-cols-4">
                     <SimpleSelect
@@ -1230,6 +1264,231 @@ export default function ProjectTasksPanel({
           )}
         </CardContent>
       </Card>
+
+      {mode === 'mobile' && mobileTaskDetail ? (() => {
+        const task = mobileTaskDetail;
+        const assignee = task.assignee_user_id ? assigneeByUserId.get(task.assignee_user_id) ?? null : null;
+        const taskMemberUserIds = taskMemberUserIdsByTaskId.get(task.id) ?? [];
+        const taskMembers = taskMemberUserIds
+          .map((userId) => assigneeByUserId.get(userId) ?? null)
+          .filter((member): member is ProjectMemberVisual => Boolean(member));
+        const visibleTaskMemberBadges = buildTaskVisibleMemberBadges(assignee, taskMembers);
+        const linkedMilestone = task.milestone_id ? milestoneById.get(task.milestone_id) ?? null : null;
+        const taskSubtasks = normalizeTaskSubtasks(task.subtasks);
+        const taskSubtaskDraft = subtaskDraftByTaskId[task.id] ?? '';
+
+        return (
+          <ActionSheet
+            open={Boolean(mobileTaskDetailId)}
+            onClose={() => setMobileTaskDetailId(null)}
+            title={task.title}
+            description="Se detaljer och gör snabba ändringar för uppgiften."
+          >
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge>{statusLabel(task.status as TaskStatus)}</Badge>
+                <Badge className={priorityTone(task.priority as TaskPriority)}>{priorityLabel(task.priority as TaskPriority)}</Badge>
+                {task.due_date ? <Badge>{new Date(task.due_date).toLocaleDateString('sv-SE')}</Badge> : null}
+              </div>
+
+              {task.description ? <p className="text-sm text-foreground/75">{task.description}</p> : null}
+
+              {visibleTaskMemberBadges.length > 0 ? (
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Team</p>
+                  <TaskMemberBadges
+                    members={visibleTaskMemberBadges}
+                    activeMemberKey={activeTaskMemberKey}
+                    onToggle={(key) => setActiveTaskMemberKey((current) => (current === key ? null : key))}
+                  />
+                </div>
+              ) : null}
+
+              {linkedMilestone ? (
+                <div className="rounded-xl border border-border/70 bg-muted/10 p-3">
+                  <p className="text-xs uppercase tracking-[0.16em] text-foreground/45">Delmål</p>
+                  <p className="mt-1 text-sm font-medium">{linkedMilestone.title || 'Kopplat delmål'}</p>
+                  {linkedMilestone.date ? <p className="mt-1 text-sm text-foreground/60">{linkedMilestone.date}</p> : null}
+                </div>
+              ) : null}
+
+              {taskSubtasks.length > 0 ? (
+                <div className="space-y-2 rounded-xl border border-border/70 bg-muted/10 p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-medium">Delsteg</p>
+                    <Badge>{taskSubtasks.filter((subtask) => subtask.completed).length}/{taskSubtasks.length}</Badge>
+                  </div>
+                  {taskSubtasks.map((subtask) => (
+                    <button
+                      key={subtask.id}
+                      type="button"
+                      className="flex w-full items-center justify-between gap-3 rounded-lg border bg-background px-3 py-2 text-left"
+                      onClick={() =>
+                        updateTaskMutation.mutate({
+                          taskId: task.id,
+                          patch: {
+                            subtasks: serializeTaskSubtasks(
+                              taskSubtasks.map((item) => (item.id === subtask.id ? { ...item, completed: !item.completed } : item))
+                            )
+                          }
+                        })
+                      }
+                    >
+                      <span className="flex min-w-0 items-center gap-2">
+                        {subtask.completed ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : <Circle className="h-4 w-4 text-foreground/45" />}
+                        <span className={`text-sm ${subtask.completed ? 'line-through text-foreground/50' : 'text-foreground/80'}`}>{subtask.title}</span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+
+              {canManageTasks(role) ? (
+                <>
+                  <div className="grid gap-2">
+                    <SimpleSelect
+                      value={task.status}
+                      onValueChange={(value) => updateTaskMutation.mutate({ taskId: task.id, patch: { status: value as TaskStatus } })}
+                      options={[
+                        { value: 'todo', label: 'Att göra' },
+                        { value: 'in_progress', label: 'Pågår' },
+                        { value: 'done', label: 'Klar' }
+                      ]}
+                    />
+                    <SimpleSelect
+                      value={task.priority}
+                      onValueChange={(value) => updateTaskMutation.mutate({ taskId: task.id, patch: { priority: value as TaskPriority } })}
+                      options={[
+                        { value: 'low', label: 'Låg' },
+                        { value: 'normal', label: 'Normal' },
+                        { value: 'high', label: 'Hög' }
+                      ]}
+                    />
+                    <SimpleSelect
+                      value={task.assignee_user_id ?? 'none'}
+                      onValueChange={(value) =>
+                        updateTaskMutation.mutate({
+                          taskId: task.id,
+                          patch: { assignee_user_id: value === 'none' ? null : normalizeUserId(value) }
+                        })
+                      }
+                      options={[
+                        { value: 'none', label: 'Ingen ansvarig' },
+                        ...normalizedMembers.map((member) => ({
+                          value: member.user_id,
+                          label: getUserDisplayName({
+                            displayName: member.display_name,
+                            email: member.email,
+                            handle: member.handle,
+                            userId: member.user_id
+                          })
+                        }))
+                      ]}
+                    />
+                    <SimpleSelect
+                      value={task.milestone_id ?? 'none'}
+                      onValueChange={(value) =>
+                        updateTaskMutation.mutate({
+                          taskId: task.id,
+                          patch: { milestone_id: value === 'none' ? null : value }
+                        })
+                      }
+                      options={[
+                        { value: 'none', label: 'Inget delmål' },
+                        ...milestones.map((milestone) => ({
+                          value: milestone.id,
+                          label: `${milestone.title || 'Namnlöst delmål'}${milestone.date ? ` • ${milestone.date}` : ''}`
+                        }))
+                      ]}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium">Medlemmar på uppgiften</p>
+                    <TaskMemberPicker
+                      members={normalizedMembers}
+                      selectedUserIds={taskMemberUserIds}
+                      onChange={(nextUserIds) =>
+                        updateTaskMutation.mutate({
+                          taskId: task.id,
+                          patch: {},
+                          memberUserIds: nextUserIds
+                        })
+                      }
+                    />
+                  </div>
+
+                  <div className="space-y-2 rounded-xl border border-border/70 bg-muted/10 p-3">
+                    <p className="text-sm font-medium">Lägg till delsteg</p>
+                    <div className="flex flex-wrap gap-2">
+                      <Input
+                        value={taskSubtaskDraft}
+                        onChange={(event) =>
+                          setSubtaskDraftByTaskId((prev) => ({
+                            ...prev,
+                            [task.id]: event.target.value
+                          }))
+                        }
+                        placeholder="Nytt delsteg"
+                        className="min-w-[220px] flex-1"
+                        onKeyDown={(event) => {
+                          if (event.key !== 'Enter') return;
+                          event.preventDefault();
+                          const nextTitle = taskSubtaskDraft.trim();
+                          if (!nextTitle) return;
+                          updateTaskMutation.mutate({
+                            taskId: task.id,
+                            patch: {
+                              subtasks: serializeTaskSubtasks([
+                                ...taskSubtasks,
+                                { id: crypto.randomUUID(), title: nextTitle, completed: false }
+                              ])
+                            }
+                          });
+                          setSubtaskDraftByTaskId((prev) => ({ ...prev, [task.id]: '' }));
+                        }}
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => {
+                          const nextTitle = taskSubtaskDraft.trim();
+                          if (!nextTitle) return;
+                          updateTaskMutation.mutate({
+                            taskId: task.id,
+                            patch: {
+                              subtasks: serializeTaskSubtasks([
+                                ...taskSubtasks,
+                                { id: crypto.randomUUID(), title: nextTitle, completed: false }
+                              ])
+                            }
+                          });
+                          setSubtaskDraftByTaskId((prev) => ({ ...prev, [task.id]: '' }));
+                        }}
+                      >
+                        Lägg till
+                      </Button>
+                    </div>
+                  </div>
+
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    className="w-full"
+                    onClick={() => {
+                      deleteTaskMutation.mutate(task.id, { onSuccess: () => setMobileTaskDetailId(null) });
+                    }}
+                    disabled={deleteTaskMutation.isPending}
+                  >
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Ta bort uppgift
+                  </Button>
+                </>
+              ) : null}
+            </div>
+          </ActionSheet>
+        );
+      })() : null}
 
       {view === 'list' && visibleDoneTasks.length > 0 ? (
         <Card>

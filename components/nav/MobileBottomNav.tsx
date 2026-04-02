@@ -10,6 +10,7 @@ import { useTimeTracker } from '@/components/providers/TimeTrackerProvider';
 import { buttonVariants } from '@/components/ui/button';
 import { Button } from '@/components/ui/button';
 import { canAccessCustomers, canAccessFinance, canAccessOrders, canAccessReports, canAccessTeam } from '@/lib/auth/navigation';
+import { getMobileQuickActions } from '@/lib/mobile/quickActions';
 import { cn } from '@/lib/ui/cn';
 import type { Capability, Role } from '@/lib/types';
 
@@ -63,6 +64,7 @@ export default function MobileBottomNav({ role, capabilities }: { role: Role; ca
     }),
     [filteredMenuItems]
   );
+  const quickActions = getMobileQuickActions(role, capabilities, hasActiveTimer);
 
   useEffect(() => {
     visibleMenuItems.forEach((item) => {
@@ -171,34 +173,57 @@ export default function MobileBottomNav({ role, capabilities }: { role: Role; ca
           <div className="space-y-2">
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-foreground/55">Snabbt</p>
             <div className="grid grid-cols-2 gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                className="h-11 justify-start rounded-2xl"
-                onClick={() => {
-                  setMenuOpen(false);
-                  if (hasActiveTimer) {
-                    openControlsDialog();
-                    return;
-                  }
-                  openStartDialog();
-                }}
-              >
-                <Clock3 className="mr-2 h-4 w-4" />
-                Tid
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                className="h-11 justify-start rounded-2xl"
-                onClick={() => {
-                  setMenuOpen(false);
-                  router.push('/todo' as Route);
-                }}
-              >
-                <CheckSquare2 className="mr-2 h-4 w-4" />
-                Att göra
-              </Button>
+              {quickActions.map((item) => {
+                const Icon = item.icon;
+
+                if (item.id === 'time') {
+                  return (
+                    <Button
+                      key={item.id}
+                      type="button"
+                      variant="outline"
+                      className="h-auto min-h-14 justify-start rounded-2xl px-3 py-3"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        if (hasActiveTimer) {
+                          openControlsDialog();
+                          return;
+                        }
+                        openStartDialog();
+                      }}
+                    >
+                      <div className="flex items-start gap-2 text-left">
+                        <Icon className="mt-0.5 h-4 w-4 shrink-0" />
+                        <span className="min-w-0">
+                          <span className="block text-sm font-medium">{item.label}</span>
+                          <span className="mt-0.5 block whitespace-normal text-xs text-foreground/60">{item.description}</span>
+                        </span>
+                      </div>
+                    </Button>
+                  );
+                }
+
+                return (
+                  <Button
+                    key={item.id}
+                    type="button"
+                    variant="outline"
+                    className="h-auto min-h-14 justify-start rounded-2xl px-3 py-3"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      router.push(item.href as Route);
+                    }}
+                  >
+                    <div className="flex items-start gap-2 text-left">
+                      <Icon className="mt-0.5 h-4 w-4 shrink-0" />
+                      <span className="min-w-0">
+                        <span className="block text-sm font-medium">{item.label}</span>
+                        <span className="mt-0.5 block whitespace-normal text-xs text-foreground/60">{item.description}</span>
+                      </span>
+                    </div>
+                  </Button>
+                );
+              })}
             </div>
           </div>
           <MenuSection

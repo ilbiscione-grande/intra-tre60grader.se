@@ -56,8 +56,8 @@ På mobil ska det fortfarande gå att:
 - [x] M4.1 Definiera vilka snabbåtgärder som alltid ska finnas på mobil
 - [x] M4.2 Föreslagna snabbåtgärder:
   `Ny uppdatering`, `Starta tid`, `Ny verifikation`, `Fota underlag`, `Ny uppgift`
-- [-] M4.3 Säkerställ att snabbåtgärderna kan öppnas från både startsidan och plusmenyn
-- [-] M4.4 Gör snabbåtgärderna till dialog/sheet-flöden i stället för hela formulärsidor där det går
+- [x] M4.3 Säkerställ att snabbåtgärderna kan öppnas från både startsidan och plusmenyn
+- [x] M4.4 Gör snabbåtgärderna till dialog/sheet-flöden i stället för hela formulärsidor där det går
 
 ## Etapp M5 - Projekt på mobil
 - [x] M5.1 Dela upp mobilens projektdetalj i enklare lägen
@@ -70,14 +70,14 @@ På mobil ska det fortfarande gå att:
 - [x] M5.5 `Mer` ska visa:
   bilagor, ekonomi, loggar, avancerade inställningar
 - [-] M5.6 Flytta tunga redigeringsformulär till sheets/dialoger där det passar
-- [ ] M5.7 Säkerställ att det är mycket lätt att skapa ny uppdatering från projektsidan
+- [x] M5.7 Säkerställ att det är mycket lätt att skapa ny uppdatering från projektsidan
 
 ## Etapp M6 - Uppgifter på mobil
 - [x] M6.1 Gör `Mina uppgifter` till en central mobilvy
-- [-] M6.2 Prioritera visning av:
+- [x] M6.2 Prioritera visning av:
   försenade, idag, nästa, blockerade
-- [-] M6.3 Gör det lätt att markera uppgift klar eller öppna uppgift
-- [-] M6.4 Gör uppgiftens detaljvy enklare på mobil än på desktop
+- [x] M6.3 Gör det lätt att markera uppgift klar eller öppna uppgift
+- [x] M6.4 Gör uppgiftens detaljvy enklare på mobil än på desktop
 - [x] M6.5 Säkerställ att ansvarig, deadline, prioritet och projekt syns tydligt utan att vyn blir tung
 
 ## Etapp M7 - Tidrapportering på mobil
