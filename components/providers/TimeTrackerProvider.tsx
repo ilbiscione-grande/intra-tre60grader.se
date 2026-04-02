@@ -74,6 +74,35 @@ function buildElapsedMs(timer: ActiveTimer, now: number) {
   return timer.accumulatedMs + Math.max(0, now - startedAtMs);
 }
 
+function resolveTimerStartState(timeValue: string) {
+  const now = new Date();
+  const [startHourRaw, startMinuteRaw] = timeValue.split(':', 2);
+  const startHour = Number.parseInt(startHourRaw ?? '', 10);
+  const startMinute = Number.parseInt(startMinuteRaw ?? '', 10);
+
+  if (!Number.isFinite(startHour) || !Number.isFinite(startMinute)) {
+    return {
+      startedAt: now.toISOString(),
+      accumulatedMs: 0
+    };
+  }
+
+  const selected = new Date(now);
+  selected.setHours(startHour, startMinute, 0, 0);
+
+  if (selected.getTime() <= now.getTime()) {
+    return {
+      startedAt: now.toISOString(),
+      accumulatedMs: Math.max(0, now.getTime() - selected.getTime())
+    };
+  }
+
+  return {
+    startedAt: selected.toISOString(),
+    accumulatedMs: 0
+  };
+}
+
 function toActiveTimer(row: ProjectActiveTimerRow): ActiveTimer {
   return {
     companyId: row.company_id,
@@ -413,16 +442,7 @@ export function TimeTrackerProvider({ children }: { children: React.ReactNode })
         await queryClient.invalidateQueries({ queryKey: ['project-time-tasks', companyId, resolvedProjectId] });
       }
 
-      const [startHourRaw, startMinuteRaw] = timerStartTime.split(':', 2);
-      const startHour = Number.parseInt(startHourRaw ?? '', 10);
-      const startMinute = Number.parseInt(startMinuteRaw ?? '', 10);
-      const startDate = new Date();
-
-      if (Number.isFinite(startHour) && Number.isFinite(startMinute)) {
-        startDate.setHours(startHour, startMinute, 0, 0);
-      }
-
-      const startedAt = startDate.toISOString();
+      const { startedAt, accumulatedMs } = resolveTimerStartState(timerStartTime);
       const nextTimer = {
         companyId,
         projectId: resolvedProjectId,
@@ -430,7 +450,7 @@ export function TimeTrackerProvider({ children }: { children: React.ReactNode })
         taskId: resolvedTaskId,
         taskTitle: resolvedTaskTitle,
         startedAt,
-        accumulatedMs: 0,
+        accumulatedMs,
         pausedAt: null,
         note: timerNote.trim() || null
       } satisfies ActiveTimer;
