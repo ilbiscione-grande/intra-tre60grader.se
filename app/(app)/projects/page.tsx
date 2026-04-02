@@ -357,52 +357,25 @@ export default function ProjectsPage() {
 
   const mobileQuickFilters =
     mode === 'mobile' ? (
-      <div className="flex flex-wrap gap-2">
+      <div className="flex items-center gap-1">
         <Button
           type="button"
           variant={mobileQuickFilter === 'all' ? 'default' : 'outline'}
           size="sm"
-          className="h-8 rounded-full px-3 text-xs"
+          className="h-7 rounded-full px-2 text-[10px]"
           onClick={() => setMobileQuickFilter('all')}
         >
-          Alla projekt
+          Alla
         </Button>
         <Button
           type="button"
           variant={mobileQuickFilter === 'mine' ? 'default' : 'outline'}
           size="sm"
-          className="h-8 rounded-full px-3 text-xs"
+          className="h-7 rounded-full px-2 text-[10px]"
           onClick={() => setMobileQuickFilter('mine')}
         >
-          Mina projekt
+          Mina
         </Button>
-        {[
-          statusOptions.find((option) => option.key === 'in_progress'),
-          statusOptions.find((option) => option.key === 'review'),
-          statusOptions.find((option) => option.key === 'todo'),
-          statusOptions.find((option) => option.key === 'done')
-        ]
-          .filter((option): option is { key: string; title: string } => Boolean(option))
-          .map((option) => (
-          <Button
-            key={option.key}
-            type="button"
-            variant={statusFilter === option.key ? 'default' : 'outline'}
-            size="sm"
-            className="h-8 rounded-full px-3 text-xs"
-            onClick={() => setStatusFilter((current) => (current === option.key ? 'all' : option.key))}
-          >
-            {option.key === 'in_progress'
-              ? 'Pågående'
-              : option.key === 'review'
-                ? 'Granskning'
-                : option.key === 'todo'
-                  ? 'Att göra'
-                  : option.key === 'done'
-                    ? 'Klara'
-                    : option.title}
-          </Button>
-        ))}
       </div>
     ) : null;
 
@@ -462,7 +435,7 @@ export default function ProjectsPage() {
         {viewMode === 'board' ? (
           <ProjectBoardMobile companyId={companyId} searchTerm={projectSearch} statusFilter={statusFilter} currentUserId={currentUserId} selectedMemberIds={selectedMemberIds} startDateFilter={startDateFilter} endDateFilter={endDateFilter} />
         ) : (
-            <ProjectListView companyId={companyId} searchTerm={projectSearch} statusFilter={statusFilter} onStatusFilterChange={setStatusFilter} statusOptions={statusOptions} selectedMemberIds={selectedMemberIds} startDateFilter={startDateFilter} endDateFilter={endDateFilter} showSummaryMetrics={false} />
+            <ProjectListView companyId={companyId} searchTerm={projectSearch} statusFilter={statusFilter} onStatusFilterChange={setStatusFilter} statusOptions={statusOptions} selectedMemberIds={selectedMemberIds} startDateFilter={startDateFilter} endDateFilter={endDateFilter} showSummaryMetrics={false} showStatusTabs={false} />
           )}
         </SectionErrorBoundary>
 

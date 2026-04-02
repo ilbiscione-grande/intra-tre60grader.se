@@ -103,7 +103,8 @@ export default function ProjectListView({
   selectedMemberIds = [],
   startDateFilter = '',
   endDateFilter = '',
-  showSummaryMetrics = true
+  showSummaryMetrics = true,
+  showStatusTabs = true
 }: {
   companyId: string;
   searchTerm?: string;
@@ -114,6 +115,7 @@ export default function ProjectListView({
   startDateFilter?: string;
   endDateFilter?: string;
   showSummaryMetrics?: boolean;
+  showStatusTabs?: boolean;
 }) {
   const [sortKey, setSortKey] = useState<SortKey>('updated_at');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
@@ -321,26 +323,28 @@ export default function ProjectListView({
         </div>
       ) : null}
 
-      <div className="flex flex-wrap items-center gap-2 border-b border-border/70 pb-2">
-        {resolvedStatusOptions.map((option) => {
-          const isActive = statusFilter === option.key;
-          return (
-            <button
-              key={option.key}
-              type="button"
-              onClick={() => onStatusFilterChange?.(option.key)}
-              className={`inline-flex items-center gap-2 border-b-2 px-1 py-2 text-sm transition ${
-                isActive
-                  ? 'border-primary font-medium text-foreground'
-                  : 'border-transparent text-foreground/60 hover:text-foreground'
-              }`}
-            >
-              <span>{option.key === 'all' ? 'Alla projekt' : option.title}</span>
-              <span className="text-xs text-foreground/45">{statusCounts.get(option.key) ?? 0}</span>
-            </button>
-          );
-        })}
-      </div>
+      {showStatusTabs ? (
+        <div className="flex flex-wrap items-center gap-2 border-b border-border/70 pb-2">
+          {resolvedStatusOptions.map((option) => {
+            const isActive = statusFilter === option.key;
+            return (
+              <button
+                key={option.key}
+                type="button"
+                onClick={() => onStatusFilterChange?.(option.key)}
+                className={`inline-flex items-center gap-2 border-b-2 px-1 py-2 text-sm transition ${
+                  isActive
+                    ? 'border-primary font-medium text-foreground'
+                    : 'border-transparent text-foreground/60 hover:text-foreground'
+                }`}
+              >
+                <span>{option.key === 'all' ? 'Alla projekt' : option.title}</span>
+                <span className="text-xs text-foreground/45">{statusCounts.get(option.key) ?? 0}</span>
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
 
       {sortedProjects.length === 0 ? (
         <p className="rounded-lg bg-muted p-4 text-sm text-foreground/70">
