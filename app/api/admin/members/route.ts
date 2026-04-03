@@ -6,6 +6,7 @@ import { PROFILE_BADGE_PREFERENCE_KEY } from '@/lib/profile/constants';
 import { getRequestIp, safeLogSecurityEvent } from '@/lib/security/server';
 import type { Database } from '@/lib/supabase/database.types';
 import type { Role } from '@/lib/types';
+import { getIntraAuthCallbackUrl } from '@/lib/url/appUrl';
 import { resolveUserDisplayName } from '@/lib/users/displayName';
 
 type CompanyMemberRow = Database['public']['Tables']['company_members']['Row'];
@@ -231,7 +232,7 @@ export async function POST(request: NextRequest) {
   if (!user) {
     const admin = createAdminClient();
     const { data: inviteData, error: inviteError } = await admin.auth.admin.inviteUserByEmail(normalizedEmail, {
-      redirectTo: `${request.nextUrl.origin}/auth/callback`,
+      redirectTo: getIntraAuthCallbackUrl(),
       data: {
         display_name: normalizedDisplayName,
         full_name: normalizedDisplayName,

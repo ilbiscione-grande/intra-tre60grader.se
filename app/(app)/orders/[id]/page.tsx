@@ -17,6 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { getUserDisplayName } from '@/features/profile/profileBadge';
 import {
+  buildOrderInvoiceReadinessChecklist,
   getInvoiceReadinessDescription,
   getInvoiceReadinessLabel,
   getInvoiceReadinessNextStep,
@@ -413,38 +414,12 @@ export default function OrderDetailsPage() {
     .reduce((sum, invoice) => sum + Number(invoice.total ?? 0), 0);
   const latestInvoice = invoicesQuery.data?.[0] ?? null;
   const hasActiveInvoice = (invoicesQuery.data ?? []).some((invoice) => invoice.status !== 'void');
-  const readinessChecklist = [
-    {
-      id: 'customer',
-      label: customerQuery.data ? 'Kund finns' : 'Kund saknas',
-      done: Boolean(customerQuery.data),
-      detail: customerQuery.data ? customerQuery.data.name : 'Ordern behöver ett projekt med kopplad kund.'
-    },
-    {
-      id: 'project',
-      label: projectQuery.data ? 'Projekt är kopplat' : 'Projekt saknas',
-      done: Boolean(projectQuery.data),
-      detail: projectQuery.data ? projectQuery.data.title : 'Ordern behöver vara kopplad till ett tydligt projekt.'
-    },
-    {
-      id: 'lines',
-      label: (linesQuery.data?.length ?? 0) > 0 ? 'Orderrader finns' : 'Orderrader saknas',
-      done: (linesQuery.data?.length ?? 0) > 0,
-      detail:
-        (linesQuery.data?.length ?? 0) > 0
-          ? `${linesQuery.data?.length ?? 0} rader registrerade`
-          : 'Lägg till minst en orderrad innan fastställelse eller faktura.'
-    },
-    {
-      id: 'value',
-      label: Number(order.total ?? 0) > 0 ? 'Ordern har ett positivt värde' : 'Ordervärdet är 0',
-      done: Number(order.total ?? 0) > 0,
-      detail:
-        Number(order.total ?? 0) > 0
-          ? `${Number(order.total ?? 0).toFixed(2)} kr`
-          : 'Underlaget behöver ett fakturerbart belopp.'
-    }
-  ];
+  const readinessChecklist = buildOrderInvoiceReadinessChecklist({
+    customerName: customerQuery.data?.name,
+    projectTitle: projectQuery.data?.title,
+    lineCount: linesQuery.data?.length ?? 0,
+    orderTotal: Number(order.total ?? 0)
+  });
 
   return (
     <section className="space-y-4">

@@ -25,6 +25,8 @@ import SimpleSelect from '@/components/ui/simple-select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { createInvoiceFromOrder } from '@/lib/rpc';
 import {
+  buildProjectInvoiceReadinessChecklist,
+  buildProjectOrderInvoiceReadinessChecklist,
   getInvoiceReadinessDescription,
   getInvoiceReadinessLabel,
   getInvoiceReadinessNextStep,
@@ -1372,65 +1374,21 @@ export default function ProjectDetailsPage() {
   const projectInvoiceReadinessOptions = getInvoiceReadinessOptions(role, projectInvoiceReadiness);
   const orderInvoiceReadinessOptions = getInvoiceReadinessOptions(role, orderInvoiceReadiness);
   const canEditInvoiceReadiness = role !== 'auditor';
-  const projectReadinessChecklist = [
-    {
-      id: 'customer',
-      label: currentCustomer ? 'Kund är kopplad' : 'Kund saknas',
-      done: Boolean(currentCustomer),
-      detail: currentCustomer ? currentCustomer.name : 'Välj kund i grundinfo innan överlämning.'
-    },
-    {
-      id: 'responsible',
-      label: project.responsible_user_id ? 'Projektansvarig är satt' : 'Projektansvarig saknas',
-      done: Boolean(project.responsible_user_id),
-      detail: project.responsible_user_id
-        ? memberLabelByUserId.get(project.responsible_user_id) ?? 'Ansvarig tilldelad'
-        : 'Projektet behöver en tydlig ägare.'
-    },
-    {
-      id: 'members',
-      label: assignedMembers.length > 0 ? 'Projektmedlemmar finns' : 'Inga projektmedlemmar tilldelade',
-      done: assignedMembers.length > 0,
-      detail: assignedMembers.length > 0 ? `${assignedMembers.length} tilldelade` : 'Lägg till de personer som ska utföra eller följa jobbet.'
-    },
-    {
-      id: 'value',
-      label: Number(orderQuery.data?.total ?? 0) > 0 ? 'Fakturerbart värde finns' : 'Fakturerbart värde saknas',
-      done: Number(orderQuery.data?.total ?? 0) > 0,
-      detail:
-        Number(orderQuery.data?.total ?? 0) > 0
-          ? `${Number(orderQuery.data?.total ?? 0).toFixed(2)} kr på ordern`
-          : 'Lägg orderrader eller bygg underlag från tid.'
-    }
-  ];
-  const orderReadinessChecklist = [
-    {
-      id: 'order-lines',
-      label: lines.length > 0 ? 'Orderrader finns' : 'Orderrader saknas',
-      done: lines.length > 0,
-      detail: lines.length > 0 ? `${lines.length} rader klara för granskning` : 'Lägg till minst en orderrad innan fakturering.'
-    },
-    {
-      id: 'customer',
-      label: currentCustomer ? 'Kund finns på projektet' : 'Kund saknas på projektet',
-      done: Boolean(currentCustomer),
-      detail: currentCustomer ? currentCustomer.name : 'Ordern behöver ett projekt med kopplad kund.'
-    },
-    {
-      id: 'responsible',
-      label: project.responsible_user_id ? 'Projektansvarig finns' : 'Projektansvarig saknas',
-      done: Boolean(project.responsible_user_id),
-      detail: project.responsible_user_id
-        ? memberLabelByUserId.get(project.responsible_user_id) ?? 'Ansvarig tilldelad'
-        : 'Det bör finnas en tydlig ägare innan överlämning.'
-    },
-    {
-      id: 'invoice',
-      label: latestInvoice ? 'Faktura finns redan' : 'Ingen faktura skapad ännu',
-      done: !latestInvoice,
-      detail: latestInvoice ? `${latestInvoice.invoice_no} finns redan kopplad` : 'Underlaget kan fortfarande fastställas eller faktureras.'
-    }
-  ];
+  const responsibleLabel = project.responsible_user_id
+    ? memberLabelByUserId.get(project.responsible_user_id) ?? 'Ansvarig tilldelad'
+    : null;
+  const projectReadinessChecklist = buildProjectInvoiceReadinessChecklist({
+    customerName: currentCustomer?.name,
+    responsibleLabel,
+    assignedMemberCount: assignedMembers.length,
+    orderTotal: Number(orderQuery.data?.total ?? 0)
+  });
+  const orderReadinessChecklist = buildProjectOrderInvoiceReadinessChecklist({
+    customerName: currentCustomer?.name,
+    responsibleLabel,
+    lineCount: lines.length,
+    latestInvoiceNo: latestInvoice?.invoice_no
+  });
   const projectLogs = activity
     .map((item) => ({
       id: item.id,

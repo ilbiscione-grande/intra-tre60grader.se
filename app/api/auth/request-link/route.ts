@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { consumeSecurityRateLimit, getRequestIp, normalizeEmail, safeLogSecurityEvent } from '@/lib/security/server';
+import { getIntraAuthCallbackUrl } from '@/lib/url/appUrl';
 
 const LOGIN_IP_WINDOW_SECONDS = 15 * 60;
 const LOGIN_IP_MAX_ATTEMPTS = 8;
@@ -71,7 +72,7 @@ export async function POST(request: NextRequest) {
   const { error } = await supabase.auth.signInWithOtp({
     email,
     options: {
-      emailRedirectTo: `${request.nextUrl.origin}/auth/callback`
+      emailRedirectTo: getIntraAuthCallbackUrl()
     }
   });
 

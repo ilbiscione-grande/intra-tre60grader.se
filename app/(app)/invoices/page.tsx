@@ -2,17 +2,26 @@
 
 import Link from 'next/link';
 import type { Route } from 'next';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FileText, Receipt, Wallet } from 'lucide-react';
 import { toast } from 'sonner';
+import ActionSheet from '@/components/common/ActionSheet';
 import { useAppContext } from '@/components/providers/AppContext';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import SimpleSelect from '@/components/ui/simple-select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { useCompanyMemberOptions } from '@/features/projects/projectQueries';
 import { canViewFinance, canWriteFinance } from '@/lib/auth/capabilities';
-import { getInvoiceReadinessLabel } from '@/lib/finance/invoiceReadiness';
+import {
+  buildInvoiceFollowupQueueReasons,
+  buildOrderInvoicingQueueReasons,
+  buildProjectInvoicingQueueReasons,
+  getInvoiceReadinessLabel,
+  getInvoiceReadinessOwner
+} from '@/lib/finance/invoiceReadiness';
 import { createInvoiceFromOrder } from '@/lib/rpc';
 import { createClient } from '@/lib/supabase/client';
 import type { TableRow as DbRow } from '@/lib/supabase/database.types';
@@ -39,6 +48,9 @@ type InvoicingQueueStage =
   | 'awaiting_payment'
   | 'overdue';
 
+type TimeGroupingMode = 'all' | 'person' | 'task';
+type QueueFilter = 'all' | 'waiting_for_me' | 'overdue' | 'time_without_order' | 'completed_without_invoice';
+
 type InvoicingQueueItem = {
   id: string;
   type: 'project' | 'order' | 'invoice';
@@ -49,6 +61,7 @@ type InvoicingQueueItem = {
   amount: number;
   statusLabel: string;
   nextStep: string;
+  ownerLabel: string;
   href: Route;
   secondaryHref?: Route;
   meta: string;
@@ -56,6 +69,15 @@ type InvoicingQueueItem = {
   projectId?: string;
   reasons: string[];
   hasUnorderedBillableTime?: boolean;
+  completedWithoutInvoice?: boolean;
+};
+
+type TimePreviewLine = {
+  key: string;
+  title: string;
+  hours: number;
+  unitPrice: number;
+  total: number;
 };
 
 function fakturaStatusEtikett(status: string) {
@@ -92,6 +114,65 @@ function money(value: number, currency = 'SEK') {
   return `${value.toFixed(2)} ${currency}`;
 }
 
+function queueFilterLabel(value: QueueFilter) {
+  const map: Record<QueueFilter, string> = {
+    all: 'Alla',
+    waiting_for_me: 'Väntar på mig',
+    overdue: 'Förfallna',
+    time_without_order: 'Tid utan order',
+    completed_without_invoice: 'Klara utan faktura'
+  };
+  return map[value];
+}
+
+function buildTimePreviewLines({
+  entries,
+  groupingMode,
+  memberLabelByUserId,
+  taskLabelById,
+  inferredRate
+}: {
+  entries: Array<{ hours: number | null; user_id: string; task_id: string | null }>;
+  groupingMode: TimeGroupingMode;
+  memberLabelByUserId: Map<string, string>;
+  taskLabelById: Map<string, string>;
+  inferredRate: number;
+}) {
+  const totalHours = entries.reduce((sum, row) => sum + Number(row.hours ?? 0), 0);
+  const grouped = new Map<string, { title: string; hours: number }>();
+
+  for (const row of entries) {
+    const hours = Number(row.hours ?? 0);
+    if (hours <= 0) continue;
+
+    let key = 'all';
+    let title = `Fakturerbar tid ${totalHours.toFixed(2)} h`;
+
+    if (groupingMode === 'person') {
+      key = `person:${row.user_id}`;
+      const label = memberLabelByUserId.get(row.user_id) ?? 'Okänd medlem';
+      title = `Fakturerbar tid - ${label}`;
+    } else if (groupingMode === 'task') {
+      key = row.task_id ? `task:${row.task_id}` : 'task:none';
+      const label = row.task_id ? taskLabelById.get(row.task_id) ?? 'Okänd uppgift' : 'Tid utan uppgift';
+      title = `Fakturerbar tid - ${label}`;
+    }
+
+    const current = grouped.get(key) ?? { title, hours: 0 };
+    current.hours += hours;
+    current.title = title;
+    grouped.set(key, current);
+  }
+
+  return Array.from(grouped.entries()).map(([key, group]) => ({
+    key,
+    title: groupingMode === 'all' ? `Fakturerbar tid ${group.hours.toFixed(2)} h` : `${group.title} ${group.hours.toFixed(2)} h`,
+    hours: Math.round(group.hours * 100) / 100,
+    unitPrice: inferredRate,
+    total: Math.round(group.hours * inferredRate * 100) / 100
+  }));
+}
+
 export default function InvoicesPage() {
   const { companyId, role, capabilities } = useAppContext();
   const supabase = useMemo(() => createClient(), []);
@@ -99,6 +180,25 @@ export default function InvoicesPage() {
   const canReadFinance = canViewFinance(role, capabilities);
   const canEditFinance = canWriteFinance(role, capabilities);
   const todayIso = new Date().toISOString().slice(0, 10);
+  const memberOptionsQuery = useCompanyMemberOptions(companyId);
+  const currentUserQuery = useQuery({
+    queryKey: ['current-user-identity'],
+    queryFn: async () => {
+      const {
+        data: { user },
+        error
+      } = await supabase.auth.getUser();
+      if (error) throw error;
+      return {
+        id: user?.id ?? '',
+        email: user?.email ?? null
+      };
+    },
+    staleTime: 1000 * 60 * 10
+  });
+  const [timeDialogProjectId, setTimeDialogProjectId] = useState<string | null>(null);
+  const [timeGroupingMode, setTimeGroupingMode] = useState<TimeGroupingMode>('all');
+  const [queueFilter, setQueueFilter] = useState<QueueFilter>('all');
 
   const query = useQuery<InvoiceListRow[]>({
     queryKey: ['invoices', companyId, 'all'],
@@ -185,7 +285,7 @@ export default function InvoicesPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('project_time_entries')
-        .select('project_id,order_id,hours,is_billable')
+        .select('project_id,order_id,hours,is_billable,user_id,task_id')
         .eq('company_id', companyId)
         .eq('is_billable', true);
 
@@ -215,6 +315,20 @@ export default function InvoicesPage() {
       const { data, error } = await supabase
         .from('project_finance_plans')
         .select('project_id,budget_hours,budget_revenue')
+        .eq('company_id', companyId);
+
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: canReadFinance
+  });
+
+  const projectTasksQuery = useQuery({
+    queryKey: ['finance-project-tasks', companyId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('project_tasks')
+        .select('id,project_id,title')
         .eq('company_id', companyId);
 
       if (error) throw error;
@@ -326,113 +440,36 @@ export default function InvoicesPage() {
   });
 
   const createOrderLineFromTimeMutation = useMutation({
-    mutationFn: async ({ projectId }: { projectId: string }) => {
-      const { data: existingOrder, error: existingOrderError } = await supabase
-        .from('orders')
-        .select('id,total')
-        .eq('company_id', companyId)
-        .eq('project_id', projectId)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (existingOrderError) throw existingOrderError;
-
-      let orderId = existingOrder?.id ?? null;
-      if (!orderId) {
-        const { data: createdOrder, error: createOrderError } = await supabase
-          .from('orders')
-          .insert({
-            company_id: companyId,
-            project_id: projectId,
-            status: 'draft',
-            total: 0,
-            invoice_readiness_status: 'ready_for_invoicing'
-          })
-          .select('id')
-          .single();
-
-        if (createOrderError) throw createOrderError;
-        orderId = createdOrder.id;
-      }
-
-      const { data: timeRows, error: timeError } = await supabase
-        .from('project_time_entries')
-        .select('id,hours')
-        .eq('company_id', companyId)
-        .eq('project_id', projectId)
-        .eq('is_billable', true)
-        .is('order_id', null);
-
-      if (timeError) throw timeError;
-
-      const totalHours = (timeRows ?? []).reduce((sum, row) => sum + Number(row.hours ?? 0), 0);
-      if (totalHours <= 0) throw new Error('Ingen okopplad fakturerbar tid att lägga på order');
-
-      const plan = (financePlansQuery.data ?? []).find((row) => row.project_id === projectId);
-      const budgetHours = Number(plan?.budget_hours ?? 0);
-      const budgetRevenue = Number(plan?.budget_revenue ?? 0);
-      const inferredRate = budgetHours > 0 && budgetRevenue > 0 ? Math.round((budgetRevenue / budgetHours) * 100) / 100 : 0;
-      const lineTotal = Math.round(totalHours * inferredRate * 100) / 100;
-      const title = `Fakturerbar tid ${totalHours.toFixed(2)} h`;
-
-      const { error: lineError } = await supabase.from('order_lines').insert({
-        company_id: companyId,
-        order_id: orderId,
-        title,
-        qty: totalHours,
-        unit_price: inferredRate,
-        vat_rate: 25,
-        total: lineTotal
+    mutationFn: async ({ projectId, groupingMode }: { projectId: string; groupingMode: TimeGroupingMode }) => {
+      const { data, error } = await supabase.rpc('create_order_lines_from_billable_time', {
+        p_project_id: projectId,
+        p_grouping_mode: groupingMode
       });
 
-      if (lineError) throw lineError;
+      if (error) throw error;
 
-      const { error: timeUpdateError } = await supabase
-        .from('project_time_entries')
-        .update({ order_id: orderId })
-        .eq('company_id', companyId)
-        .eq('project_id', projectId)
-        .eq('is_billable', true)
-        .is('order_id', null);
+      const payload = (data ?? {}) as {
+        order_id?: string;
+        total_hours?: number;
+        unit_price?: number;
+        group_count?: number;
+      };
 
-      if (timeUpdateError) throw timeUpdateError;
-
-      const { data: orderLines, error: sumError } = await supabase
-        .from('order_lines')
-        .select('total')
-        .eq('company_id', companyId)
-        .eq('order_id', orderId);
-
-      if (sumError) throw sumError;
-
-      const recalculatedTotal = (orderLines ?? []).reduce((sum, row) => sum + Number(row.total ?? 0), 0);
-      const roundedTotal = Math.round(recalculatedTotal * 100) / 100;
-
-      const { error: orderUpdateError } = await supabase
-        .from('orders')
-        .update({ total: roundedTotal, invoice_readiness_status: 'ready_for_invoicing' })
-        .eq('company_id', companyId)
-        .eq('id', orderId);
-
-      if (orderUpdateError) throw orderUpdateError;
-
-      const { error: projectUpdateError } = await supabase
-        .from('projects')
-        .update({ invoice_readiness_status: 'ready_for_invoicing' })
-        .eq('company_id', companyId)
-        .eq('id', projectId);
-
-      if (projectUpdateError) throw projectUpdateError;
-
-      return { orderId, totalHours, inferredRate };
+      return {
+        orderId: payload.order_id ?? '',
+        totalHours: Number(payload.total_hours ?? 0),
+        inferredRate: Number(payload.unit_price ?? 0),
+        lineCount: Number(payload.group_count ?? 0)
+      };
     },
-    onSuccess: async ({ totalHours, inferredRate }) => {
+    onSuccess: async ({ totalHours, inferredRate, lineCount }) => {
       toast.success(
         inferredRate > 0
-          ? `Orderrad skapad från ${totalHours.toFixed(2)} h`
-          : `Orderrad skapad från ${totalHours.toFixed(2)} h. Sätt pris innan fakturering.`
+          ? `${lineCount} orderrad(er) skapade från ${totalHours.toFixed(2)} h`
+          : `${lineCount} orderrad(er) skapade från ${totalHours.toFixed(2)} h. Sätt pris innan fakturering.`
       );
+      setTimeDialogProjectId(null);
+      setTimeGroupingMode('all');
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['finance-invoicing-projects', companyId] }),
         queryClient.invalidateQueries({ queryKey: ['finance-completed-projects', companyId] }),
@@ -454,6 +491,38 @@ export default function InvoicesPage() {
   const issuedCount = rows.filter((row) => row.status === 'issued' || row.status === 'sent').length;
   const paidCount = rows.filter((row) => row.status === 'paid').length;
   const totalValue = rows.reduce((sum, row) => sum + Number(row.total), 0);
+  const memberLabelByUserId = useMemo(
+    () => new Map((memberOptionsQuery.data ?? []).map((member) => [member.user_id, member.display_name ?? member.email ?? member.user_id])),
+    [memberOptionsQuery.data]
+  );
+  const currentUserId = currentUserQuery.data?.id ?? '';
+  const taskLabelById = useMemo(
+    () => new Map((projectTasksQuery.data ?? []).map((task) => [task.id, task.title])),
+    [projectTasksQuery.data]
+  );
+  const timePreview = useMemo(() => {
+    if (!timeDialogProjectId) {
+      return { totalHours: 0, inferredRate: 0, lines: [] as TimePreviewLine[] };
+    }
+
+    const plan = (financePlansQuery.data ?? []).find((row) => row.project_id === timeDialogProjectId);
+    const budgetHours = Number(plan?.budget_hours ?? 0);
+    const budgetRevenue = Number(plan?.budget_revenue ?? 0);
+    const inferredRate = budgetHours > 0 && budgetRevenue > 0 ? Math.round((budgetRevenue / budgetHours) * 100) / 100 : 0;
+    const entries = (billableTimeQuery.data ?? []).filter(
+      (row) => row.project_id === timeDialogProjectId && !row.order_id && row.is_billable
+    );
+    const totalHours = entries.reduce((sum, row) => sum + Number(row.hours ?? 0), 0);
+    const lines = buildTimePreviewLines({
+      entries,
+      groupingMode: timeGroupingMode,
+      memberLabelByUserId,
+      taskLabelById,
+      inferredRate
+    });
+
+    return { totalHours, inferredRate, lines };
+  }, [billableTimeQuery.data, financePlansQuery.data, memberLabelByUserId, taskLabelById, timeDialogProjectId, timeGroupingMode]);
 
   const invoicingQueue = useMemo<InvoicingQueueItem[]>(() => {
     const customersById = new Map((invoicingCustomersQuery.data ?? []).map((customer) => [customer.id, customer.name]));
@@ -482,12 +551,11 @@ export default function InvoicesPage() {
       .filter((project) => project.invoice_readiness_status === 'ready_for_invoicing' && !queuedProjectIds.has(project.id))
       .map((project) => {
         const unorderedBillableHours = unorderedBillableHoursByProject.get(project.id) ?? 0;
-        const reasons = [
-          !project.customer_id ? 'Kund saknas på projektet' : null,
-          !project.responsible_user_id ? 'Projektansvarig saknas' : null,
-          unorderedBillableHours > 0 ? `${unorderedBillableHours.toFixed(1)} h fakturerbar tid saknar orderkoppling` : null,
-          'Projektet är markerat redo men saknar orderunderlag i kön'
-        ].filter((reason): reason is string => Boolean(reason));
+        const reasons = buildProjectInvoicingQueueReasons({
+          customerName: project.customer_id ? customersById.get(project.customer_id) ?? null : null,
+          responsibleLabel: project.responsible_user_id ? memberLabelByUserId.get(project.responsible_user_id) ?? null : null,
+          unorderedBillableHours
+        });
 
         return {
           id: `project-${project.id}`,
@@ -499,12 +567,16 @@ export default function InvoicesPage() {
           amount: 0,
           statusLabel: getInvoiceReadinessLabel(project.invoice_readiness_status),
           nextStep: 'Säkerställ orderunderlag',
+          ownerLabel:
+            (project.responsible_user_id ? memberLabelByUserId.get(project.responsible_user_id) : null)
+            ?? getInvoiceReadinessOwner(project.invoice_readiness_status),
           href: `/projects/${project.id}?tab=economy` as Route,
           meta: 'Projekt • Redo att ses över',
           entityId: project.id,
           projectId: project.id,
           reasons,
-          hasUnorderedBillableTime: unorderedBillableHours > 0
+          hasUnorderedBillableTime: unorderedBillableHours > 0,
+          completedWithoutInvoice: false
         };
       });
 
@@ -514,11 +586,12 @@ export default function InvoicesPage() {
       .filter((project) => project.invoice_readiness_status === 'not_ready' || !project.invoice_readiness_status)
       .map((project) => {
         const unorderedBillableHours = unorderedBillableHoursByProject.get(project.id) ?? 0;
-        const reasons = [
-          'Projektet är klart men inte markerat redo för fakturering',
-          unorderedBillableHours > 0 ? `${unorderedBillableHours.toFixed(1)} h fakturerbar tid väntar på orderunderlag` : null,
-          !project.customer_id ? 'Kund saknas på projektet' : null
-        ].filter((reason): reason is string => Boolean(reason));
+        const reasons = buildProjectInvoicingQueueReasons({
+          customerName: project.customer_id ? customersById.get(project.customer_id) ?? null : null,
+          responsibleLabel: project.responsible_user_id ? memberLabelByUserId.get(project.responsible_user_id) ?? null : null,
+          unorderedBillableHours,
+          completedButNotReady: true
+        });
 
         return {
           id: `completed-project-${project.id}`,
@@ -530,12 +603,16 @@ export default function InvoicesPage() {
           amount: 0,
           statusLabel: 'Inte redo',
           nextStep: 'Markera redo eller bygg orderunderlag',
+          ownerLabel:
+            (project.responsible_user_id ? memberLabelByUserId.get(project.responsible_user_id) : null)
+            ?? 'Projektansvarig',
           href: `/projects/${project.id}?tab=economy` as Route,
           meta: 'Projekt • Klart men ej förberett för fakturering',
           entityId: project.id,
           projectId: project.id,
           reasons,
-          hasUnorderedBillableTime: unorderedBillableHours > 0
+          hasUnorderedBillableTime: unorderedBillableHours > 0,
+          completedWithoutInvoice: true
         };
       });
 
@@ -546,12 +623,12 @@ export default function InvoicesPage() {
       const stage: InvoicingQueueStage =
         order.invoice_readiness_status === 'approved_for_invoicing' ? 'approved_today' : 'waiting_for_approval';
       const lineStats = orderLineStats.get(order.id) ?? { count: 0, total: 0 };
-      const reasons = [
-        lineStats.count === 0 ? 'Orderrader saknas' : null,
-        Number(order.total ?? 0) <= 0 ? 'Ordervärde är 0 kr' : null,
-        !project?.customer_id ? 'Kund saknas på kopplat projekt' : null,
-        stage === 'waiting_for_approval' ? 'Väntar på fastställelse från ekonomi' : 'Kan nu omvandlas till faktura'
-      ].filter((reason): reason is string => Boolean(reason));
+      const reasons = buildOrderInvoicingQueueReasons({
+        customerName,
+        lineCount: lineStats.count,
+        orderTotal: Number(order.total ?? 0),
+        waitingForApproval: stage === 'waiting_for_approval'
+      });
 
       return {
         id: `order-${order.id}`,
@@ -563,12 +640,14 @@ export default function InvoicesPage() {
         amount: Number(order.total ?? 0),
         statusLabel: getInvoiceReadinessLabel(order.invoice_readiness_status),
         nextStep: stage === 'approved_today' ? 'Skapa faktura' : 'Granska och fastställ',
+        ownerLabel: getInvoiceReadinessOwner(order.invoice_readiness_status),
         href: `/orders/${order.id}` as Route,
         secondaryHref: `/projects/${order.project_id}` as Route,
         meta: `Order • ${projectTitle}`,
         entityId: order.id,
         projectId: order.project_id,
-        reasons
+        reasons,
+        completedWithoutInvoice: false
       };
     });
 
@@ -576,11 +655,11 @@ export default function InvoicesPage() {
       const overdue = invoice.status !== 'paid' && invoice.status !== 'void' && invoice.due_date < todayIso;
       const unpaid = invoice.status !== 'paid' && invoice.status !== 'void';
       const stage: InvoicingQueueStage = overdue ? 'overdue' : unpaid ? 'awaiting_payment' : 'sent';
-      const reasons = [
-        overdue ? `Förfallen sedan ${formatDate(invoice.due_date)}` : null,
-        !overdue && unpaid ? `Obetald med förfallodatum ${formatDate(invoice.due_date)}` : null,
-        stage === 'sent' ? 'Skickad och väntar på kundens hantering' : null
-      ].filter((reason): reason is string => Boolean(reason));
+      const reasons = buildInvoiceFollowupQueueReasons({
+        status: invoice.status,
+        dueDate: invoice.due_date,
+        todayIso
+      });
 
       return {
         id: `invoice-${invoice.id}`,
@@ -592,10 +671,12 @@ export default function InvoicesPage() {
         amount: Number(invoice.total ?? 0),
         statusLabel: fakturaStatusEtikett(invoice.status),
         nextStep: overdue ? 'Följ upp betalning' : unpaid ? 'Vänta eller registrera betalning' : 'Ingen åtgärd',
+        ownerLabel: overdue ? 'Ekonomi / admin' : unpaid ? 'Ekonomi' : 'Kund / ekonomi',
         href: `/invoices/${invoice.id}` as Route,
         meta: `Faktura • Förfallo ${formatDate(invoice.due_date)}`,
         entityId: invoice.id,
-        reasons
+        reasons,
+        completedWithoutInvoice: false
       };
     });
 
@@ -622,9 +703,39 @@ export default function InvoicesPage() {
       overdue: []
     };
 
-    for (const item of invoicingQueue) initial[item.stage].push(item);
+    const filteredQueue = invoicingQueue.filter((item) => {
+      if (queueFilter === 'all') return true;
+      if (queueFilter === 'overdue') return item.stage === 'overdue';
+      if (queueFilter === 'time_without_order') return item.type === 'project' && Boolean(item.hasUnorderedBillableTime);
+      if (queueFilter === 'completed_without_invoice') return item.type === 'project' && Boolean(item.completedWithoutInvoice);
+      if (queueFilter === 'waiting_for_me') {
+        if (item.type === 'project') {
+          if (!currentUserId) return item.stage === 'ready_to_review';
+          return item.stage === 'ready_to_review' && item.projectId
+            ? (invoicingProjectsQuery.data ?? []).some(
+                (project) => project.id === item.projectId && project.responsible_user_id === currentUserId
+              ) || (completedProjectsQuery.data ?? []).some(
+                (project) => project.id === item.projectId && project.responsible_user_id === currentUserId
+              )
+            : false;
+        }
+        if (item.type === 'order') return item.stage === 'waiting_for_approval' || item.stage === 'approved_today';
+        return item.stage === 'awaiting_payment' || item.stage === 'overdue';
+      }
+      return true;
+    });
+
+    for (const item of filteredQueue) initial[item.stage].push(item);
     return initial;
-  }, [invoicingQueue]);
+  }, [completedProjectsQuery.data, currentUserId, invoicingProjectsQuery.data, invoicingQueue, queueFilter]);
+
+  const queueFilterOptions: Array<{ value: QueueFilter; label: string }> = [
+    { value: 'all', label: 'Alla' },
+    { value: 'waiting_for_me', label: 'Väntar på mig' },
+    { value: 'overdue', label: 'Förfallna' },
+    { value: 'time_without_order', label: 'Tid utan order' },
+    { value: 'completed_without_invoice', label: 'Klara utan faktura' }
+  ];
 
   return (
     <section className="space-y-4">
@@ -669,7 +780,31 @@ export default function InvoicesPage() {
             <p className="text-sm text-foreground/60">Projekt, order och fakturor som kräver nästa steg i kundfakturaflödet.</p>
           </div>
         </CardHeader>
-        <CardContent className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
+        <CardContent className="space-y-3">
+          <div className="flex flex-wrap gap-2">
+            {queueFilterOptions.map((option) => (
+              <Button
+                key={option.value}
+                type="button"
+                size="sm"
+                variant={queueFilter === option.value ? 'default' : 'outline'}
+                onClick={() => setQueueFilter(option.value)}
+              >
+                {option.label}
+              </Button>
+            ))}
+          </div>
+          {queueFilter !== 'all' ? (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border/70 bg-muted/20 px-3 py-2">
+              <p className="text-sm text-foreground/70">
+                Visar filtrerad kö: <span className="font-medium text-foreground">{queueFilterLabel(queueFilter)}</span>
+              </p>
+              <Button type="button" size="sm" variant="ghost" onClick={() => setQueueFilter('all')}>
+                Rensa filter
+              </Button>
+            </div>
+          ) : null}
+          <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
           {(['ready_to_review', 'waiting_for_approval', 'approved_today', 'sent', 'awaiting_payment', 'overdue'] as InvoicingQueueStage[]).map((stage) => (
             <InvoiceMetricCard
               key={stage}
@@ -678,6 +813,7 @@ export default function InvoicesPage() {
               value={String(invoicingQueueByStage[stage].length)}
             />
           ))}
+          </div>
         </CardContent>
       </Card>
 
@@ -704,6 +840,7 @@ export default function InvoicesPage() {
                       <p><span className="text-foreground/55">Kund:</span> {item.customerName}</p>
                       <p><span className="text-foreground/55">Projekt:</span> {item.projectTitle}</p>
                       <p><span className="text-foreground/55">Belopp:</span> {money(item.amount)}</p>
+                      <p><span className="text-foreground/55">Ägare nu:</span> {item.ownerLabel}</p>
                       <p><span className="text-foreground/55">Nästa steg:</span> {item.nextStep}</p>
                     </div>
                     {item.reasons.length > 0 ? (
@@ -757,7 +894,10 @@ export default function InvoicesPage() {
                       {item.type === 'project' && item.hasUnorderedBillableTime ? (
                         <Button
                           size="sm"
-                          onClick={() => createOrderLineFromTimeMutation.mutate({ projectId: item.entityId })}
+                          onClick={() => {
+                            setTimeDialogProjectId(item.entityId);
+                            setTimeGroupingMode('all');
+                          }}
                           disabled={createOrderLineFromTimeMutation.isPending}
                         >
                           Skapa orderrad från tid
@@ -848,6 +988,85 @@ export default function InvoicesPage() {
           </Table>
         </CardContent>
       </Card>
+
+      <ActionSheet
+        open={Boolean(timeDialogProjectId)}
+        onClose={() => {
+          setTimeDialogProjectId(null);
+          setTimeGroupingMode('all');
+        }}
+        title="Skapa orderrad från tid"
+        description="Välj hur den okopplade fakturerbara tiden ska grupperas till orderrader."
+      >
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <p className="text-xs font-medium uppercase tracking-[0.16em] text-foreground/45">Grouping</p>
+            <SimpleSelect
+              value={timeGroupingMode}
+              onValueChange={(value) => setTimeGroupingMode(value as TimeGroupingMode)}
+              options={[
+                { value: 'all', label: 'En rad för all tid' },
+                { value: 'person', label: 'En rad per medlem' },
+                { value: 'task', label: 'En rad per uppgift' }
+              ]}
+            />
+          </div>
+          <div className="rounded-xl border border-border/70 bg-muted/20 p-3 text-sm text-foreground/75">
+            {timeGroupingMode === 'all'
+              ? 'All okopplad fakturerbar tid läggs i en enda orderrad.'
+              : timeGroupingMode === 'person'
+                ? 'Tiden delas upp i separata orderrader per medlem.'
+                : 'Tiden delas upp i separata orderrader per uppgift. Tid utan uppgift får en egen rad.'}
+          </div>
+          <div className="rounded-xl border border-border/70 bg-card/70 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm font-medium">Förhandsvisning</p>
+              <p className="text-xs text-foreground/60">
+                {timePreview.totalHours.toFixed(2)} h • {money(timePreview.inferredRate)}/h
+              </p>
+            </div>
+            {timePreview.lines.length === 0 ? (
+              <p className="mt-3 text-sm text-foreground/65">Ingen okopplad fakturerbar tid hittades för projektet.</p>
+            ) : (
+              <div className="mt-3 space-y-2">
+                {timePreview.lines.map((line) => (
+                  <div key={line.key} className="rounded-lg border border-border/70 bg-muted/20 px-3 py-2 text-sm">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate font-medium">{line.title}</p>
+                        <p className="text-xs text-foreground/60">
+                          {line.hours.toFixed(2)} h × {money(line.unitPrice)}
+                        </p>
+                      </div>
+                      <p className="shrink-0 font-medium">{money(line.total)}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              onClick={() => {
+                if (!timeDialogProjectId) return;
+                createOrderLineFromTimeMutation.mutate({ projectId: timeDialogProjectId, groupingMode: timeGroupingMode });
+              }}
+              disabled={createOrderLineFromTimeMutation.isPending || !timeDialogProjectId || timePreview.lines.length === 0}
+            >
+              Skapa orderrader
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setTimeDialogProjectId(null);
+                setTimeGroupingMode('all');
+              }}
+            >
+              Avbryt
+            </Button>
+          </div>
+        </div>
+      </ActionSheet>
     </section>
   );
 }

@@ -1784,6 +1784,10 @@ export type Database = {
       create_credit_invoice: { Args: { p_original_invoice_id: string; p_reason?: string | null }; Returns: Json }
       create_invoice_from_order: { Args: { p_order_id: string }; Returns: Json }
       create_invoice_from_orders: { Args: { order_ids: string[] }; Returns: Json }
+      create_order_lines_from_billable_time: {
+        Args: { p_grouping_mode?: string; p_project_id: string }
+        Returns: Json
+      }
       create_project_with_order: { Args: { payload: Json }; Returns: Json }
       create_verification_from_wizard: {
         Args: { payload: Json }
