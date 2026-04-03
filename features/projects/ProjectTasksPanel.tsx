@@ -297,6 +297,7 @@ export default function ProjectTasksPanel({
   const [description, setDescription] = useState('');
   const [priority, setPriority] = useState<TaskPriority>('normal');
   const [dueDate, setDueDate] = useState('');
+  const [hourlyRate, setHourlyRate] = useState('');
   const [assigneeUserId, setAssigneeUserId] = useState<string>('none');
   const [memberUserIds, setMemberUserIds] = useState<string[]>([]);
   const [milestoneId, setMilestoneId] = useState<string>('none');
@@ -329,7 +330,7 @@ export default function ProjectTasksPanel({
     queryFn: async () => {
       const { data, error } = await supabase
         .from('project_tasks')
-        .select('id,company_id,project_id,title,description,status,priority,due_date,assignee_user_id,created_by,created_at,updated_at,milestone_id,subtasks')
+        .select('id,company_id,project_id,title,description,status,priority,due_date,hourly_rate,assignee_user_id,created_by,created_at,updated_at,milestone_id,subtasks')
         .eq('company_id', companyId)
         .eq('project_id', projectId)
         .order('status', { ascending: true })
@@ -439,6 +440,7 @@ export default function ProjectTasksPanel({
           description: description.trim() || null,
           priority,
           dueDate: dueDate || null,
+          hourlyRate: Math.max(0, Number(hourlyRate || 0)),
           assigneeUserId: assigneeUserId === 'none' ? null : normalizeUserId(assigneeUserId),
           memberUserIds,
           milestoneId: milestoneId === 'none' ? null : milestoneId,
@@ -454,6 +456,7 @@ export default function ProjectTasksPanel({
       setDescription('');
       setPriority('normal');
       setDueDate('');
+      setHourlyRate('');
       setAssigneeUserId('none');
       setMemberUserIds([]);
       setMilestoneId('none');
@@ -475,7 +478,7 @@ export default function ProjectTasksPanel({
       memberUserIds
     }: {
       taskId: string;
-      patch: Partial<Pick<ProjectTaskRow, 'status' | 'priority' | 'due_date' | 'assignee_user_id' | 'milestone_id' | 'subtasks'>>;
+      patch: Partial<Pick<ProjectTaskRow, 'status' | 'priority' | 'due_date' | 'hourly_rate' | 'assignee_user_id' | 'milestone_id' | 'subtasks'>>;
       memberUserIds?: string[];
     }) => {
       const res = await fetch('/api/project-tasks', {
@@ -679,6 +682,10 @@ export default function ProjectTasksPanel({
                     <span className="text-sm">Deadline</span>
                     <Input type="date" value={dueDate} onChange={(event) => setDueDate(event.target.value)} />
                   </label>
+                  <label className="space-y-1">
+                    <span className="text-sm">Standardpris / timme</span>
+                    <Input type="number" min="0" step="0.01" value={hourlyRate} onChange={(event) => setHourlyRate(event.target.value)} placeholder="0.00" />
+                  </label>
                   <label className="space-y-1 md:col-span-2">
                     <span className="text-sm">Ansvarig</span>
                     <SimpleSelect
@@ -804,6 +811,10 @@ export default function ProjectTasksPanel({
               <label className="space-y-1">
                 <span className="text-sm">Deadline</span>
                 <Input type="date" value={dueDate} onChange={(event) => setDueDate(event.target.value)} />
+              </label>
+              <label className="space-y-1">
+                <span className="text-sm">Standardpris / timme</span>
+                <Input type="number" min="0" step="0.01" value={hourlyRate} onChange={(event) => setHourlyRate(event.target.value)} placeholder="0.00" />
               </label>
               <label className="space-y-1 md:col-span-2">
                 <span className="text-sm">Ansvarig</span>
@@ -1240,6 +1251,21 @@ export default function ProjectTasksPanel({
                         }))
                       ]}
                     />
+                    <label className="space-y-1">
+                      <span className="text-sm">Standardpris / timme</span>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        defaultValue={String(Number(task.hourly_rate ?? 0))}
+                        onBlur={(event) =>
+                          updateTaskMutation.mutate({
+                            taskId: task.id,
+                            patch: { hourly_rate: Math.max(0, Number(event.target.value || 0)) }
+                          })
+                        }
+                      />
+                    </label>
                     </div>
                     <div className="space-y-2">
                       <p className="text-sm text-foreground/70">Medlemmar på uppgiften</p>
@@ -1401,6 +1427,21 @@ export default function ProjectTasksPanel({
                         }))
                       ]}
                     />
+                    <label className="space-y-1">
+                      <span className="text-sm font-medium">Standardpris / timme</span>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        defaultValue={String(Number(task.hourly_rate ?? 0))}
+                        onBlur={(event) =>
+                          updateTaskMutation.mutate({
+                            taskId: task.id,
+                            patch: { hourly_rate: Math.max(0, Number(event.target.value || 0)) }
+                          })
+                        }
+                      />
+                    </label>
                   </div>
 
                   <div className="space-y-2">

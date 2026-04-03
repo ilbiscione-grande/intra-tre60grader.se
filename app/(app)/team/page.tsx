@@ -19,6 +19,7 @@ type MemberView = {
   user_id: string;
   role: Role;
   created_at: string;
+  default_hourly_rate: number;
   email: string | null;
   display_name: string | null;
 };
@@ -68,6 +69,7 @@ export default function TeamPage() {
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
   const [newRole, setNewRole] = useState<Role>('member');
+  const [hourlyRateDraftByUser, setHourlyRateDraftByUser] = useState<Record<string, string>>({});
   const [pendingCapabilityByUser, setPendingCapabilityByUser] = useState<Record<string, Capability>>({});
   const canEditTeam = canManageTeam(role, capabilities);
 
@@ -145,25 +147,25 @@ export default function TeamPage() {
     }
   });
 
-  const changeRoleMutation = useMutation({
-    mutationFn: async ({ userId, role }: { userId: string; role: Role }) => {
+  const updateMemberMutation = useMutation({
+    mutationFn: async ({ userId, role, defaultHourlyRate }: { userId: string; role?: Role; defaultHourlyRate?: number }) => {
       const res = await fetch('/api/admin/members', {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ companyId, userId, role })
+        body: JSON.stringify({ companyId, userId, role, defaultHourlyRate })
       });
 
       if (!res.ok) {
         const body = await res.json().catch(() => null);
-        throw new Error(body?.error ?? 'Kunde inte uppdatera roll');
+        throw new Error(body?.error ?? 'Kunde inte uppdatera medlem');
       }
     },
-    onSuccess: async (result) => {
+    onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['team-members', companyId] });
-      toast.success('Roll uppdaterad');
+      toast.success('Medlem uppdaterad');
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : 'Kunde inte byta roll');
+      toast.error(error instanceof Error ? error.message : 'Kunde inte uppdatera medlem');
     }
   });
 
@@ -256,6 +258,16 @@ export default function TeamPage() {
   const projectLeadsCount = useMemo(
     () => members.filter((member) => (capabilitiesByUserId.get(member.user_id) ?? []).includes('project_lead')).length,
     [members, capabilitiesByUserId]
+  );
+  const memberHourlyRateDrafts = useMemo(
+    () =>
+      Object.fromEntries(
+        members.map((member) => [
+          member.user_id,
+          hourlyRateDraftByUser[member.user_id] ?? String(Number(member.default_hourly_rate ?? 0))
+        ])
+      ),
+    [hourlyRateDraftByUser, members]
   );
 
   if (!canEditTeam) {
@@ -405,7 +417,13 @@ export default function TeamPage() {
                   <div className="mt-3 flex flex-wrap gap-2">
                     <Select
                       value={member.role}
-                      onValueChange={(value) => changeRoleMutation.mutate({ userId: member.user_id, role: value as Role })}
+                      onValueChange={(value) =>
+                        updateMemberMutation.mutate({
+                          userId: member.user_id,
+                          role: value as Role,
+                          defaultHourlyRate: Number(memberHourlyRateDrafts[member.user_id] ?? member.default_hourly_rate ?? 0)
+                        })
+                      }
                     >
                       <SelectTrigger className="w-40">
                         <SelectValue />
@@ -425,6 +443,38 @@ export default function TeamPage() {
                       disabled={removeMutation.isPending || isSelf}
                     >
                       Ta bort
+                    </Button>
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap items-end gap-2 rounded-lg border border-border/70 bg-muted/10 p-3">
+                    <label className="space-y-1">
+                      <span className="text-xs font-medium uppercase tracking-[0.16em] text-foreground/45">Standardpris / timme</span>
+                      <Input
+                        className="w-36"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={memberHourlyRateDrafts[member.user_id]}
+                        onChange={(event) =>
+                          setHourlyRateDraftByUser((prev) => ({
+                            ...prev,
+                            [member.user_id]: event.target.value
+                          }))
+                        }
+                      />
+                    </label>
+                    <Button
+                      variant="outline"
+                      onClick={() =>
+                        updateMemberMutation.mutate({
+                          userId: member.user_id,
+                          role: member.role,
+                          defaultHourlyRate: Number(memberHourlyRateDrafts[member.user_id] ?? member.default_hourly_rate ?? 0)
+                        })
+                      }
+                      disabled={updateMemberMutation.isPending}
+                    >
+                      Spara timpris
                     </Button>
                   </div>
 

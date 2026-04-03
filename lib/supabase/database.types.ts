@@ -78,6 +78,7 @@ export type Database = {
         Row: {
           company_id: string
           created_at: string
+          default_hourly_rate: number
           id: string
           role: string
           user_id: string
@@ -85,6 +86,7 @@ export type Database = {
         Insert: {
           company_id: string
           created_at?: string
+          default_hourly_rate?: number
           id?: string
           role: string
           user_id: string
@@ -92,6 +94,7 @@ export type Database = {
         Update: {
           company_id?: string
           created_at?: string
+          default_hourly_rate?: number
           id?: string
           role?: string
           user_id?: string
@@ -1283,6 +1286,7 @@ export type Database = {
           created_by: string | null
           description: string | null
           due_date: string | null
+          hourly_rate: number
           id: string
           milestone_id: string | null
           priority: string
@@ -1299,6 +1303,7 @@ export type Database = {
           created_by?: string | null
           description?: string | null
           due_date?: string | null
+          hourly_rate?: number
           id?: string
           milestone_id?: string | null
           priority?: string
@@ -1315,6 +1320,7 @@ export type Database = {
           created_by?: string | null
           description?: string | null
           due_date?: string | null
+          hourly_rate?: number
           id?: string
           milestone_id?: string | null
           priority?: string
@@ -1785,7 +1791,12 @@ export type Database = {
       create_invoice_from_order: { Args: { p_order_id: string }; Returns: Json }
       create_invoice_from_orders: { Args: { order_ids: string[] }; Returns: Json }
       create_order_lines_from_billable_time: {
-        Args: { p_grouping_mode?: string; p_project_id: string }
+        Args: {
+          p_grouping_mode?: string
+          p_line_configs?: Json | null
+          p_project_id: string
+          p_unit_price_override?: number | null
+        }
         Returns: Json
       }
       create_project_with_order: { Args: { payload: Json }; Returns: Json }

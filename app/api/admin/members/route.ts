@@ -136,10 +136,10 @@ export async function GET(request: NextRequest) {
   const [{ data: members, error }, { data: preferences, error: preferencesError }, authUsersById, profilesById] = await Promise.all([
     admin
       .from('company_members')
-      .select('id,company_id,user_id,role,created_at')
+      .select('id,company_id,user_id,role,created_at,default_hourly_rate')
       .eq('company_id', companyId)
       .order('created_at', { ascending: true })
-      .returns<Array<Pick<CompanyMemberRow, 'id' | 'company_id' | 'user_id' | 'role' | 'created_at'>>>(),
+      .returns<Array<Pick<CompanyMemberRow, 'id' | 'company_id' | 'user_id' | 'role' | 'created_at' | 'default_hourly_rate'>>>(),
     admin
       .from('user_company_preferences')
       .select('user_id,preference_value')
@@ -334,9 +334,12 @@ export async function PATCH(request: NextRequest) {
   const companyId = body?.companyId as string | undefined;
   const userId = body?.userId as string | undefined;
   const role = body?.role;
+  const hasRole = isAllowedRole(role);
+  const hasDefaultHourlyRate = typeof body?.defaultHourlyRate === 'number' && Number.isFinite(body.defaultHourlyRate);
+  const defaultHourlyRate = hasDefaultHourlyRate ? Math.max(0, Number(body.defaultHourlyRate)) : undefined;
 
-  if (!companyId || !userId || !isAllowedRole(role)) {
-    return NextResponse.json({ error: 'companyId, userId and valid role are required' }, { status: 400 });
+  if (!companyId || !userId || (!hasRole && !hasDefaultHourlyRate)) {
+    return NextResponse.json({ error: 'companyId, userId and at least one valid update are required' }, { status: 400 });
   }
 
   const auth = await requireTeamManager(companyId);
@@ -365,9 +368,13 @@ export async function PATCH(request: NextRequest) {
   }
 
   const supabase = createClient();
+  const patch: Partial<Pick<CompanyMemberRow, 'role' | 'default_hourly_rate'>> = {};
+  if (hasRole) patch.role = role;
+  if (hasDefaultHourlyRate) patch.default_hourly_rate = defaultHourlyRate;
+
   const { error } = await supabase
     .from('company_members')
-    .update({ role })
+    .update(patch)
     .eq('company_id', companyId)
     .eq('user_id', userId);
 
@@ -386,7 +393,8 @@ export async function PATCH(request: NextRequest) {
     userAgent: request.headers.get('user-agent'),
     payload: {
       target_user_id: userId,
-      role
+      role: hasRole ? role : null,
+      default_hourly_rate: hasDefaultHourlyRate ? defaultHourlyRate : null
     }
   });
 

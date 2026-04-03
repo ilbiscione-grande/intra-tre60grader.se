@@ -172,6 +172,7 @@ export async function POST(request: NextRequest) {
         description?: string | null;
         priority?: ProjectTaskRow['priority'];
         dueDate?: string | null;
+        hourlyRate?: number | null;
         assigneeUserId?: string | null;
         memberUserIds?: string[];
         milestoneId?: string | null;
@@ -206,6 +207,7 @@ export async function POST(request: NextRequest) {
     status: 'todo',
     priority: body?.priority === 'low' || body?.priority === 'high' || body?.priority === 'normal' ? body.priority : 'normal',
     due_date: typeof body?.dueDate === 'string' && body.dueDate.trim() ? body.dueDate : null,
+    hourly_rate: typeof body?.hourlyRate === 'number' && Number.isFinite(body.hourlyRate) ? Math.max(0, Number(body.hourlyRate)) : 0,
     assignee_user_id: typeof body?.assigneeUserId === 'string' && body.assigneeUserId.trim() ? body.assigneeUserId : null,
     milestone_id: typeof body?.milestoneId === 'string' && body.milestoneId.trim() ? body.milestoneId : null,
     subtasks: Array.isArray(body?.subtasks) ? body.subtasks : []
@@ -243,7 +245,7 @@ export async function PATCH(request: NextRequest) {
     | {
         companyId?: string;
         taskId?: string;
-        patch?: Partial<Pick<ProjectTaskRow, 'status' | 'priority' | 'due_date' | 'assignee_user_id' | 'milestone_id' | 'subtasks'>>;
+        patch?: Partial<Pick<ProjectTaskRow, 'status' | 'priority' | 'due_date' | 'hourly_rate' | 'assignee_user_id' | 'milestone_id' | 'subtasks'>>;
         memberUserIds?: string[];
       }
     | null;
@@ -267,8 +269,13 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: taskCheck.error }, { status: taskCheck.status });
   }
 
-  if (Object.keys(patch).length > 0) {
-    const { error } = await admin.from('project_tasks').update(patch).eq('company_id', companyId).eq('id', taskId);
+  const normalizedPatch: typeof patch = { ...patch };
+  if (typeof normalizedPatch.hourly_rate === 'number' && Number.isFinite(normalizedPatch.hourly_rate)) {
+    normalizedPatch.hourly_rate = Math.max(0, Number(normalizedPatch.hourly_rate));
+  }
+
+  if (Object.keys(normalizedPatch).length > 0) {
+    const { error } = await admin.from('project_tasks').update(normalizedPatch).eq('company_id', companyId).eq('id', taskId);
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
@@ -282,9 +289,9 @@ export async function PATCH(request: NextRequest) {
       actorUserId: actor.user.id,
       memberUserIds: body.memberUserIds.filter((value): value is string => typeof value === 'string' && value.trim().length > 0),
       assigneeUserId:
-        typeof patch.assignee_user_id === 'string'
-          ? patch.assignee_user_id
-          : patch.assignee_user_id === null
+        typeof normalizedPatch.assignee_user_id === 'string'
+          ? normalizedPatch.assignee_user_id
+          : normalizedPatch.assignee_user_id === null
             ? null
             : null
     });
@@ -310,9 +317,9 @@ export async function PATCH(request: NextRequest) {
       actorUserId: actor.user.id,
       memberUserIds: (currentTaskMembers ?? []).map((member) => member.user_id),
       assigneeUserId:
-        typeof patch.assignee_user_id === 'string'
-          ? patch.assignee_user_id
-          : patch.assignee_user_id === null
+        typeof normalizedPatch.assignee_user_id === 'string'
+          ? normalizedPatch.assignee_user_id
+          : normalizedPatch.assignee_user_id === null
             ? null
             : null
     });

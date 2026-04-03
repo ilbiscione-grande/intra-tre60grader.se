@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import type { Route } from 'next';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FileText, Receipt, Wallet } from 'lucide-react';
 import { toast } from 'sonner';
@@ -11,6 +11,7 @@ import { useAppContext } from '@/components/providers/AppContext';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import SimpleSelect from '@/components/ui/simple-select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useCompanyMemberOptions } from '@/features/projects/projectQueries';
@@ -129,14 +130,20 @@ function buildTimePreviewLines({
   entries,
   groupingMode,
   memberLabelByUserId,
+  memberHourlyRateByUserId,
   taskLabelById,
-  inferredRate
+  taskHourlyRateById,
+  inferredRate,
+  lineUnitPriceOverrides
 }: {
   entries: Array<{ hours: number | null; user_id: string; task_id: string | null }>;
   groupingMode: TimeGroupingMode;
   memberLabelByUserId: Map<string, string>;
+  memberHourlyRateByUserId: Map<string, number>;
   taskLabelById: Map<string, string>;
+  taskHourlyRateById: Map<string, number>;
   inferredRate: number;
+  lineUnitPriceOverrides?: Record<string, number>;
 }) {
   const totalHours = entries.reduce((sum, row) => sum + Number(row.hours ?? 0), 0);
   const grouped = new Map<string, { title: string; hours: number }>();
@@ -164,13 +171,22 @@ function buildTimePreviewLines({
     grouped.set(key, current);
   }
 
-  return Array.from(grouped.entries()).map(([key, group]) => ({
-    key,
-    title: groupingMode === 'all' ? `Fakturerbar tid ${group.hours.toFixed(2)} h` : `${group.title} ${group.hours.toFixed(2)} h`,
-    hours: Math.round(group.hours * 100) / 100,
-    unitPrice: inferredRate,
-    total: Math.round(group.hours * inferredRate * 100) / 100
-  }));
+  return Array.from(grouped.entries()).map(([key, group]) => {
+    const defaultUnitPrice =
+      groupingMode === 'person'
+        ? memberHourlyRateByUserId.get(key.replace('person:', '')) ?? inferredRate
+        : groupingMode === 'task'
+          ? taskHourlyRateById.get(key.replace('task:', '')) ?? inferredRate
+          : inferredRate;
+    const unitPrice = lineUnitPriceOverrides?.[key] ?? defaultUnitPrice;
+    return {
+      key,
+      title: groupingMode === 'all' ? `Fakturerbar tid ${group.hours.toFixed(2)} h` : `${group.title} ${group.hours.toFixed(2)} h`,
+      hours: Math.round(group.hours * 100) / 100,
+      unitPrice,
+      total: Math.round(group.hours * unitPrice * 100) / 100
+    };
+  });
 }
 
 export default function InvoicesPage() {
@@ -198,6 +214,8 @@ export default function InvoicesPage() {
   });
   const [timeDialogProjectId, setTimeDialogProjectId] = useState<string | null>(null);
   const [timeGroupingMode, setTimeGroupingMode] = useState<TimeGroupingMode>('all');
+  const [timeUnitPrice, setTimeUnitPrice] = useState('');
+  const [timeLineUnitPriceOverrides, setTimeLineUnitPriceOverrides] = useState<Record<string, number>>({});
   const [queueFilter, setQueueFilter] = useState<QueueFilter>('all');
 
   const query = useQuery<InvoiceListRow[]>({
@@ -323,12 +341,26 @@ export default function InvoicesPage() {
     enabled: canReadFinance
   });
 
+  const memberRatesQuery = useQuery({
+    queryKey: ['finance-member-rates', companyId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('company_members')
+        .select('user_id,default_hourly_rate')
+        .eq('company_id', companyId);
+
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: canReadFinance
+  });
+
   const projectTasksQuery = useQuery({
     queryKey: ['finance-project-tasks', companyId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('project_tasks')
-        .select('id,project_id,title')
+        .select('id,project_id,title,hourly_rate')
         .eq('company_id', companyId);
 
       if (error) throw error;
@@ -440,10 +472,22 @@ export default function InvoicesPage() {
   });
 
   const createOrderLineFromTimeMutation = useMutation({
-    mutationFn: async ({ projectId, groupingMode }: { projectId: string; groupingMode: TimeGroupingMode }) => {
+    mutationFn: async ({
+      projectId,
+      groupingMode,
+      unitPrice,
+      lineConfigs
+    }: {
+      projectId: string;
+      groupingMode: TimeGroupingMode;
+      unitPrice: number;
+      lineConfigs: Array<{ group_key: string; unit_price: number }>;
+    }) => {
       const { data, error } = await supabase.rpc('create_order_lines_from_billable_time', {
         p_project_id: projectId,
-        p_grouping_mode: groupingMode
+        p_grouping_mode: groupingMode,
+        p_unit_price_override: unitPrice,
+        p_line_configs: lineConfigs
       });
 
       if (error) throw error;
@@ -470,6 +514,8 @@ export default function InvoicesPage() {
       );
       setTimeDialogProjectId(null);
       setTimeGroupingMode('all');
+      setTimeUnitPrice('');
+      setTimeLineUnitPriceOverrides({});
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['finance-invoicing-projects', companyId] }),
         queryClient.invalidateQueries({ queryKey: ['finance-completed-projects', companyId] }),
@@ -500,15 +546,42 @@ export default function InvoicesPage() {
     () => new Map((projectTasksQuery.data ?? []).map((task) => [task.id, task.title])),
     [projectTasksQuery.data]
   );
+  const memberHourlyRateByUserId = useMemo(
+    () => new Map((memberRatesQuery.data ?? []).map((member) => [member.user_id, Number(member.default_hourly_rate ?? 0)])),
+    [memberRatesQuery.data]
+  );
+  const taskHourlyRateById = useMemo(
+    () => new Map((projectTasksQuery.data ?? []).map((task) => [task.id, Number(task.hourly_rate ?? 0)])),
+    [projectTasksQuery.data]
+  );
+  const suggestedTimeUnitPrice = useMemo(() => {
+    if (!timeDialogProjectId) return 0;
+    const plan = (financePlansQuery.data ?? []).find((row) => row.project_id === timeDialogProjectId);
+    const budgetHours = Number(plan?.budget_hours ?? 0);
+    const budgetRevenue = Number(plan?.budget_revenue ?? 0);
+    return budgetHours > 0 && budgetRevenue > 0 ? Math.round((budgetRevenue / budgetHours) * 100) / 100 : 0;
+  }, [financePlansQuery.data, timeDialogProjectId]);
+  const selectedTimeUnitPrice = useMemo(() => {
+    const parsed = Number(timeUnitPrice);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : suggestedTimeUnitPrice;
+  }, [suggestedTimeUnitPrice, timeUnitPrice]);
+
+  useEffect(() => {
+    if (!timeDialogProjectId) {
+      setTimeUnitPrice('');
+      setTimeLineUnitPriceOverrides({});
+      return;
+    }
+
+    setTimeUnitPrice(String(suggestedTimeUnitPrice));
+    setTimeLineUnitPriceOverrides({});
+  }, [suggestedTimeUnitPrice, timeDialogProjectId]);
+
   const timePreview = useMemo(() => {
     if (!timeDialogProjectId) {
       return { totalHours: 0, inferredRate: 0, lines: [] as TimePreviewLine[] };
     }
 
-    const plan = (financePlansQuery.data ?? []).find((row) => row.project_id === timeDialogProjectId);
-    const budgetHours = Number(plan?.budget_hours ?? 0);
-    const budgetRevenue = Number(plan?.budget_revenue ?? 0);
-    const inferredRate = budgetHours > 0 && budgetRevenue > 0 ? Math.round((budgetRevenue / budgetHours) * 100) / 100 : 0;
     const entries = (billableTimeQuery.data ?? []).filter(
       (row) => row.project_id === timeDialogProjectId && !row.order_id && row.is_billable
     );
@@ -517,12 +590,25 @@ export default function InvoicesPage() {
       entries,
       groupingMode: timeGroupingMode,
       memberLabelByUserId,
+      memberHourlyRateByUserId,
       taskLabelById,
-      inferredRate
+      taskHourlyRateById,
+      inferredRate: selectedTimeUnitPrice,
+      lineUnitPriceOverrides: timeLineUnitPriceOverrides
     });
 
-    return { totalHours, inferredRate, lines };
-  }, [billableTimeQuery.data, financePlansQuery.data, memberLabelByUserId, taskLabelById, timeDialogProjectId, timeGroupingMode]);
+    return { totalHours, inferredRate: selectedTimeUnitPrice, lines };
+  }, [
+    billableTimeQuery.data,
+    memberHourlyRateByUserId,
+    memberLabelByUserId,
+    selectedTimeUnitPrice,
+    taskHourlyRateById,
+    taskLabelById,
+    timeDialogProjectId,
+    timeGroupingMode,
+    timeLineUnitPriceOverrides
+  ]);
 
   const invoicingQueue = useMemo<InvoicingQueueItem[]>(() => {
     const customersById = new Map((invoicingCustomersQuery.data ?? []).map((customer) => [customer.id, customer.name]));
@@ -897,6 +983,12 @@ export default function InvoicesPage() {
                           onClick={() => {
                             setTimeDialogProjectId(item.entityId);
                             setTimeGroupingMode('all');
+                            setTimeLineUnitPriceOverrides({});
+                            const plan = (financePlansQuery.data ?? []).find((row) => row.project_id === item.entityId);
+                            const budgetHours = Number(plan?.budget_hours ?? 0);
+                            const budgetRevenue = Number(plan?.budget_revenue ?? 0);
+                            const suggestedRate = budgetHours > 0 && budgetRevenue > 0 ? Math.round((budgetRevenue / budgetHours) * 100) / 100 : 0;
+                            setTimeUnitPrice(String(suggestedRate));
                           }}
                           disabled={createOrderLineFromTimeMutation.isPending}
                         >
@@ -994,6 +1086,8 @@ export default function InvoicesPage() {
         onClose={() => {
           setTimeDialogProjectId(null);
           setTimeGroupingMode('all');
+          setTimeUnitPrice('');
+          setTimeLineUnitPriceOverrides({});
         }}
         title="Skapa orderrad från tid"
         description="Välj hur den okopplade fakturerbara tiden ska grupperas till orderrader."
@@ -1018,6 +1112,27 @@ export default function InvoicesPage() {
                 ? 'Tiden delas upp i separata orderrader per medlem.'
                 : 'Tiden delas upp i separata orderrader per uppgift. Tid utan uppgift får en egen rad.'}
           </div>
+          <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_220px]">
+            <div className="rounded-xl border border-border/70 bg-muted/20 p-3 text-sm text-foreground/75">
+              <p className="font-medium text-foreground">Prislogik</p>
+              <p className="mt-1">
+                {suggestedTimeUnitPrice > 0
+                  ? `Förvalt timpris hämtas från projektbudget: ${money(suggestedTimeUnitPrice)}/h. Du kan justera det innan orderraderna skapas.`
+                  : 'Ingen prisnivå kunde räknas fram från projektbudget. Ange timpris manuellt innan orderraderna skapas.'}
+              </p>
+            </div>
+            <label className="space-y-1">
+              <span className="text-xs font-medium uppercase tracking-[0.16em] text-foreground/45">Pris per timme</span>
+              <Input
+                value={timeUnitPrice}
+                onChange={(event) => setTimeUnitPrice(event.target.value)}
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="0.00"
+              />
+            </label>
+          </div>
           <div className="rounded-xl border border-border/70 bg-card/70 p-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-sm font-medium">Förhandsvisning</p>
@@ -1031,14 +1146,34 @@ export default function InvoicesPage() {
               <div className="mt-3 space-y-2">
                 {timePreview.lines.map((line) => (
                   <div key={line.key} className="rounded-lg border border-border/70 bg-muted/20 px-3 py-2 text-sm">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0 sm:flex-1">
                         <p className="truncate font-medium">{line.title}</p>
                         <p className="text-xs text-foreground/60">
                           {line.hours.toFixed(2)} h × {money(line.unitPrice)}
                         </p>
                       </div>
-                      <p className="shrink-0 font-medium">{money(line.total)}</p>
+                      <div className="flex items-end gap-3 sm:shrink-0">
+                        {timeGroupingMode !== 'all' ? (
+                          <label className="space-y-1">
+                            <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Pris/h</span>
+                            <Input
+                              className="h-9 w-28"
+                              value={String(timeLineUnitPriceOverrides[line.key] ?? line.unitPrice)}
+                              onChange={(event) =>
+                                setTimeLineUnitPriceOverrides((current) => ({
+                                  ...current,
+                                  [line.key]: Math.max(0, Number(event.target.value || 0))
+                                }))
+                              }
+                              type="number"
+                              min="0"
+                              step="0.01"
+                            />
+                          </label>
+                        ) : null}
+                        <p className="shrink-0 font-medium">{money(line.total)}</p>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -1049,7 +1184,15 @@ export default function InvoicesPage() {
             <Button
               onClick={() => {
                 if (!timeDialogProjectId) return;
-                createOrderLineFromTimeMutation.mutate({ projectId: timeDialogProjectId, groupingMode: timeGroupingMode });
+                createOrderLineFromTimeMutation.mutate({
+                  projectId: timeDialogProjectId,
+                  groupingMode: timeGroupingMode,
+                  unitPrice: selectedTimeUnitPrice,
+                  lineConfigs: timePreview.lines.map((line) => ({
+                    group_key: line.key,
+                    unit_price: line.unitPrice
+                  }))
+                });
               }}
               disabled={createOrderLineFromTimeMutation.isPending || !timeDialogProjectId || timePreview.lines.length === 0}
             >
@@ -1060,6 +1203,8 @@ export default function InvoicesPage() {
               onClick={() => {
                 setTimeDialogProjectId(null);
                 setTimeGroupingMode('all');
+                setTimeUnitPrice('');
+                setTimeLineUnitPriceOverrides({});
               }}
             >
               Avbryt

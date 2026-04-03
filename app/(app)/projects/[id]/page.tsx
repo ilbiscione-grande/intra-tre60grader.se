@@ -845,6 +845,17 @@ export default function ProjectDetailsPage() {
     }
   });
 
+  const createOrderMutation = useMutation({
+    mutationFn: async () => ensureOrderId(),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['project-order', companyId, projectId] });
+      toast.success('Order skapad');
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error, 'Kunde inte skapa order'));
+    }
+  });
+
   const addLineMutation = useMutation({
     mutationFn: async () => {
       const title = lineTitle.trim();
@@ -1847,6 +1858,97 @@ export default function ProjectDetailsPage() {
 
       {activeTab === 'economy' && (
         <div className="space-y-4" {...swipeHandlers}>
+          <Card>
+            <CardHeader className="space-y-1">
+              <CardTitle>Överlämning till ekonomi</CardTitle>
+              <p className="text-sm text-foreground/65">Här ser du vad som är klart inför fakturering, vad som saknas och vilket nästa steg som bör tas.</p>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <div className="rounded-xl border border-border/70 bg-muted/15 p-3">
+                  <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Projektläge</p>
+                  <p className="mt-1 font-medium">{getInvoiceReadinessLabel(projectInvoiceReadiness)}</p>
+                  <p className="mt-1 text-sm text-foreground/65">Ägare: {getInvoiceReadinessOwner(projectInvoiceReadiness)}</p>
+                </div>
+                <div className="rounded-xl border border-border/70 bg-muted/15 p-3">
+                  <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Orderläge</p>
+                  <p className="mt-1 font-medium">{orderId ? getInvoiceReadinessLabel(orderInvoiceReadiness) : 'Ingen order ännu'}</p>
+                  <p className="mt-1 text-sm text-foreground/65">
+                    {orderId ? `Ägare: ${getInvoiceReadinessOwner(orderInvoiceReadiness)}` : 'Nästa steg: skapa orderunderlag'}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-border/70 bg-muted/15 p-3">
+                  <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Ordervärde</p>
+                  <p className="mt-1 font-medium">{Number(orderQuery.data?.total ?? 0).toFixed(2)} kr</p>
+                  <p className="mt-1 text-sm text-foreground/65">{lines.length} orderrader</p>
+                </div>
+                <div className="rounded-xl border border-border/70 bg-muted/15 p-3">
+                  <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Fakturor</p>
+                  <p className="mt-1 font-medium">{invoicesQuery.data?.length ?? 0} kopplade</p>
+                  <p className="mt-1 text-sm text-foreground/65">
+                    {latestInvoice ? `Senast ${latestInvoice.invoice_no}` : 'Ingen faktura skapad ännu'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid gap-4 xl:grid-cols-2">
+                <div className="rounded-xl border border-border/70 bg-primary/5 p-4">
+                  <p className="mb-2 text-xs font-medium uppercase tracking-[0.16em] text-foreground/45">Projektet behöver</p>
+                  <ReadinessChecklist items={projectReadinessChecklist} />
+                </div>
+                <div className="rounded-xl border border-border/70 bg-muted/20 p-4">
+                  <p className="mb-2 text-xs font-medium uppercase tracking-[0.16em] text-foreground/45">Orderunderlaget behöver</p>
+                  <ReadinessChecklist items={orderReadinessChecklist} />
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                {!orderId ? (
+                  <Button
+                    onClick={() => createOrderMutation.mutate()}
+                    disabled={createOrderMutation.isPending || isEconomyLocked || isEconomyBusy}
+                  >
+                    {createOrderMutation.isPending ? 'Skapar order...' : 'Skapa order'}
+                  </Button>
+                ) : null}
+
+                {canEditInvoiceReadiness && projectInvoiceReadiness === 'not_ready' ? (
+                  <Button
+                    variant="outline"
+                    onClick={() => updateProjectInvoiceReadinessMutation.mutate('ready_for_invoicing')}
+                    disabled={updateProjectInvoiceReadinessMutation.isPending}
+                  >
+                    Markera projekt redo
+                  </Button>
+                ) : null}
+
+                {canManageOrder(role) && orderId && orderInvoiceReadiness !== 'approved_for_invoicing' ? (
+                  <Button
+                    variant="outline"
+                    onClick={() => updateOrderInvoiceReadinessMutation.mutate('approved_for_invoicing')}
+                    disabled={updateOrderInvoiceReadinessMutation.isPending || isEconomyLocked || isEconomyBusy}
+                  >
+                    Fastställ order
+                  </Button>
+                ) : null}
+
+                {canManageOrder(role) && orderId ? (
+                  <Button
+                    variant="secondary"
+                    onClick={() => invoiceMutation.mutate()}
+                    disabled={invoiceMutation.isPending || isEconomyLocked || isEconomyBusy}
+                  >
+                    {invoiceMutation.isPending ? 'Skapar faktura...' : isEconomyLocked ? 'Faktura finns redan' : 'Skapa faktura'}
+                  </Button>
+                ) : null}
+
+                <Button asChild variant="ghost">
+                  <Link href={'/invoices' as Route}>Öppna fakturakö</Link>
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
           <ProjectFinancePanel companyId={companyId} projectId={projectId} role={role} isLocked={isEconomyLocked || isEconomyBusy} />
 
           <Card>
