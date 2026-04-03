@@ -164,6 +164,7 @@ export default function ProjectsPage() {
     statusFilter !== 'all' || selectedMemberIds.length > 0 || Boolean(startDateFilter) || Boolean(endDateFilter);
 
   function clearFilters() {
+    setMobileQuickFilter('all');
     setStatusFilter('all');
     setSelectedMemberIds([]);
     setStartDateFilter('');
@@ -376,6 +377,26 @@ export default function ProjectsPage() {
         >
           Mina
         </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              type="button"
+              variant={statusFilter !== 'all' ? 'default' : 'outline'}
+              size="sm"
+              className="h-7 rounded-full px-2 text-[10px]"
+              aria-label="Filtrera på status"
+            >
+              {statusFilter === 'all' ? 'Status' : activeStatusLabel}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            {statusOptions.map((option) => (
+              <DropdownMenuItem key={option.key} onClick={() => setStatusFilter(option.key)}>
+                {option.title}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     ) : null;
 
