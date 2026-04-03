@@ -225,33 +225,36 @@ export type Database = {
         ]
       }
         orders: {
-          Row: {
-            company_id: string
-            created_at: string
-            id: string
-            order_no: string | null
-            project_id: string
-            status: string
-            total: number
-          }
+        Row: {
+          company_id: string
+          created_at: string
+          id: string
+          invoice_readiness_status: string
+          order_no: string | null
+          project_id: string
+          status: string
+          total: number
+        }
           Insert: {
-            company_id: string
-            created_at?: string
-            id?: string
-            order_no?: string | null
-            project_id: string
-            status?: string
-            total?: number
-          }
+          company_id: string
+          created_at?: string
+          id?: string
+          invoice_readiness_status?: string
+          order_no?: string | null
+          project_id: string
+          status?: string
+          total?: number
+        }
           Update: {
-            company_id?: string
-            created_at?: string
-            id?: string
-            order_no?: string | null
-            project_id?: string
-            status?: string
-            total?: number
-          }
+          company_id?: string
+          created_at?: string
+          id?: string
+          invoice_readiness_status?: string
+          order_no?: string | null
+          project_id?: string
+          status?: string
+          total?: number
+        }
         Relationships: [
           {
             foreignKeyName: "orders_company_id_fkey"
@@ -916,6 +919,7 @@ export type Database = {
           customer_id: string | null
           end_date: string | null
           id: string
+          invoice_readiness_status: string
           milestones: Json
           position: number
           responsible_user_id: string | null
@@ -931,6 +935,7 @@ export type Database = {
           customer_id?: string | null
           end_date?: string | null
           id?: string
+          invoice_readiness_status?: string
           milestones?: Json
           position?: number
           responsible_user_id?: string | null
@@ -946,6 +951,7 @@ export type Database = {
           customer_id?: string | null
           end_date?: string | null
           id?: string
+          invoice_readiness_status?: string
           milestones?: Json
           position?: number
           responsible_user_id?: string | null

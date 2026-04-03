@@ -12,9 +12,19 @@ import { useAppContext } from '@/components/providers/AppContext';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import SimpleSelect from '@/components/ui/simple-select';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { getUserDisplayName } from '@/features/profile/profileBadge';
+import {
+  getInvoiceReadinessDescription,
+  getInvoiceReadinessLabel,
+  getInvoiceReadinessNextStep,
+  getInvoiceReadinessOptions,
+  getInvoiceReadinessOwner,
+  resolveInvoiceReadinessStatus,
+  type InvoiceReadinessStatus
+} from '@/lib/finance/invoiceReadiness';
 import { createInvoiceFromOrder } from '@/lib/rpc';
 import { createClient } from '@/lib/supabase/client';
 import type { Json, TableRow as DbRow } from '@/lib/supabase/database.types';
@@ -22,8 +32,8 @@ import type { Role } from '@/lib/types';
 import { useAutoScrollActiveTab } from '@/lib/ui/useAutoScrollActiveTab';
 import { useSwipeTabs } from '@/lib/ui/useSwipeTabs';
 
-type OrderRow = Pick<DbRow<'orders'>, 'id' | 'order_no' | 'project_id' | 'status' | 'total' | 'created_at'>;
-type ProjectRow = Pick<DbRow<'projects'>, 'id' | 'title' | 'customer_id'>;
+type OrderRow = Pick<DbRow<'orders'>, 'id' | 'order_no' | 'project_id' | 'status' | 'invoice_readiness_status' | 'total' | 'created_at'>;
+type ProjectRow = Pick<DbRow<'projects'>, 'id' | 'title' | 'customer_id' | 'invoice_readiness_status'>;
 type CustomerRow = Pick<DbRow<'customers'>, 'id' | 'name'>;
 type OrderLineRow = Pick<DbRow<'order_lines'>, 'id' | 'title' | 'qty' | 'unit_price' | 'vat_rate' | 'total' | 'created_at'>;
 type InvoiceSourceLinkRow = Pick<DbRow<'invoice_sources'>, 'invoice_id' | 'order_id' | 'project_id' | 'position'>;
@@ -120,7 +130,7 @@ export default function OrderDetailsPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('orders')
-        .select('id,order_no,project_id,status,total,created_at')
+        .select('id,order_no,project_id,status,invoice_readiness_status,total,created_at')
         .eq('company_id', companyId)
         .eq('id', orderId)
         .maybeSingle<OrderRow>();
@@ -137,7 +147,7 @@ export default function OrderDetailsPage() {
       if (!projectId) return null;
       const { data, error } = await supabase
         .from('projects')
-        .select('id,title,customer_id')
+        .select('id,title,customer_id,invoice_readiness_status')
         .eq('company_id', companyId)
         .eq('id', projectId)
         .maybeSingle<ProjectRow>();
@@ -264,6 +274,24 @@ export default function OrderDetailsPage() {
     onError: (error) => toast.error(error instanceof Error ? error.message : 'Kunde inte uppdatera status')
   });
 
+  const updateInvoiceReadinessMutation = useMutation({
+    mutationFn: async (status: InvoiceReadinessStatus) => {
+      const { error } = await supabase
+        .from('orders')
+        .update({ invoice_readiness_status: status })
+        .eq('company_id', companyId)
+        .eq('id', orderId);
+      if (error) throw error;
+      return status;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['order', companyId, orderId] });
+      await queryClient.invalidateQueries({ queryKey: ['orders', companyId] });
+      toast.success('Faktureringsläge uppdaterat');
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'Kunde inte uppdatera faktureringsläge')
+  });
+
   const invoiceMutation = useMutation({
     mutationFn: async () => createInvoiceFromOrder(orderId),
     onSuccess: async (result) => {
@@ -344,6 +372,8 @@ export default function OrderDetailsPage() {
 
   const order = orderQuery.data;
   const statusValue = orderStatuses.includes(order.status as OrderStatus) ? (order.status as OrderStatus) : 'draft';
+  const invoiceReadiness = resolveInvoiceReadinessStatus(order.invoice_readiness_status, order.status);
+  const invoiceReadinessOptions = getInvoiceReadinessOptions(role, invoiceReadiness);
   const invoiceAttachments = (invoicesQuery.data ?? []).filter((invoice) => Boolean(invoice.attachment_path));
   const members = membersQuery.data ?? [];
   const invoiceTotal = (invoicesQuery.data ?? []).reduce((sum, invoice) => sum + Number(invoice.total ?? 0), 0);
@@ -393,6 +423,7 @@ export default function OrderDetailsPage() {
               <CircleDollarSign className="h-3 w-3" />
               {Number(order.total).toFixed(2)} kr
             </Badge>
+            <Badge className="gap-1.5 px-2 py-1 text-[11px]">{getInvoiceReadinessLabel(invoiceReadiness)}</Badge>
             <Badge className="gap-1.5 px-2 py-1 text-[11px]">
               <CalendarDays className="h-3 w-3" />
               {new Date(order.created_at).toLocaleDateString('sv-SE')}
@@ -436,14 +467,32 @@ export default function OrderDetailsPage() {
               </CardContent>
             </Card>
             <Card>
-              <CardContent className="grid grid-cols-2 gap-3 p-4">
-                <div>
-                  <p className="text-sm text-foreground/70">Orderrader</p>
-                  <p className="mt-1 font-medium">{linesQuery.data?.length ?? 0}</p>
+              <CardContent className="space-y-3 p-4">
+                <div className="rounded-xl border border-border/70 bg-primary/5 p-3">
+                  <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Faktureringsläge</p>
+                  <p className="mt-1 font-medium">{getInvoiceReadinessLabel(invoiceReadiness)}</p>
+                  <p className="mt-1 text-sm text-foreground/65">{getInvoiceReadinessDescription(invoiceReadiness)}</p>
+                  <p className="mt-1 text-xs text-foreground/55">Ägare nu: {getInvoiceReadinessOwner(invoiceReadiness)} • Nästa steg: {getInvoiceReadinessNextStep(invoiceReadiness)}</p>
+                  {role !== 'auditor' ? (
+                    <div className="mt-3">
+                      <SimpleSelect
+                        value={invoiceReadiness}
+                        onValueChange={(value) => updateInvoiceReadinessMutation.mutate(value as InvoiceReadinessStatus)}
+                        disabled={updateInvoiceReadinessMutation.isPending}
+                        options={invoiceReadinessOptions}
+                      />
+                    </div>
+                  ) : null}
                 </div>
-                <div>
-                  <p className="text-sm text-foreground/70">Fakturor</p>
-                  <p className="mt-1 font-medium">{invoicesQuery.data?.length ?? 0}</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <p className="text-sm text-foreground/70">Orderrader</p>
+                    <p className="mt-1 font-medium">{linesQuery.data?.length ?? 0}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-foreground/70">Fakturor</p>
+                    <p className="mt-1 font-medium">{invoicesQuery.data?.length ?? 0}</p>
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -590,6 +639,27 @@ export default function OrderDetailsPage() {
                   </Button>
                 </div>
               </RoleGate>
+
+              <div className="rounded-xl border border-border/70 bg-muted/10 p-3">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="space-y-1">
+                    <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Faktureringsläge</p>
+                    <p className="font-medium">{getInvoiceReadinessLabel(invoiceReadiness)}</p>
+                    <p className="text-sm text-foreground/65">{getInvoiceReadinessDescription(invoiceReadiness)}</p>
+                    <p className="text-xs text-foreground/55">Ägare nu: {getInvoiceReadinessOwner(invoiceReadiness)} • Nästa steg: {getInvoiceReadinessNextStep(invoiceReadiness)}</p>
+                  </div>
+                  {role !== 'auditor' ? (
+                    <div className="w-full sm:w-64">
+                      <SimpleSelect
+                        value={invoiceReadiness}
+                        onValueChange={(value) => updateInvoiceReadinessMutation.mutate(value as InvoiceReadinessStatus)}
+                        disabled={updateInvoiceReadinessMutation.isPending}
+                        options={invoiceReadinessOptions}
+                      />
+                    </div>
+                  ) : null}
+                </div>
+              </div>
 
               <div className="grid gap-3 md:grid-cols-4">
                 <div className="rounded-lg border p-3">
@@ -818,6 +888,10 @@ export default function OrderDetailsPage() {
             <div className="rounded-lg border p-3 text-sm">
               <p className="font-medium">Systemstatus</p>
               <p className="mt-1 text-foreground/70">{order.status}</p>
+            </div>
+            <div className="rounded-lg border p-3 text-sm">
+              <p className="font-medium">Faktureringsläge</p>
+              <p className="mt-1 text-foreground/70">{getInvoiceReadinessLabel(invoiceReadiness)}</p>
             </div>
             <div className="rounded-lg border p-3 text-sm">
               <p className="font-medium">Skapad</p>

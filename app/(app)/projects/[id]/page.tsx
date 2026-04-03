@@ -24,6 +24,16 @@ import { Input } from '@/components/ui/input';
 import SimpleSelect from '@/components/ui/simple-select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { createInvoiceFromOrder } from '@/lib/rpc';
+import {
+  getInvoiceReadinessDescription,
+  getInvoiceReadinessLabel,
+  getInvoiceReadinessNextStep,
+  getInvoiceReadinessOptions,
+  getInvoiceReadinessOwner,
+  normalizeInvoiceReadinessStatus,
+  resolveInvoiceReadinessStatus,
+  type InvoiceReadinessStatus
+} from '@/lib/finance/invoiceReadiness';
 import { useCompanyMemberOptions, useProjectColumns, type ProjectMemberVisual } from '@/features/projects/projectQueries';
 import { applyProjectStatusAutomation } from '@/features/projects/projectAutomation';
 import ProjectFinancePanel from '@/features/projects/ProjectFinancePanel';
@@ -41,11 +51,11 @@ import { useSwipeTabs } from '@/lib/ui/useSwipeTabs';
 
 type ProjectRow = Pick<
   DbRow<'projects'>,
-  'id' | 'company_id' | 'title' | 'status' | 'workflow_status' | 'position' | 'customer_id' | 'start_date' | 'end_date' | 'milestones' | 'responsible_user_id' | 'created_at' | 'updated_at'
+  'id' | 'company_id' | 'title' | 'status' | 'workflow_status' | 'invoice_readiness_status' | 'position' | 'customer_id' | 'start_date' | 'end_date' | 'milestones' | 'responsible_user_id' | 'created_at' | 'updated_at'
 >;
 
 type CustomerRow = Pick<DbRow<'customers'>, 'id' | 'name'>;
-type OrderRow = Pick<DbRow<'orders'>, 'id' | 'project_id' | 'status' | 'total' | 'created_at'>;
+type OrderRow = Pick<DbRow<'orders'>, 'id' | 'project_id' | 'status' | 'invoice_readiness_status' | 'total' | 'created_at'>;
 type OrderLineRow = Pick<DbRow<'order_lines'>, 'id' | 'title' | 'qty' | 'unit_price' | 'vat_rate' | 'total' | 'created_at'>;
 type InvoiceSourceLinkRow = Pick<DbRow<'invoice_sources'>, 'invoice_id' | 'project_id' | 'order_id' | 'position'>;
 type InvoiceSourceCountRow = Pick<DbRow<'invoice_sources'>, 'invoice_id'>;
@@ -294,6 +304,7 @@ export default function ProjectDetailsPage() {
   const [draftStartDate, setDraftStartDate] = useState('');
   const [draftEndDate, setDraftEndDate] = useState('');
   const [draftMilestones, setDraftMilestones] = useState<ProjectMilestone[]>([]);
+  const [draftInvoiceReadinessStatus, setDraftInvoiceReadinessStatus] = useState<InvoiceReadinessStatus>('not_ready');
 
   const [lineTitle, setLineTitle] = useState('');
   const [lineQty, setLineQty] = useState('1');
@@ -348,7 +359,7 @@ export default function ProjectDetailsPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('projects')
-        .select('id,company_id,title,status,workflow_status,position,customer_id,start_date,end_date,milestones,responsible_user_id,created_at,updated_at')
+        .select('id,company_id,title,status,workflow_status,invoice_readiness_status,position,customer_id,start_date,end_date,milestones,responsible_user_id,created_at,updated_at')
         .eq('company_id', companyId)
         .eq('id', projectId)
         .maybeSingle<ProjectRow>();
@@ -381,7 +392,7 @@ export default function ProjectDetailsPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('orders')
-        .select('id,project_id,status,total,created_at')
+        .select('id,project_id,status,invoice_readiness_status,total,created_at')
         .eq('company_id', companyId)
         .eq('project_id', projectId)
         .maybeSingle<OrderRow>();
@@ -636,7 +647,8 @@ export default function ProjectDetailsPage() {
     setDraftStartDate(projectQuery.data.start_date ?? '');
     setDraftEndDate(projectQuery.data.end_date ?? '');
     setDraftMilestones(normalizeProjectMilestones(projectQuery.data.milestones));
-  }, [projectQuery.data?.customer_id, projectQuery.data?.end_date, projectQuery.data?.milestones, projectQuery.data?.start_date, projectQuery.data?.status, projectQuery.data?.title, projectQuery.data?.workflow_status]);
+    setDraftInvoiceReadinessStatus(normalizeInvoiceReadinessStatus(projectQuery.data.invoice_readiness_status));
+  }, [projectQuery.data?.customer_id, projectQuery.data?.end_date, projectQuery.data?.invoice_readiness_status, projectQuery.data?.milestones, projectQuery.data?.start_date, projectQuery.data?.status, projectQuery.data?.title, projectQuery.data?.workflow_status]);
 
   useEffect(() => {
     if (!draftStatus && statusColumns.length > 0) {
@@ -650,7 +662,7 @@ export default function ProjectDetailsPage() {
     const { data, error } = await supabase
       .from('orders')
       .insert({ company_id: companyId, project_id: projectId, status: 'draft', total: 0 })
-      .select('id,project_id,status,total,created_at')
+      .select('id,project_id,status,invoice_readiness_status,total,created_at')
       .single<OrderRow>();
 
     if (error) throw error;
@@ -736,6 +748,28 @@ export default function ProjectDetailsPage() {
     }
   });
 
+  const updateProjectInvoiceReadinessMutation = useMutation({
+    mutationFn: async (status: InvoiceReadinessStatus) => {
+      const { error } = await supabase
+        .from('projects')
+        .update({ invoice_readiness_status: status })
+        .eq('company_id', companyId)
+        .eq('id', projectId);
+      if (error) throw error;
+      return status;
+    },
+    onSuccess: async (status) => {
+      await queryClient.invalidateQueries({ queryKey: ['project', companyId, projectId] });
+      await queryClient.invalidateQueries({ queryKey: ['projects', companyId] });
+      setDraftInvoiceReadinessStatus(status);
+      addLocalActivity(`Faktureringsläge uppdaterat till ${getInvoiceReadinessLabel(status)}`);
+      toast.success('Faktureringsläge uppdaterat');
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error, 'Kunde inte uppdatera faktureringsläge'));
+    }
+  });
+
   const updateOrderStatusMutation = useMutation({
     mutationFn: async (status: OrderStatus) => {
       const nextOrderId = await ensureOrderId();
@@ -754,6 +788,27 @@ export default function ProjectDetailsPage() {
     },
     onError: (error) => {
       toast.error(getErrorMessage(error, 'Kunde inte uppdatera orderstatus'));
+    }
+  });
+
+  const updateOrderInvoiceReadinessMutation = useMutation({
+    mutationFn: async (status: InvoiceReadinessStatus) => {
+      const nextOrderId = await ensureOrderId();
+      const { error } = await supabase
+        .from('orders')
+        .update({ invoice_readiness_status: status })
+        .eq('company_id', companyId)
+        .eq('id', nextOrderId);
+      if (error) throw error;
+      return status;
+    },
+    onSuccess: async (status) => {
+      await queryClient.invalidateQueries({ queryKey: ['project-order', companyId, projectId] });
+      addLocalActivity(`Orderns faktureringsläge uppdaterat till ${getInvoiceReadinessLabel(status)}`);
+      toast.success('Orderns faktureringsläge uppdaterat');
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error, 'Kunde inte uppdatera orderns faktureringsläge'));
     }
   });
 
@@ -1281,6 +1336,11 @@ export default function ProjectDetailsPage() {
   const latestActivityItem = activity[0] ?? null;
   const latestActivityActorLabel = latestActivityItem?.actorUserId ? memberLabelByUserId.get(latestActivityItem.actorUserId) ?? 'Intern användare' : null;
   const projectStatusLabel = projectColumnTitle(draftWorkflowStatus || project.workflow_status || project.status, statusColumns);
+  const projectInvoiceReadiness = draftInvoiceReadinessStatus;
+  const orderInvoiceReadiness = resolveInvoiceReadinessStatus(orderQuery.data?.invoice_readiness_status, orderQuery.data?.status);
+  const projectInvoiceReadinessOptions = getInvoiceReadinessOptions(role, projectInvoiceReadiness);
+  const orderInvoiceReadinessOptions = getInvoiceReadinessOptions(role, orderInvoiceReadiness);
+  const canEditInvoiceReadiness = role !== 'auditor';
   const projectLogs = activity
     .map((item) => ({
       id: item.id,
@@ -1411,10 +1471,10 @@ export default function ProjectDetailsPage() {
             <ProjectSummaryCard
               icon={CircleDollarSign}
               label="Ekonomi"
-              value={`${Number(orderQuery.data?.total ?? 0).toFixed(2)} kr`}
+              value={getInvoiceReadinessLabel(projectInvoiceReadiness)}
               helper={
                 orderId
-                  ? `${lines.length} orderrader • ${invoicesQuery.data?.length ?? 0} fakturor`
+                  ? `${Number(orderQuery.data?.total ?? 0).toFixed(2)} kr • ${lines.length} orderrader`
                   : 'ingen order kopplad ännu'
               }
             />
@@ -1503,14 +1563,34 @@ export default function ProjectDetailsPage() {
 
             <div className="space-y-4">
               <Card>
-                <CardHeader className="space-y-1">
-                  <CardTitle>Projektfakta</CardTitle>
-                  <p className="text-sm text-foreground/65">Det viktigaste om projektets kund, ekonomi och bemanning.</p>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="rounded-xl border border-border/70 bg-muted/10 p-3 sm:col-span-2">
-                      <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Kund</p>
+              <CardHeader className="space-y-1">
+                <CardTitle>Projektfakta</CardTitle>
+                <p className="text-sm text-foreground/65">Det viktigaste om projektets kund, ekonomi och bemanning.</p>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-xl border border-border/70 bg-primary/5 p-3 sm:col-span-2">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="space-y-1">
+                        <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Faktureringsläge</p>
+                        <p className="font-medium">{getInvoiceReadinessLabel(projectInvoiceReadiness)}</p>
+                        <p className="text-sm text-foreground/65">{getInvoiceReadinessDescription(projectInvoiceReadiness)}</p>
+                        <p className="text-xs text-foreground/55">Ägare nu: {getInvoiceReadinessOwner(projectInvoiceReadiness)} • Nästa steg: {getInvoiceReadinessNextStep(projectInvoiceReadiness)}</p>
+                      </div>
+                      {canEditInvoiceReadiness ? (
+                        <div className="w-full sm:w-64">
+                          <SimpleSelect
+                            value={projectInvoiceReadiness}
+                            onValueChange={(value) => updateProjectInvoiceReadinessMutation.mutate(value as InvoiceReadinessStatus)}
+                            disabled={updateProjectInvoiceReadinessMutation.isPending}
+                            options={projectInvoiceReadinessOptions}
+                          />
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                  <div className="rounded-xl border border-border/70 bg-muted/10 p-3 sm:col-span-2">
+                    <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Kund</p>
                       <p className="mt-1 font-medium">{currentCustomer?.name ?? 'Ingen kund kopplad'}</p>
                       <p className="mt-1 text-sm text-foreground/65">
                         {currentCustomer ? 'Kundrelation kopplad till projektet.' : 'Välj kund i grundinfo när projektet ska knytas till en kund.'}
@@ -1722,6 +1802,26 @@ export default function ProjectDetailsPage() {
               <CardTitle>Order</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
+              <div className="rounded-xl border border-border/70 bg-muted/10 p-3">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="space-y-1">
+                    <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Faktureringsläge</p>
+                    <p className="font-medium">{getInvoiceReadinessLabel(orderInvoiceReadiness)}</p>
+                    <p className="text-sm text-foreground/65">{getInvoiceReadinessDescription(orderInvoiceReadiness)}</p>
+                    <p className="text-xs text-foreground/55">Ägare nu: {getInvoiceReadinessOwner(orderInvoiceReadiness)} • Nästa steg: {getInvoiceReadinessNextStep(orderInvoiceReadiness)}</p>
+                  </div>
+                  {canEditInvoiceReadiness ? (
+                    <div className="w-full sm:w-64">
+                      <SimpleSelect
+                        value={orderInvoiceReadiness}
+                        onValueChange={(value) => updateOrderInvoiceReadinessMutation.mutate(value as InvoiceReadinessStatus)}
+                        disabled={updateOrderInvoiceReadinessMutation.isPending || isEconomyLocked || isEconomyBusy}
+                        options={orderInvoiceReadinessOptions}
+                      />
+                    </div>
+                  ) : null}
+                </div>
+              </div>
               <div className="flex flex-wrap items-center gap-2">
                 <Badge>Total: {Number(orderQuery.data?.total ?? 0).toFixed(2)} kr</Badge>{(isEconomyLocked || isEconomyBusy) && <Badge>Låst efter fakturering</Badge>}
 
@@ -2069,6 +2169,10 @@ export default function ProjectDetailsPage() {
             <div className="rounded-lg border p-3 text-sm">
               <p className="font-medium">Projektstatus</p>
               <p className="mt-1 text-foreground/70">{project.workflow_status ?? project.status}</p>
+            </div>
+            <div className="rounded-lg border p-3 text-sm">
+              <p className="font-medium">Faktureringsläge</p>
+              <p className="mt-1 text-foreground/70">{getInvoiceReadinessLabel(projectInvoiceReadiness)}</p>
             </div>
             <div className="rounded-lg border p-3 text-sm">
               <p className="font-medium">Position</p>
