@@ -253,6 +253,7 @@ export async function POST(request: NextRequest) {
   }
 
   const supabase = createClient();
+  const admin = createAdminClient();
   const { error } = await supabase.from('company_members').upsert(
     {
       company_id: companyId,
@@ -266,7 +267,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  const { error: profileError } = await (supabase as any).from('profiles').upsert(
+  const { error: profileError } = await (admin as any).from('profiles').upsert(
     {
       id: user.id,
       email: normalizedEmail,
