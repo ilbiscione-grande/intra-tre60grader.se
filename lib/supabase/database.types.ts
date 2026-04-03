@@ -870,6 +870,66 @@ export type Database = {
           },
         ]
       }
+      project_finance_plans: {
+        Row: {
+          budget_cost: number
+          budget_hours: number
+          budget_revenue: number
+          company_id: string
+          cost_center: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          note: string | null
+          project_id: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          budget_cost?: number
+          budget_hours?: number
+          budget_revenue?: number
+          company_id: string
+          cost_center?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          note?: string | null
+          project_id: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          budget_cost?: number
+          budget_hours?: number
+          budget_revenue?: number
+          company_id?: string
+          cost_center?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          note?: string | null
+          project_id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_finance_plans_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_finance_plans_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       project_members: {
         Row: {
           company_id: string
@@ -905,6 +965,60 @@ export type Database = {
           },
           {
             foreignKeyName: "project_members_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      project_cost_entries: {
+        Row: {
+          amount: number
+          company_id: string
+          created_at: string
+          created_by: string | null
+          description: string
+          entry_date: string
+          id: string
+          project_id: string
+          source: string
+          supplier: string | null
+        }
+        Insert: {
+          amount: number
+          company_id: string
+          created_at?: string
+          created_by?: string | null
+          description: string
+          entry_date?: string
+          id?: string
+          project_id: string
+          source?: string
+          supplier?: string | null
+        }
+        Update: {
+          amount?: number
+          company_id?: string
+          created_at?: string
+          created_by?: string | null
+          description?: string
+          entry_date?: string
+          id?: string
+          project_id?: string
+          source?: string
+          supplier?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_cost_entries_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_cost_entries_project_id_fkey"
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"

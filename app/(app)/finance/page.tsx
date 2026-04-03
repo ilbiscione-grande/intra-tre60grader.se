@@ -4,8 +4,9 @@ import Link from 'next/link';
 import type { Route } from 'next';
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BarChart3, ClipboardList, FileText, Filter, Wallet } from 'lucide-react';
+import { toast } from 'sonner';
 import { useAppContext } from '@/components/providers/AppContext';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -16,7 +17,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useFinanceOverview } from '@/features/finance/financeQueries';
 import { canViewFinance, canWriteFinance } from '@/lib/auth/capabilities';
 import { getInvoiceReadinessLabel } from '@/lib/finance/invoiceReadiness';
-import { vatReport } from '@/lib/rpc';
+import { createInvoiceFromOrder, vatReport } from '@/lib/rpc';
 import { createClient } from '@/lib/supabase/client';
 import { useBreakpointMode } from '@/lib/ui/useBreakpointMode';
 import BankReconciliationCard from '@/features/finance/BankReconciliationCard';
@@ -47,6 +48,8 @@ type InvoicingQueueItem = {
   href: Route;
   secondaryHref?: Route;
   meta: string;
+  entityId: string;
+  projectId?: string;
 };
 
 type InvoiceTodoRow = {
@@ -183,6 +186,7 @@ function normalizeTodoPreference(value: unknown, today: string): TodoPreference 
 export default function FinancePage() {
   const { role, companyId, capabilities } = useAppContext();
   const supabase = useMemo(() => createClient(), []);
+  const queryClient = useQueryClient();
   const query = useFinanceOverview(companyId);
   const mode = useBreakpointMode();
   const searchParams = useSearchParams();
@@ -207,7 +211,7 @@ export default function FinancePage() {
     const nextView = searchParams.get('view');
     const nextAttachment = searchParams.get('attachment');
 
-    if (nextView === 'overview' || nextView === 'verifications' || nextView === 'invoicing') {
+    if (nextView === 'overview' || nextView === 'verifications') {
       setView(nextView);
     }
 
@@ -283,6 +287,57 @@ export default function FinancePage() {
       return data ?? [];
     },
     enabled: canReadFinance
+  });
+
+  const approveOrderMutation = useMutation({
+    mutationFn: async ({ orderId, projectId }: { orderId: string; projectId: string | null }) => {
+      const { error: orderError } = await supabase
+        .from('orders')
+        .update({ invoice_readiness_status: 'approved_for_invoicing' })
+        .eq('company_id', companyId)
+        .eq('id', orderId);
+
+      if (orderError) throw orderError;
+
+      if (projectId) {
+        const { error: projectError } = await supabase
+          .from('projects')
+          .update({ invoice_readiness_status: 'approved_for_invoicing' })
+          .eq('company_id', companyId)
+          .eq('id', projectId);
+
+        if (projectError) throw projectError;
+      }
+    },
+    onSuccess: async () => {
+      toast.success('Order fastställd för fakturering');
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['finance-invoicing-orders', companyId] }),
+        queryClient.invalidateQueries({ queryKey: ['finance-invoicing-projects', companyId] }),
+        queryClient.invalidateQueries({ queryKey: ['finance-invoice-todo', companyId] }),
+        queryClient.invalidateQueries({ queryKey: ['finance-overview', companyId] }),
+        queryClient.invalidateQueries({ queryKey: ['orders', companyId] }),
+        queryClient.invalidateQueries({ queryKey: ['projects', companyId] })
+      ]);
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'Kunde inte fastställa ordern')
+  });
+
+  const createInvoiceMutation = useMutation({
+    mutationFn: async ({ orderId }: { orderId: string }) => createInvoiceFromOrder(orderId),
+    onSuccess: async () => {
+      toast.success('Faktura skapad');
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['finance-invoicing-orders', companyId] }),
+        queryClient.invalidateQueries({ queryKey: ['finance-invoicing-projects', companyId] }),
+        queryClient.invalidateQueries({ queryKey: ['finance-invoice-todo', companyId] }),
+        queryClient.invalidateQueries({ queryKey: ['finance-overview', companyId] }),
+        queryClient.invalidateQueries({ queryKey: ['orders', companyId] }),
+        queryClient.invalidateQueries({ queryKey: ['projects', companyId] }),
+        queryClient.invalidateQueries({ queryKey: ['invoices', companyId] })
+      ]);
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'Kunde inte skapa faktura')
   });
 
   if (!canReadFinance) {
@@ -455,13 +510,32 @@ export default function FinancePage() {
   const invoicingQueue = useMemo<InvoicingQueueItem[]>(() => {
     const customersById = new Map((invoicingCustomersQuery.data ?? []).map((customer) => [customer.id, customer.name]));
     const projectsById = new Map((invoicingProjectsQuery.data ?? []).map((project) => [project.id, project]));
+    const queuedProjectIds = new Set((invoicingOrdersQuery.data ?? []).map((order) => order.project_id));
+
+    const projectItems = (invoicingProjectsQuery.data ?? [])
+      .filter((project) => project.invoice_readiness_status === 'ready_for_invoicing' && !queuedProjectIds.has(project.id))
+      .map((project) => ({
+        id: `project-${project.id}`,
+        type: 'order' as const,
+        stage: 'ready_to_review' as const,
+        title: project.title,
+        customerName: project.customer_id ? customersById.get(project.customer_id) ?? 'Ingen kund' : 'Ingen kund',
+        projectTitle: project.title,
+        amount: 0,
+        statusLabel: getInvoiceReadinessLabel(project.invoice_readiness_status),
+        nextStep: 'Säkerställ orderunderlag',
+        href: `/projects/${project.id}` as Route,
+        meta: 'Projekt • Redo att ses över',
+        entityId: project.id,
+        projectId: project.id
+      }));
 
     const orderItems = (invoicingOrdersQuery.data ?? []).map((order) => {
       const project = projectsById.get(order.project_id);
       const projectTitle = project?.title ?? 'Projekt';
       const customerName = project?.customer_id ? customersById.get(project.customer_id) ?? 'Ingen kund' : 'Ingen kund';
       const stage: InvoicingQueueStage =
-        order.invoice_readiness_status === 'approved_for_invoicing' ? 'approved_today' : 'ready_to_review';
+        order.invoice_readiness_status === 'approved_for_invoicing' ? 'approved_today' : 'waiting_for_approval';
 
       return {
         id: `order-${order.id}`,
@@ -475,7 +549,9 @@ export default function FinancePage() {
         nextStep: stage === 'approved_today' ? 'Skapa faktura' : 'Granska och fastställ',
         href: `/orders/${order.id}` as Route,
         secondaryHref: `/projects/${order.project_id}` as Route,
-        meta: `Order • ${projectTitle}`
+        meta: `Order • ${projectTitle}`,
+        entityId: order.id,
+        projectId: order.project_id
       };
     });
 
@@ -495,11 +571,12 @@ export default function FinancePage() {
         statusLabel: invoice.status,
         nextStep: overdue ? 'Följ upp betalning' : unpaid ? 'Vänta eller registrera betalning' : 'Ingen åtgärd',
         href: `/invoices/${invoice.id}` as Route,
-        meta: `Faktura • Förfallo ${formatDate(invoice.due_date)}`
+        meta: `Faktura • Förfallo ${formatDate(invoice.due_date)}`,
+        entityId: invoice.id
       };
     });
 
-    return [...orderItems, ...invoiceItems].sort((a, b) => b.amount - a.amount);
+    return [...projectItems, ...orderItems, ...invoiceItems].sort((a, b) => b.amount - a.amount);
   }, [invoiceTodoQuery.data, invoicingCustomersQuery.data, invoicingOrdersQuery.data, invoicingProjectsQuery.data, todayIso]);
 
   const invoicingQueueByStage = useMemo(() => {
@@ -773,16 +850,6 @@ export default function FinancePage() {
                   <ClipboardList className="mr-2 h-4 w-4" />
                   Verifikationer
                 </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={view === 'invoicing' ? 'default' : 'ghost'}
-                  className="rounded-full"
-                  onClick={() => setView('invoicing')}
-                >
-                  <Wallet className="mr-2 h-4 w-4" />
-                  Fakturering
-                </Button>
               </div>
 
               {canEditFinance ? <Button asChild><Link href="/finance/verifications/new">Ny verifikation</Link></Button> : null}
@@ -1033,7 +1100,7 @@ export default function FinancePage() {
           </Card>
 
           <div className="grid gap-4 xl:grid-cols-3">
-            {(['ready_to_review', 'approved_today', 'awaiting_payment', 'overdue'] as InvoicingQueueStage[]).map((stage) => (
+            {(['ready_to_review', 'waiting_for_approval', 'approved_today', 'sent', 'awaiting_payment', 'overdue'] as InvoicingQueueStage[]).map((stage) => (
               <Card key={stage} className="xl:col-span-1">
                 <CardHeader className="pb-3">
                   <CardTitle>{stageLabel(stage)}</CardTitle>
@@ -1058,6 +1125,24 @@ export default function FinancePage() {
                           <p><span className="text-foreground/55">Nästa steg:</span> {item.nextStep}</p>
                         </div>
                         <div className="mt-3 flex flex-wrap gap-2">
+                          {item.type === 'order' && item.stage === 'waiting_for_approval' && canEditFinance ? (
+                            <Button
+                              size="sm"
+                              onClick={() => approveOrderMutation.mutate({ orderId: item.entityId, projectId: item.projectId ?? null })}
+                              disabled={approveOrderMutation.isPending}
+                            >
+                              Fastställ
+                            </Button>
+                          ) : null}
+                          {item.type === 'order' && item.stage === 'approved_today' && canEditFinance ? (
+                            <Button
+                              size="sm"
+                              onClick={() => createInvoiceMutation.mutate({ orderId: item.entityId })}
+                              disabled={createInvoiceMutation.isPending}
+                            >
+                              Skapa faktura
+                            </Button>
+                          ) : null}
                           <Button asChild size="sm" variant="secondary">
                             <Link href={item.href}>Öppna</Link>
                           </Button>
