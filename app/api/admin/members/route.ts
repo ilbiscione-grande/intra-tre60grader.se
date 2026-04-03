@@ -280,7 +280,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: profileError.message }, { status: 500 });
   }
 
-  const { data: existingPreference } = await supabase
+  const { data: existingPreference } = await admin
     .from('user_company_preferences')
     .select('id,preference_value')
     .eq('company_id', companyId)
@@ -293,7 +293,7 @@ export async function POST(request: NextRequest) {
       ? (existingPreference.preference_value as Record<string, unknown>)
       : {};
 
-  const { error: preferenceError } = await supabase.from('user_company_preferences').upsert(
+  const { error: preferenceError } = await admin.from('user_company_preferences').upsert(
     {
       id: existingPreference?.id,
       company_id: companyId,
