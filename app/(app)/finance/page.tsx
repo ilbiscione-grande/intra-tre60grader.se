@@ -15,6 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useFinanceOverview } from '@/features/finance/financeQueries';
 import { canViewFinance, canWriteFinance } from '@/lib/auth/capabilities';
+import { getInvoiceReadinessLabel } from '@/lib/finance/invoiceReadiness';
 import { vatReport } from '@/lib/rpc';
 import { createClient } from '@/lib/supabase/client';
 import { useBreakpointMode } from '@/lib/ui/useBreakpointMode';
@@ -23,8 +24,30 @@ import BankReconciliationCard from '@/features/finance/BankReconciliationCard';
 type StatusFilter = 'all' | 'booked' | 'voided';
 type SourceFilter = 'all' | 'mobile' | 'desktop' | 'offline';
 type AttachmentFilter = 'all' | 'with' | 'without';
-type FinanceView = 'overview' | 'verifications';
+type FinanceView = 'overview' | 'verifications' | 'invoicing';
 type VerificationLayout = 'compact' | 'review';
+type InvoicingQueueStage =
+  | 'ready_to_review'
+  | 'waiting_for_approval'
+  | 'approved_today'
+  | 'sent'
+  | 'awaiting_payment'
+  | 'overdue';
+
+type InvoicingQueueItem = {
+  id: string;
+  type: 'order' | 'invoice';
+  stage: InvoicingQueueStage;
+  title: string;
+  customerName: string;
+  projectTitle: string;
+  amount: number;
+  statusLabel: string;
+  nextStep: string;
+  href: Route;
+  secondaryHref?: Route;
+  meta: string;
+};
 
 type InvoiceTodoRow = {
   id: string;
@@ -92,6 +115,18 @@ function verificationNumberLabel(fiscalYear: number | null, verificationNo: numb
 
 function money(value: number) {
   return `${value.toFixed(2)} kr`;
+}
+
+function stageLabel(stage: InvoicingQueueStage) {
+  const map: Record<InvoicingQueueStage, string> = {
+    ready_to_review: 'Redo att granska',
+    waiting_for_approval: 'Väntar på fastställelse',
+    approved_today: 'Fastställd',
+    sent: 'Skickad',
+    awaiting_payment: 'Väntar på betalning',
+    overdue: 'Förfallen'
+  };
+  return map[stage];
 }
 
 function share(value: number, total: number) {
@@ -172,7 +207,7 @@ export default function FinancePage() {
     const nextView = searchParams.get('view');
     const nextAttachment = searchParams.get('attachment');
 
-    if (nextView === 'overview' || nextView === 'verifications') {
+    if (nextView === 'overview' || nextView === 'verifications' || nextView === 'invoicing') {
       setView(nextView);
     }
 
@@ -197,6 +232,52 @@ export default function FinancePage() {
         .order('due_date', { ascending: true })
         .limit(300)
         .returns<InvoiceTodoRow[]>();
+
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: canReadFinance
+  });
+
+  const invoicingProjectsQuery = useQuery({
+    queryKey: ['finance-invoicing-projects', companyId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('projects')
+        .select('id,title,customer_id,invoice_readiness_status,responsible_user_id,updated_at')
+        .eq('company_id', companyId)
+        .in('invoice_readiness_status', ['ready_for_invoicing', 'approved_for_invoicing'])
+        .order('updated_at', { ascending: false });
+
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: canReadFinance
+  });
+
+  const invoicingOrdersQuery = useQuery({
+    queryKey: ['finance-invoicing-orders', companyId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('orders')
+        .select('id,project_id,order_no,status,invoice_readiness_status,total,created_at')
+        .eq('company_id', companyId)
+        .in('invoice_readiness_status', ['ready_for_invoicing', 'approved_for_invoicing'])
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: canReadFinance
+  });
+
+  const invoicingCustomersQuery = useQuery({
+    queryKey: ['finance-invoicing-customers', companyId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('customers')
+        .select('id,name')
+        .eq('company_id', companyId);
 
       if (error) throw error;
       return data ?? [];
@@ -370,6 +451,73 @@ export default function FinancePage() {
 
     return { unbookedInvoices, overdueInvoices, verificationsWithoutAttachment };
   }, [invoiceTodoQuery.data, rows, todayIso]);
+
+  const invoicingQueue = useMemo<InvoicingQueueItem[]>(() => {
+    const customersById = new Map((invoicingCustomersQuery.data ?? []).map((customer) => [customer.id, customer.name]));
+    const projectsById = new Map((invoicingProjectsQuery.data ?? []).map((project) => [project.id, project]));
+
+    const orderItems = (invoicingOrdersQuery.data ?? []).map((order) => {
+      const project = projectsById.get(order.project_id);
+      const projectTitle = project?.title ?? 'Projekt';
+      const customerName = project?.customer_id ? customersById.get(project.customer_id) ?? 'Ingen kund' : 'Ingen kund';
+      const stage: InvoicingQueueStage =
+        order.invoice_readiness_status === 'approved_for_invoicing' ? 'approved_today' : 'ready_to_review';
+
+      return {
+        id: `order-${order.id}`,
+        type: 'order' as const,
+        stage,
+        title: order.order_no ?? 'Order',
+        customerName,
+        projectTitle,
+        amount: Number(order.total ?? 0),
+        statusLabel: getInvoiceReadinessLabel(order.invoice_readiness_status),
+        nextStep: stage === 'approved_today' ? 'Skapa faktura' : 'Granska och fastställ',
+        href: `/orders/${order.id}` as Route,
+        secondaryHref: `/projects/${order.project_id}` as Route,
+        meta: `Order • ${projectTitle}`
+      };
+    });
+
+    const invoiceItems = (invoiceTodoQuery.data ?? []).map((invoice) => {
+      const overdue = invoice.status !== 'paid' && invoice.status !== 'void' && invoice.due_date < todayIso;
+      const unpaid = invoice.status !== 'paid' && invoice.status !== 'void';
+      const stage: InvoicingQueueStage = overdue ? 'overdue' : unpaid ? 'awaiting_payment' : 'sent';
+
+      return {
+        id: `invoice-${invoice.id}`,
+        type: 'invoice' as const,
+        stage,
+        title: invoice.invoice_no,
+        customerName: 'Kund via faktura',
+        projectTitle: 'Faktura',
+        amount: Number(invoice.total ?? 0),
+        statusLabel: invoice.status,
+        nextStep: overdue ? 'Följ upp betalning' : unpaid ? 'Vänta eller registrera betalning' : 'Ingen åtgärd',
+        href: `/invoices/${invoice.id}` as Route,
+        meta: `Faktura • Förfallo ${formatDate(invoice.due_date)}`
+      };
+    });
+
+    return [...orderItems, ...invoiceItems].sort((a, b) => b.amount - a.amount);
+  }, [invoiceTodoQuery.data, invoicingCustomersQuery.data, invoicingOrdersQuery.data, invoicingProjectsQuery.data, todayIso]);
+
+  const invoicingQueueByStage = useMemo(() => {
+    const initial: Record<InvoicingQueueStage, InvoicingQueueItem[]> = {
+      ready_to_review: [],
+      waiting_for_approval: [],
+      approved_today: [],
+      sent: [],
+      awaiting_payment: [],
+      overdue: []
+    };
+
+    for (const item of invoicingQueue) {
+      initial[item.stage].push(item);
+    }
+
+    return initial;
+  }, [invoicingQueue]);
 
   const vatBoxes = (monthVatQuery.data as Record<string, unknown> | null)?.boxes as Record<string, unknown> | undefined;
   const vat49 = Number(vatBoxes?.['49'] ?? 0);
@@ -625,6 +773,16 @@ export default function FinancePage() {
                   <ClipboardList className="mr-2 h-4 w-4" />
                   Verifikationer
                 </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={view === 'invoicing' ? 'default' : 'ghost'}
+                  className="rounded-full"
+                  onClick={() => setView('invoicing')}
+                >
+                  <Wallet className="mr-2 h-4 w-4" />
+                  Fakturering
+                </Button>
               </div>
 
               {canEditFinance ? <Button asChild><Link href="/finance/verifications/new">Ny verifikation</Link></Button> : null}
@@ -848,6 +1006,73 @@ export default function FinancePage() {
                 </Card>
               ) : null}
             </div>
+          </div>
+        </div>
+      ) : view === 'invoicing' ? (
+        <div className="space-y-4">
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <CardTitle>Faktureringskö</CardTitle>
+                <p className="text-sm text-foreground/60">Här jobbar ekonomi vidare med underlag som är redo, fastställda eller behöver betalningsuppföljning.</p>
+              </div>
+            </CardHeader>
+            <CardContent className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
+              {(['ready_to_review', 'waiting_for_approval', 'approved_today', 'sent', 'awaiting_payment', 'overdue'] as InvoicingQueueStage[]).map((stage) => (
+                <MiniStatCard
+                  key={stage}
+                  icon={Wallet}
+                  title={stageLabel(stage)}
+                  value={String(invoicingQueueByStage[stage].length)}
+                  detail="ärenden"
+                  compact
+                  tone={stage === 'overdue' ? 'rose' : stage === 'approved_today' ? 'emerald' : stage === 'awaiting_payment' ? 'amber' : 'blue'}
+                />
+              ))}
+            </CardContent>
+          </Card>
+
+          <div className="grid gap-4 xl:grid-cols-3">
+            {(['ready_to_review', 'approved_today', 'awaiting_payment', 'overdue'] as InvoicingQueueStage[]).map((stage) => (
+              <Card key={stage} className="xl:col-span-1">
+                <CardHeader className="pb-3">
+                  <CardTitle>{stageLabel(stage)}</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {invoicingQueueByStage[stage].length === 0 ? (
+                    <p className="text-sm text-foreground/70">Inga ärenden i denna kolumn.</p>
+                  ) : (
+                    invoicingQueueByStage[stage].map((item) => (
+                      <div key={item.id} className="rounded-xl border border-border/70 bg-muted/15 p-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium">{item.title}</p>
+                            <p className="mt-1 text-xs text-foreground/55">{item.meta}</p>
+                          </div>
+                          <Badge>{item.statusLabel}</Badge>
+                        </div>
+                        <div className="mt-3 space-y-1 text-sm">
+                          <p><span className="text-foreground/55">Kund:</span> {item.customerName}</p>
+                          <p><span className="text-foreground/55">Projekt:</span> {item.projectTitle}</p>
+                          <p><span className="text-foreground/55">Belopp:</span> {money(item.amount)}</p>
+                          <p><span className="text-foreground/55">Nästa steg:</span> {item.nextStep}</p>
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <Button asChild size="sm" variant="secondary">
+                            <Link href={item.href}>Öppna</Link>
+                          </Button>
+                          {item.secondaryHref ? (
+                            <Button asChild size="sm" variant="outline">
+                              <Link href={item.secondaryHref}>Projekt</Link>
+                            </Button>
+                          ) : null}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </CardContent>
+              </Card>
+            ))}
           </div>
         </div>
       ) : (

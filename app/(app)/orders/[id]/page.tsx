@@ -111,6 +111,37 @@ function extractInvoiceSummary(result: unknown) {
   return 'Faktura skapad';
 }
 
+function ReadinessChecklist({
+  items
+}: {
+  items: Array<{ id: string; label: string; done: boolean; detail?: string }>;
+}) {
+  return (
+    <div className="space-y-2">
+      {items.map((item) => (
+        <div
+          key={item.id}
+          className={`rounded-lg border px-3 py-2 text-sm ${
+            item.done
+              ? 'border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:text-emerald-100'
+              : 'border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-100'
+          }`}
+        >
+          <div className="flex items-start gap-2">
+            <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-current/20 text-[11px] font-semibold">
+              {item.done ? '✓' : '!'}
+            </span>
+            <div className="min-w-0">
+              <p className="font-medium">{item.label}</p>
+              {item.detail ? <p className="mt-0.5 text-xs opacity-80">{item.detail}</p> : null}
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function OrderDetailsPage() {
   const { companyId, role } = useAppContext();
   const params = useParams<{ id: string }>();
@@ -382,6 +413,38 @@ export default function OrderDetailsPage() {
     .reduce((sum, invoice) => sum + Number(invoice.total ?? 0), 0);
   const latestInvoice = invoicesQuery.data?.[0] ?? null;
   const hasActiveInvoice = (invoicesQuery.data ?? []).some((invoice) => invoice.status !== 'void');
+  const readinessChecklist = [
+    {
+      id: 'customer',
+      label: customerQuery.data ? 'Kund finns' : 'Kund saknas',
+      done: Boolean(customerQuery.data),
+      detail: customerQuery.data ? customerQuery.data.name : 'Ordern behöver ett projekt med kopplad kund.'
+    },
+    {
+      id: 'project',
+      label: projectQuery.data ? 'Projekt är kopplat' : 'Projekt saknas',
+      done: Boolean(projectQuery.data),
+      detail: projectQuery.data ? projectQuery.data.title : 'Ordern behöver vara kopplad till ett tydligt projekt.'
+    },
+    {
+      id: 'lines',
+      label: (linesQuery.data?.length ?? 0) > 0 ? 'Orderrader finns' : 'Orderrader saknas',
+      done: (linesQuery.data?.length ?? 0) > 0,
+      detail:
+        (linesQuery.data?.length ?? 0) > 0
+          ? `${linesQuery.data?.length ?? 0} rader registrerade`
+          : 'Lägg till minst en orderrad innan fastställelse eller faktura.'
+    },
+    {
+      id: 'value',
+      label: Number(order.total ?? 0) > 0 ? 'Ordern har ett positivt värde' : 'Ordervärdet är 0',
+      done: Number(order.total ?? 0) > 0,
+      detail:
+        Number(order.total ?? 0) > 0
+          ? `${Number(order.total ?? 0).toFixed(2)} kr`
+          : 'Underlaget behöver ett fakturerbart belopp.'
+    }
+  ];
 
   return (
     <section className="space-y-4">
@@ -483,6 +546,10 @@ export default function OrderDetailsPage() {
                       />
                     </div>
                   ) : null}
+                  <div className="mt-3 border-t border-border/60 pt-3">
+                    <p className="mb-2 text-xs font-medium uppercase tracking-[0.16em] text-foreground/45">Det här saknas innan nästa steg</p>
+                    <ReadinessChecklist items={readinessChecklist} />
+                  </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
@@ -658,6 +725,10 @@ export default function OrderDetailsPage() {
                       />
                     </div>
                   ) : null}
+                </div>
+                <div className="mt-3 border-t border-border/60 pt-3">
+                  <p className="mb-2 text-xs font-medium uppercase tracking-[0.16em] text-foreground/45">Det här saknas innan nästa steg</p>
+                  <ReadinessChecklist items={readinessChecklist} />
                 </div>
               </div>
 

@@ -194,6 +194,37 @@ function projectColumnTitle(status: string, columns: Array<{ key: string; title:
   return columns.find((column) => column.key === status)?.title ?? status;
 }
 
+function ReadinessChecklist({
+  items
+}: {
+  items: Array<{ id: string; label: string; done: boolean; detail?: string }>;
+}) {
+  return (
+    <div className="space-y-2">
+      {items.map((item) => (
+        <div
+          key={item.id}
+          className={`rounded-lg border px-3 py-2 text-sm ${
+            item.done
+              ? 'border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:text-emerald-100'
+              : 'border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-100'
+          }`}
+        >
+          <div className="flex items-start gap-2">
+            <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-current/20 text-[11px] font-semibold">
+              {item.done ? '✓' : '!'}
+            </span>
+            <div className="min-w-0">
+              <p className="font-medium">{item.label}</p>
+              {item.detail ? <p className="mt-0.5 text-xs opacity-80">{item.detail}</p> : null}
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function normalizeProjectMilestones(value: Json | null | undefined): ProjectMilestone[] {
   if (!Array.isArray(value)) return [];
 
@@ -1341,6 +1372,65 @@ export default function ProjectDetailsPage() {
   const projectInvoiceReadinessOptions = getInvoiceReadinessOptions(role, projectInvoiceReadiness);
   const orderInvoiceReadinessOptions = getInvoiceReadinessOptions(role, orderInvoiceReadiness);
   const canEditInvoiceReadiness = role !== 'auditor';
+  const projectReadinessChecklist = [
+    {
+      id: 'customer',
+      label: currentCustomer ? 'Kund är kopplad' : 'Kund saknas',
+      done: Boolean(currentCustomer),
+      detail: currentCustomer ? currentCustomer.name : 'Välj kund i grundinfo innan överlämning.'
+    },
+    {
+      id: 'responsible',
+      label: project.responsible_user_id ? 'Projektansvarig är satt' : 'Projektansvarig saknas',
+      done: Boolean(project.responsible_user_id),
+      detail: project.responsible_user_id
+        ? memberLabelByUserId.get(project.responsible_user_id) ?? 'Ansvarig tilldelad'
+        : 'Projektet behöver en tydlig ägare.'
+    },
+    {
+      id: 'members',
+      label: assignedMembers.length > 0 ? 'Projektmedlemmar finns' : 'Inga projektmedlemmar tilldelade',
+      done: assignedMembers.length > 0,
+      detail: assignedMembers.length > 0 ? `${assignedMembers.length} tilldelade` : 'Lägg till de personer som ska utföra eller följa jobbet.'
+    },
+    {
+      id: 'value',
+      label: Number(orderQuery.data?.total ?? 0) > 0 ? 'Fakturerbart värde finns' : 'Fakturerbart värde saknas',
+      done: Number(orderQuery.data?.total ?? 0) > 0,
+      detail:
+        Number(orderQuery.data?.total ?? 0) > 0
+          ? `${Number(orderQuery.data?.total ?? 0).toFixed(2)} kr på ordern`
+          : 'Lägg orderrader eller bygg underlag från tid.'
+    }
+  ];
+  const orderReadinessChecklist = [
+    {
+      id: 'order-lines',
+      label: lines.length > 0 ? 'Orderrader finns' : 'Orderrader saknas',
+      done: lines.length > 0,
+      detail: lines.length > 0 ? `${lines.length} rader klara för granskning` : 'Lägg till minst en orderrad innan fakturering.'
+    },
+    {
+      id: 'customer',
+      label: currentCustomer ? 'Kund finns på projektet' : 'Kund saknas på projektet',
+      done: Boolean(currentCustomer),
+      detail: currentCustomer ? currentCustomer.name : 'Ordern behöver ett projekt med kopplad kund.'
+    },
+    {
+      id: 'responsible',
+      label: project.responsible_user_id ? 'Projektansvarig finns' : 'Projektansvarig saknas',
+      done: Boolean(project.responsible_user_id),
+      detail: project.responsible_user_id
+        ? memberLabelByUserId.get(project.responsible_user_id) ?? 'Ansvarig tilldelad'
+        : 'Det bör finnas en tydlig ägare innan överlämning.'
+    },
+    {
+      id: 'invoice',
+      label: latestInvoice ? 'Faktura finns redan' : 'Ingen faktura skapad ännu',
+      done: !latestInvoice,
+      detail: latestInvoice ? `${latestInvoice.invoice_no} finns redan kopplad` : 'Underlaget kan fortfarande fastställas eller faktureras.'
+    }
+  ];
   const projectLogs = activity
     .map((item) => ({
       id: item.id,
@@ -1588,6 +1678,10 @@ export default function ProjectDetailsPage() {
                         </div>
                       ) : null}
                     </div>
+                    <div className="mt-3 border-t border-border/60 pt-3">
+                      <p className="mb-2 text-xs font-medium uppercase tracking-[0.16em] text-foreground/45">Det här saknas innan nästa steg</p>
+                      <ReadinessChecklist items={projectReadinessChecklist} />
+                    </div>
                   </div>
                   <div className="rounded-xl border border-border/70 bg-muted/10 p-3 sm:col-span-2">
                     <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Kund</p>
@@ -1820,6 +1914,10 @@ export default function ProjectDetailsPage() {
                       />
                     </div>
                   ) : null}
+                </div>
+                <div className="mt-3 border-t border-border/60 pt-3">
+                  <p className="mb-2 text-xs font-medium uppercase tracking-[0.16em] text-foreground/45">Det här saknas innan nästa steg</p>
+                  <ReadinessChecklist items={orderReadinessChecklist} />
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2">
