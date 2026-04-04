@@ -5,7 +5,7 @@ import type { Route } from 'next';
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { BarChart3, ClipboardList, FileText, Filter, Wallet } from 'lucide-react';
+import { AlertTriangle, BarChart3, ClipboardList, FileText, Filter, Wallet } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAppContext } from '@/components/providers/AppContext';
 import { Badge } from '@/components/ui/badge';
@@ -109,6 +109,22 @@ function sourceLabel(source: string | null) {
 function statusLabel(status: string | null) {
   if (status === 'voided') return 'Makulerad';
   return 'Bokförd';
+}
+
+function verificationRowTone(status: string | null) {
+  if (status === 'voided') {
+    return 'bg-rose-50/70 hover:bg-rose-100/70 dark:bg-rose-950/15 dark:hover:bg-rose-950/25';
+  }
+
+  return 'bg-emerald-50/45 hover:bg-emerald-100/50 dark:bg-emerald-950/10 dark:hover:bg-emerald-950/20';
+}
+
+function verificationStatusBadgeTone(status: string | null) {
+  if (status === 'voided') {
+    return 'border-rose-300/70 bg-rose-100/80 text-rose-900 hover:bg-rose-100/80 dark:border-rose-900/50 dark:bg-rose-500/15 dark:text-rose-200';
+  }
+
+  return 'border-emerald-300/70 bg-emerald-100/80 text-emerald-900 hover:bg-emerald-100/80 dark:border-emerald-900/50 dark:bg-emerald-500/15 dark:text-emerald-200';
 }
 
 function verificationNumberLabel(fiscalYear: number | null, verificationNo: number | null) {
@@ -1346,7 +1362,7 @@ export default function FinancePage() {
                   {filteredRows.length === 0 ? (
                     <TableRow><TableCell colSpan={5} className="text-foreground/70">Inga verifikationer matchar filtret.</TableCell></TableRow>
                   ) : filteredRows.map((row) => (
-                    <TableRow key={row.id} className="transition-colors hover:bg-muted/25">
+                    <TableRow key={row.id} className={`transition-colors ${verificationRowTone(row.status)}`}>
                       <TableCell className="font-medium">{verificationNumberLabel(row.fiscal_year, row.verification_no)}</TableCell>
                       <TableCell>{formatDate(row.date)}</TableCell>
                       <TableCell className="max-w-[520px]">
@@ -1357,10 +1373,17 @@ export default function FinancePage() {
                       <TableCell className="font-medium">{Number(row.total).toFixed(2)} kr</TableCell>
                       <TableCell>
                         <div className="flex flex-wrap gap-2">
-                          <Badge className="border-border/70 bg-muted/40 text-foreground/80 hover:bg-muted/40">
+                          <Badge className={verificationStatusBadgeTone(row.status)}>
                             {statusLabel(row.status)}
                           </Badge>
-                          <Badge className="border-border/70 bg-muted/40 text-foreground/80 hover:bg-muted/40">
+                          <Badge
+                            className={
+                              row.attachment_path
+                                ? 'border-border/70 bg-muted/40 text-foreground/80 hover:bg-muted/40'
+                                : 'border-amber-300/70 bg-amber-100/80 text-amber-900 hover:bg-amber-100/80 dark:border-amber-900/50 dark:bg-amber-500/15 dark:text-amber-200'
+                            }
+                          >
+                            {!row.attachment_path ? <AlertTriangle className="mr-1 h-3.5 w-3.5" /> : null}
                             {row.attachment_path ? 'Bilaga' : 'Saknar bilaga'}
                           </Badge>
                         </div>
@@ -1386,7 +1409,7 @@ export default function FinancePage() {
 
                   return (
                     <Link key={row.id} href={`/finance/verifications/${row.id}`} className="block">
-                      <Card className="border-border/70 transition hover:border-primary/35 hover:bg-muted/15">
+                      <Card className={`border-border/70 transition hover:border-primary/35 ${row.status === 'voided' ? 'bg-rose-50/45 dark:bg-rose-950/10' : 'bg-emerald-50/30 dark:bg-emerald-950/5'}`}>
                         <CardContent className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(260px,0.9fr)]">
                           <div className="space-y-3">
                             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1395,7 +1418,7 @@ export default function FinancePage() {
                                 <p className="mt-1 font-semibold">{verificationNumberLabel(row.fiscal_year, row.verification_no)}</p>
                               </div>
                               <div className="flex flex-wrap gap-2">
-                                <Badge className="border-border/70 bg-muted/40 text-foreground/80 hover:bg-muted/40">
+                                <Badge className={verificationStatusBadgeTone(row.status)}>
                                   {statusLabel(row.status)}
                                 </Badge>
                                 <Badge className="border-border/70 bg-muted/40 text-foreground/80 hover:bg-muted/40">
@@ -1408,6 +1431,7 @@ export default function FinancePage() {
                               {reviewFlags.length > 0 ? (
                                 reviewFlags.map((flag) => (
                                   <Badge key={flag} className="border-amber-300/70 bg-amber-100/70 text-amber-900 hover:bg-amber-100/70 dark:border-amber-900/50 dark:bg-amber-500/15 dark:text-amber-200">
+                                    {flag === 'Saknar bilaga' ? <AlertTriangle className="mr-1 h-3.5 w-3.5" /> : null}
                                     {flag}
                                   </Badge>
                                 ))

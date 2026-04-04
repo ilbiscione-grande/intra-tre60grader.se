@@ -421,6 +421,7 @@ export default function VerificationWizard({
   fullscreen?: boolean;
 }) {
   const [step, setStep] = useState<Step>(1);
+  const [prefillApplied, setPrefillApplied] = useState(false);
   const [attachmentName, setAttachmentName] = useState<string>('');
   const [attachment, setAttachment] = useState<VerificationAttachment | undefined>();
   const [submitErrors, setSubmitErrors] = useState<string[]>([]);
@@ -445,6 +446,12 @@ export default function VerificationWizard({
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const projectId = searchParams.get('projectId');
   const returnTo = searchParams.get('returnTo') || '/finance';
+  const prefillDirection = searchParams.get('prefillDirection');
+  const prefillTemplate = searchParams.get('prefillTemplate');
+  const prefillDate = searchParams.get('prefillDate');
+  const prefillDescription = searchParams.get('prefillDescription');
+  const prefillTotal = searchParams.get('prefillTotal');
+  const prefillVatRate = searchParams.get('prefillVatRate');
 
   const saveDraftMutation = useSaveDraft();
   const sendMutation = useSendVerification();
@@ -510,6 +517,46 @@ export default function VerificationWizard({
       active = false;
     };
   }, [companyId, supabase]);
+
+  useEffect(() => {
+    if (prefillApplied) return;
+    if (!prefillDirection || !prefillTemplate) {
+      setPrefillApplied(true);
+      return;
+    }
+
+    const nextDirection = prefillDirection === 'in' ? 'in' : prefillDirection === 'out' ? 'out' : null;
+    const nextTemplate = templateKeys.includes(prefillTemplate as TemplateKey) ? (prefillTemplate as TemplateKey) : null;
+    const nextVatRate = prefillVatRate === '0' || prefillVatRate === '6' || prefillVatRate === '12' || prefillVatRate === '25'
+      ? (prefillVatRate as WizardForm['vatRate'])
+      : null;
+    const nextTotal = prefillTotal ? Number(prefillTotal) : null;
+
+    if (!nextDirection || !nextTemplate) {
+      setPrefillApplied(true);
+      return;
+    }
+
+    form.setValue('direction', nextDirection, { shouldDirty: false, shouldValidate: true });
+    form.setValue('template', nextTemplate, { shouldDirty: false, shouldValidate: true });
+    if (prefillDate) form.setValue('date', prefillDate, { shouldDirty: false, shouldValidate: true });
+    if (prefillDescription) form.setValue('description', prefillDescription, { shouldDirty: false, shouldValidate: true });
+    if (nextVatRate) form.setValue('vatRate', nextVatRate, { shouldDirty: false, shouldValidate: true });
+    if (typeof nextTotal === 'number' && Number.isFinite(nextTotal) && nextTotal > 0) {
+      form.setValue('total', nextTotal, { shouldDirty: false, shouldValidate: true });
+    }
+    setStep(3);
+    setPrefillApplied(true);
+  }, [
+    form,
+    prefillApplied,
+    prefillDate,
+    prefillDescription,
+    prefillDirection,
+    prefillTemplate,
+    prefillTotal,
+    prefillVatRate
+  ]);
 
   function persistUsage(next: TemplateUsageMap, userId: string) {
     void supabase.from('user_company_preferences').upsert(

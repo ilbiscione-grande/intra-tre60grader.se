@@ -1,8 +1,9 @@
 'use client';
 
 import Link from 'next/link';
+import type { Route } from 'next';
 import { useEffect, useMemo, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import MobileAttachmentPicker from '@/components/common/MobileAttachmentPicker';
 import RoleGate from '@/components/common/RoleGate';
@@ -26,6 +27,11 @@ type AttachmentPreview = {
   mimeType: string | null;
   createdAt: string;
   signedUrl: string;
+};
+
+type MemberLookup = {
+  displayName: string | null;
+  email: string | null;
 };
 
 function sourceLabel(source: string | null) {
@@ -55,12 +61,14 @@ function fileExtension(path: string | null | undefined) {
 export default function VerificationDetailsPage() {
   const { role, companyId } = useAppContext();
   const params = useParams<{ id: string }>();
+  const router = useRouter();
   const id = String(params.id ?? '');
   const query = useVerificationById(companyId, id);
   const voidMutation = useVoidVerification(companyId);
   const reversalMutation = useCreateReversalVerification(companyId);
 
   const [attachments, setAttachments] = useState<AttachmentPreview[]>([]);
+  const [memberLookup, setMemberLookup] = useState<Record<string, MemberLookup>>({});
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [voidReason, setVoidReason] = useState('');
   const [reversalReason, setReversalReason] = useState('');
@@ -83,6 +91,55 @@ export default function VerificationDetailsPage() {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadMemberLookup() {
+      if (!companyId) {
+        setMemberLookup({});
+        return;
+      }
+
+      try {
+        const supabase = createClient();
+        const { data, error } = await supabase.rpc('list_company_member_options', { p_company_id: companyId });
+        if (error) throw error;
+        if (!active) return;
+
+        const nextLookup = Object.fromEntries(
+          (data ?? []).map((member) => [
+            member.user_id,
+            {
+              displayName: typeof member.display_name === 'string' && member.display_name.trim() ? member.display_name.trim() : null,
+              email: typeof member.email === 'string' && member.email.trim() ? member.email.trim() : null
+            }
+          ])
+        );
+
+        setMemberLookup(nextLookup);
+      } catch {
+        if (!active) return;
+        setMemberLookup({});
+      }
+    }
+
+    void loadMemberLookup();
+    return () => {
+      active = false;
+    };
+  }, [companyId]);
+
+  function actorText(actor: string | null | undefined) {
+    if (!actor) return '-';
+    if (currentUserId && actor === currentUserId) return 'Du';
+
+    const member = memberLookup[actor];
+    if (member?.displayName) return member.displayName;
+    if (member?.email) return member.email;
+
+    return `${actor.slice(0, 8)}...`;
+  }
 
   useEffect(() => {
     let active = true;
@@ -123,20 +180,65 @@ export default function VerificationDetailsPage() {
   }, [query.data?.verification_attachments]);
 
   const actorLabel = useMemo(() => {
-    const actor = query.data?.created_by;
-    if (!actor) return '-';
-    if (currentUserId && actor === currentUserId) return 'Du';
-    return `${actor.slice(0, 8)}...`;
-  }, [query.data?.created_by, currentUserId]);
+    return actorText(query.data?.created_by);
+  }, [query.data?.created_by, currentUserId, memberLookup]);
 
   const voidedByLabel = useMemo(() => {
-    const actor = query.data?.voided_by;
-    if (!actor) return '-';
-    if (currentUserId && actor === currentUserId) return 'Du';
-    return `${actor.slice(0, 8)}...`;
-  }, [query.data?.voided_by, currentUserId]);
+    return actorText(query.data?.voided_by);
+  }, [query.data?.voided_by, currentUserId, memberLookup]);
 
   const attachmentCount = attachments.length;
+
+  function inferDirection() {
+    const cashLine = query.data?.verification_lines.find((line) => /^19\d{2}$/.test(line.account_no));
+    if (cashLine) {
+      if (Number(cashLine.debit) > Number(cashLine.credit)) return 'in' as const;
+      if (Number(cashLine.credit) > Number(cashLine.debit)) return 'out' as const;
+    }
+
+    const totalDebit = (query.data?.verification_lines ?? []).reduce((sum, line) => sum + Number(line.debit), 0);
+    const totalCredit = (query.data?.verification_lines ?? []).reduce((sum, line) => sum + Number(line.credit), 0);
+    return totalDebit >= totalCredit ? ('in' as const) : ('out' as const);
+  }
+
+  function inferVatRate() {
+    const vatCode = query.data?.verification_lines.find((line) => line.vat_code)?.vat_code;
+    if (vatCode === '0' || vatCode === '6' || vatCode === '12' || vatCode === '25') return vatCode;
+    return '0';
+  }
+
+  async function handleCreateCorrectionFlow() {
+    if (!query.data) return;
+
+    const result = await reversalMutation.mutateAsync({
+      verificationId: id,
+      reason: reversalReason.trim() || undefined
+    });
+
+    const direction = inferDirection();
+    const vatRate = inferVatRate();
+    const template = direction === 'in' ? 'manual_in' : 'manual_out';
+    const nextParams = new URLSearchParams({
+      prefillDirection: direction,
+      prefillTemplate: template,
+      prefillDate: query.data.date,
+      prefillDescription: query.data.description,
+      prefillTotal: Number(query.data.total).toFixed(2),
+      prefillVatRate: vatRate,
+      returnTo: `/finance/verifications/${id}`
+    });
+
+    const reversalId =
+      result && typeof result === 'object' && 'reversal_verification_id' in result
+        ? String((result as { reversal_verification_id?: string }).reversal_verification_id ?? '')
+        : '';
+
+    if (reversalId) {
+      nextParams.set('reversalId', reversalId);
+    }
+
+    router.push((`/finance/verifications/new?${nextParams.toString()}`) as Route);
+  }
 
   async function handleAttachmentPick(file: File) {
     if (!query.data) return;
@@ -250,14 +352,9 @@ export default function VerificationDetailsPage() {
                   <Button
                     variant="secondary"
                     disabled={reversalMutation.isPending}
-                    onClick={() =>
-                      void reversalMutation.mutateAsync({
-                        verificationId: id,
-                        reason: reversalReason.trim() || undefined
-                      })
-                    }
+                    onClick={() => void handleCreateCorrectionFlow()}
                   >
-                    Skapa rättelse
+                    Skapa rättelse och ny verifikation
                   </Button>
                 </Card>
               </>
@@ -293,7 +390,7 @@ export default function VerificationDetailsPage() {
                   <p className="text-xs text-muted-foreground">
                     {attachmentCount === 1 ? '1 bilaga sparad' : `${attachmentCount} bilagor sparade`}
                   </p>
-                  <div className="space-y-4">
+                  <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                     {attachments.map((attachment) => {
                       const extension = fileExtension(attachment.fileName || attachment.path);
                       const canPreviewAsImage = ['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(extension);
@@ -301,9 +398,50 @@ export default function VerificationDetailsPage() {
 
                       return (
                         <div key={attachment.id} className="space-y-3 rounded-lg border p-3">
-                          <div className="flex flex-wrap items-center justify-between gap-2">
+                          {canPreviewAsImage ? (
+                            <a
+                              href={attachment.signedUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="block cursor-pointer overflow-hidden rounded-lg border bg-muted/30"
+                            >
+                              <img
+                                src={attachment.signedUrl}
+                                alt={`Bilageförhandsvisning ${attachment.fileName}`}
+                                className="h-40 w-full object-cover"
+                              />
+                            </a>
+                          ) : null}
+                          {canPreviewAsPdf ? (
+                            <a
+                              href={attachment.signedUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="flex h-40 cursor-pointer items-center justify-center rounded-lg border bg-muted/20 text-center text-sm text-muted-foreground"
+                            >
+                              PDF-forhandsvisning
+                            </a>
+                          ) : null}
+                          {!canPreviewAsImage && !canPreviewAsPdf ? (
+                            <a
+                              href={attachment.signedUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="flex h-40 cursor-pointer items-center justify-center rounded-lg border bg-muted/20 text-center text-sm text-muted-foreground"
+                            >
+                              Oppna fil
+                            </a>
+                          ) : null}
+                          <div className="space-y-2">
                             <div className="min-w-0">
-                              <p className="truncate font-medium">{attachment.fileName}</p>
+                              <a
+                                href={attachment.signedUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="block truncate font-medium underline-offset-4 hover:underline"
+                              >
+                                {attachment.fileName}
+                              </a>
                               <p className="text-xs text-muted-foreground">
                                 Uppladdad {new Date(attachment.createdAt).toLocaleString('sv-SE')}
                               </p>
@@ -321,24 +459,6 @@ export default function VerificationDetailsPage() {
                               </Button>
                             </div>
                           </div>
-                          {canPreviewAsImage ? (
-                            <div className="overflow-hidden rounded-lg border bg-muted/30">
-                              <img
-                                src={attachment.signedUrl}
-                                alt={`Bilageförhandsvisning ${attachment.fileName}`}
-                                className="max-h-[28rem] w-full object-contain"
-                              />
-                            </div>
-                          ) : null}
-                          {canPreviewAsPdf ? (
-                            <div className="overflow-hidden rounded-lg border bg-white">
-                              <iframe
-                                src={attachment.signedUrl}
-                                title={`Bilageförhandsvisning ${attachment.fileName}`}
-                                className="h-[32rem] w-full"
-                              />
-                            </div>
-                          ) : null}
                         </div>
                       );
                     })}
