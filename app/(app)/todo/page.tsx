@@ -15,6 +15,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { canViewFinance } from '@/lib/auth/capabilities';
+import { getInvoiceReadinessLabel } from '@/lib/finance/invoiceReadiness';
 import { getPrimaryMobileQuickActions, getSecondaryMobileQuickActions } from '@/lib/mobile/quickActions';
 import { createClient } from '@/lib/supabase/client';
 import { useBreakpointMode } from '@/lib/ui/useBreakpointMode';
@@ -78,6 +79,46 @@ type VerificationRow = {
   verification_lines: Array<{ debit: number | null; credit: number | null }> | null;
 };
 
+type FinancePipelineProjectRow = {
+  id: string;
+  title: string;
+  status: string | null;
+  customer_id: string | null;
+  responsible_user_id: string | null;
+  invoice_readiness_status: string | null;
+};
+
+type FinancePipelineOrderRow = {
+  id: string;
+  project_id: string;
+  order_no: string | null;
+  total: number;
+  status: string | null;
+  invoice_readiness_status: string | null;
+};
+
+type CustomerNameRow = {
+  id: string;
+  name: string;
+};
+
+type MemberOptionRow = {
+  user_id: string;
+  display_name: string | null;
+  email: string | null;
+};
+
+type PipelineItem = {
+  id: string;
+  title: string;
+  detail: string;
+  badge: string;
+  ownerLabel: string;
+  waitingOnCurrentUser: boolean;
+  href: Route;
+  tone: 'blue' | 'amber' | 'rose' | 'emerald';
+};
+
 function startOfToday() {
   const now = new Date();
   now.setHours(0, 0, 0, 0);
@@ -110,6 +151,7 @@ export default function TodoPage() {
   const now = new Date();
   const [taskDialogOpen, setTaskDialogOpen] = useState(false);
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
+  const [pipelineFilter, setPipelineFilter] = useState<'all' | 'waiting_for_me'>('all');
   const [selectedProjectId, setSelectedProjectId] = useState('');
   const [taskTitle, setTaskTitle] = useState('');
   const [taskDescription, setTaskDescription] = useState('');
@@ -174,6 +216,66 @@ export default function TodoPage() {
 
       if (error) throw error;
       return data ?? [];
+    },
+    enabled: canReadFinance
+  });
+
+  const financePipelineProjectsQuery = useQuery<FinancePipelineProjectRow[]>({
+    queryKey: ['todo-finance-pipeline-projects', companyId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('projects')
+        .select('id,title,status,customer_id,responsible_user_id,invoice_readiness_status')
+        .eq('company_id', companyId)
+        .order('updated_at', { ascending: false })
+        .limit(150)
+        .returns<FinancePipelineProjectRow[]>();
+
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: canReadFinance
+  });
+
+  const financePipelineOrdersQuery = useQuery<FinancePipelineOrderRow[]>({
+    queryKey: ['todo-finance-pipeline-orders', companyId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('orders')
+        .select('id,project_id,order_no,total,status,invoice_readiness_status')
+        .eq('company_id', companyId)
+        .order('created_at', { ascending: false })
+        .limit(150)
+        .returns<FinancePipelineOrderRow[]>();
+
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: canReadFinance
+  });
+
+  const customersQuery = useQuery<CustomerNameRow[]>({
+    queryKey: ['todo-finance-pipeline-customers', companyId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('customers')
+        .select('id,name')
+        .eq('company_id', companyId)
+        .order('name', { ascending: true })
+        .returns<CustomerNameRow[]>();
+
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: canReadFinance
+  });
+
+  const memberOptionsQuery = useQuery<MemberOptionRow[]>({
+    queryKey: ['todo-member-options', companyId],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('list_company_member_options', { p_company_id: companyId });
+      if (error) throw error;
+      return (data ?? []) as MemberOptionRow[];
     },
     enabled: canReadFinance
   });
@@ -251,6 +353,24 @@ export default function TodoPage() {
   const projectById = useMemo(
     () => new Map((projectsQuery.data ?? []).map((project) => [project.id, project])),
     [projectsQuery.data]
+  );
+  const financePipelineProjectById = useMemo(
+    () => new Map((financePipelineProjectsQuery.data ?? []).map((project) => [project.id, project])),
+    [financePipelineProjectsQuery.data]
+  );
+  const customerNameById = useMemo(
+    () => new Map((customersQuery.data ?? []).map((customer) => [customer.id, customer.name])),
+    [customersQuery.data]
+  );
+  const memberLabelByUserId = useMemo(
+    () =>
+      new Map(
+        (memberOptionsQuery.data ?? []).map((member) => [
+          member.user_id,
+          member.display_name?.trim() || member.email?.trim() || member.user_id
+        ])
+      ),
+    [memberOptionsQuery.data]
   );
   const projectMemberUserIdsByProjectId = useMemo(() => {
     const map = new Map<string, string[]>();
@@ -415,6 +535,207 @@ export default function TodoPage() {
       .sort((a, b) => b.runningHours - a.runningHours)
       .slice(0, 8);
   }, [now, projectById, taskById, visibleActiveTimers]);
+
+  const pipelineWorkItems = useMemo<PipelineItem[]>(() => {
+    return [
+      ...overdueTaskAlerts.slice(0, 3).map((task) => ({
+        id: `work-task-${task.id}`,
+        title: task.title,
+        detail: `${task.projectTitle} • ${task.daysLate} dagar sen`,
+        badge: `${task.daysLate} d`,
+        ownerLabel:
+          task.assignee_user_id && memberLabelByUserId.get(task.assignee_user_id)
+            ? memberLabelByUserId.get(task.assignee_user_id) as string
+            : 'Projektteam',
+        waitingOnCurrentUser: Boolean(
+          currentUserId && (task.assignee_user_id === currentUserId || task.created_by === currentUserId)
+        ),
+        href: `/projects/${task.project_id}?tab=tasks` as Route,
+        tone: 'rose' as const
+      })),
+      ...projectDeadlineAlerts.slice(0, 3).map((project) => ({
+        id: `work-project-${project.id}`,
+        title: project.title,
+        detail: `Över slutdatum med ${project.daysLate} dagar`,
+        badge: `${project.daysLate} d`,
+        ownerLabel:
+          project.responsible_user_id && memberLabelByUserId.get(project.responsible_user_id)
+            ? memberLabelByUserId.get(project.responsible_user_id) as string
+            : 'Projektansvarig',
+        waitingOnCurrentUser: Boolean(currentUserId && project.responsible_user_id === currentUserId),
+        href: `/projects/${project.id}` as Route,
+        tone: 'rose' as const
+      })),
+      ...longRunningTimerAlerts.slice(0, 2).map((timer) => ({
+        id: `work-timer-${timer.id}`,
+        title: timer.taskTitle ?? timer.projectTitle,
+        detail: `${timer.projectTitle} • timer aktiv i ${timer.runningHours} timmar`,
+        badge: `${timer.runningHours} h`,
+        ownerLabel: 'Projektteam',
+        waitingOnCurrentUser: false,
+        href: `/projects/${timer.project_id}?tab=time` as Route,
+        tone: 'amber' as const
+      }))
+    ];
+  }, [currentUserId, longRunningTimerAlerts, memberLabelByUserId, overdueTaskAlerts, projectDeadlineAlerts]);
+
+  const pipelinePreparationItems = useMemo<PipelineItem[]>(() => {
+    if (!canReadFinance) return [];
+
+    const activeInvoiceProjectIds = new Set(
+      (financePipelineOrdersQuery.data ?? [])
+        .filter((order) => order.status !== 'cancelled')
+        .map((order) => order.project_id)
+    );
+
+    return (financePipelineProjectsQuery.data ?? [])
+      .filter((project) => project.status === 'done')
+      .filter((project) => !activeInvoiceProjectIds.has(project.id))
+      .filter((project) => project.invoice_readiness_status === 'not_ready' || !project.invoice_readiness_status)
+      .map((project) => ({
+        id: `prep-${project.id}`,
+        title: project.title,
+        detail: `${project.customer_id ? customerNameById.get(project.customer_id) ?? 'Kund saknas' : 'Kund saknas'} • klart men inte redo för fakturering`,
+        badge: 'Förbered underlag',
+        ownerLabel:
+          project.responsible_user_id && memberLabelByUserId.get(project.responsible_user_id)
+            ? memberLabelByUserId.get(project.responsible_user_id) as string
+            : 'Projektansvarig',
+        waitingOnCurrentUser: Boolean(currentUserId && project.responsible_user_id === currentUserId),
+        href: `/projects/${project.id}?tab=economy` as Route,
+        tone: 'amber' as const
+      }))
+      ;
+  }, [canReadFinance, currentUserId, customerNameById, financePipelineOrdersQuery.data, financePipelineProjectsQuery.data, memberLabelByUserId]);
+
+  const pipelineApprovalItems = useMemo<PipelineItem[]>(() => {
+    if (!canReadFinance) return [];
+
+    return (financePipelineOrdersQuery.data ?? [])
+      .filter((order) => order.invoice_readiness_status === 'ready_for_invoicing' || order.invoice_readiness_status === 'approved_for_invoicing')
+      .map((order) => {
+        const project = financePipelineProjectById.get(order.project_id);
+        const customerName = project?.customer_id ? customerNameById.get(project.customer_id) ?? 'Ingen kund' : 'Ingen kund';
+        const nextStep = order.invoice_readiness_status === 'approved_for_invoicing' ? 'Färdig att fakturera' : 'Väntar på fastställelse';
+
+        return {
+          id: `approval-${order.id}`,
+          title: order.order_no ?? 'Order',
+          detail: `${project?.title ?? 'Projekt'} • ${customerName} • ${getInvoiceReadinessLabel(order.invoice_readiness_status)}`,
+          badge: nextStep,
+          ownerLabel: order.invoice_readiness_status === 'approved_for_invoicing' ? 'Ekonomi / admin' : 'Ekonomi',
+          waitingOnCurrentUser: role === 'admin' || role === 'finance',
+          href: `/orders/${order.id}` as Route,
+          tone: order.invoice_readiness_status === 'approved_for_invoicing' ? ('emerald' as const) : ('blue' as const)
+        };
+      })
+      ;
+  }, [canReadFinance, customerNameById, financePipelineOrdersQuery.data, financePipelineProjectById, role]);
+
+  const pipelinePaymentItems = useMemo<PipelineItem[]>(() => {
+    if (!canReadFinance) return [];
+
+    const overdueItems = overdueCustomerInvoices.map((invoice) => ({
+      id: `payment-overdue-${invoice.id}`,
+      title: invoice.invoice_no || 'Faktura',
+      detail: `${invoice.daysOverdue} dagar sen • ${formatMoney(invoice.total, invoice.currency)}`,
+      badge: `${invoice.daysOverdue} d`,
+      ownerLabel: 'Ekonomi / admin',
+      waitingOnCurrentUser: role === 'admin' || role === 'finance',
+      href: `/invoices/${invoice.id}` as Route,
+      tone: 'rose' as const
+    }));
+
+    const awaitingItems = (invoicesQuery.data ?? [])
+      .filter((invoice) => invoice.status !== 'paid' && invoice.status !== 'void')
+      .filter((invoice) => new Date(invoice.due_date) >= today)
+      .slice(0, 4)
+      .map((invoice) => ({
+        id: `payment-open-${invoice.id}`,
+        title: invoice.invoice_no || 'Faktura',
+        detail: `Förfaller ${invoice.due_date} • ${formatMoney(invoice.total, invoice.currency)}`,
+        badge: 'Väntar på betalning',
+        ownerLabel: 'Ekonomi',
+        waitingOnCurrentUser: role === 'admin' || role === 'finance',
+        href: `/invoices/${invoice.id}` as Route,
+        tone: 'blue' as const
+      }));
+
+    return [...overdueItems, ...awaitingItems];
+  }, [canReadFinance, invoicesQuery.data, overdueCustomerInvoices, role, today]);
+
+  const pipelineStages = useMemo(
+    () => [
+      {
+        id: 'work',
+        title: '1. Arbete',
+        description: 'Saker som måste bli klara innan underlaget kan lämnas över.',
+        count: pipelineWorkItems.length,
+        items: pipelineWorkItems,
+        emptyText: 'Inget arbete blockerar flödet just nu.',
+        tone: 'amber' as const,
+        href: '/projects' as Route
+      },
+      {
+        id: 'prep',
+        title: '2. Underlag',
+        description: 'Klara projekt som fortfarande behöver förberedas för fakturering.',
+        count: pipelinePreparationItems.length,
+        items: pipelinePreparationItems,
+        emptyText: 'Inga klara projekt väntar på underlag just nu.',
+        tone: 'blue' as const,
+        href: '/invoices?queue=completed_without_invoice' as Route
+      },
+      {
+        id: 'approval',
+        title: '3. Fastställ / fakturera',
+        description: 'Order som väntar på ekonomi eller redan är godkända för faktura.',
+        count: pipelineApprovalItems.length,
+        items: pipelineApprovalItems,
+        emptyText: 'Ingen order väntar på fastställelse eller fakturering just nu.',
+        tone: 'emerald' as const,
+        href: '/invoices?queue=waiting_for_me' as Route
+      },
+      {
+        id: 'payment',
+        title: '4. Betalning',
+        description: 'Fakturor som väntar på betalning eller redan är förfallna.',
+        count: pipelinePaymentItems.length,
+        items: pipelinePaymentItems,
+        emptyText: 'Inga fakturor väntar på uppföljning just nu.',
+        tone: 'rose' as const,
+        href: '/invoices?queue=overdue' as Route
+      }
+    ],
+    [
+      invoicesQuery.data,
+      longRunningTimerAlerts.length,
+      overdueCustomerInvoices.length,
+      overdueTaskAlerts.length,
+      pipelineApprovalItems,
+      pipelinePaymentItems,
+      pipelinePreparationItems,
+      pipelineWorkItems,
+      projectDeadlineAlerts.length,
+      today
+    ]
+  );
+
+  const filteredPipelineStages = useMemo(
+    () =>
+      pipelineStages.map((stage) => {
+        const items = pipelineFilter === 'waiting_for_me'
+          ? stage.items.filter((item) => item.waitingOnCurrentUser)
+          : stage.items;
+
+        return {
+          ...stage,
+          items,
+          count: pipelineFilter === 'waiting_for_me' ? items.length : stage.count
+        };
+      }),
+    [pipelineFilter, pipelineStages]
+  );
 
   const urgentCount =
     projectAlerts.length +
@@ -871,6 +1192,51 @@ export default function TodoPage() {
 
       {isLoading ? <p className="text-sm text-foreground/65">Laddar att-göra...</p> : null}
 
+      <Card className="border-border/70 bg-gradient-to-br from-card via-card to-muted/10">
+        <CardHeader className="pb-3">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <CardTitle>Projekt till betalning</CardTitle>
+              <p className="mt-1 text-sm text-foreground/65">
+                En sammanhållen pipeline från arbete till fakturering och betalningsuppföljning.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant={pipelineFilter === 'all' ? 'default' : 'outline'}
+                onClick={() => setPipelineFilter('all')}
+              >
+                Alla
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={pipelineFilter === 'waiting_for_me' ? 'default' : 'outline'}
+                onClick={() => setPipelineFilter('waiting_for_me')}
+              >
+                Väntar på mig
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="grid gap-4 xl:grid-cols-4">
+          {filteredPipelineStages.map((stage) => (
+            <PipelineStageCard
+              key={stage.id}
+              title={stage.title}
+              description={stage.description}
+              count={stage.count}
+              items={stage.items}
+              emptyText={stage.emptyText}
+              tone={stage.tone}
+              href={stage.href}
+            />
+          ))}
+        </CardContent>
+      </Card>
+
       <div className="grid gap-4 xl:grid-cols-2">
         <TodoSection
           id="todo-stale-projects"
@@ -1168,6 +1534,69 @@ function TodoMetric({
   return content;
 }
 
+function PipelineStageCard({
+  title,
+  description,
+  count,
+  items,
+  emptyText,
+  tone,
+  href
+}: {
+  title: string;
+  description: string;
+  count: number;
+  items: PipelineItem[];
+  emptyText: string;
+  tone: 'blue' | 'amber' | 'rose' | 'emerald';
+  href: Route;
+}) {
+  const toneClasses = {
+    blue: 'border-sky-200/60 bg-sky-50/40 dark:border-sky-900/40 dark:bg-sky-950/15',
+    amber: 'border-amber-200/60 bg-amber-50/40 dark:border-amber-900/40 dark:bg-amber-950/15',
+    rose: 'border-rose-200/60 bg-rose-50/40 dark:border-rose-900/40 dark:bg-rose-950/15',
+    emerald: 'border-emerald-200/60 bg-emerald-50/40 dark:border-emerald-900/40 dark:bg-emerald-950/15'
+  } as const;
+
+  return (
+    <div className={`rounded-2xl border p-4 ${toneClasses[tone]}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold">{title}</p>
+          <p className="mt-1 text-sm text-foreground/65">{description}</p>
+        </div>
+        <Badge className="border-border/70 bg-card/80 text-foreground/85 hover:bg-card/80">{count}</Badge>
+      </div>
+
+      <div className="mt-4 space-y-2">
+        {items.length > 0 ? (
+          items.slice(0, 4).map((item) => (
+            <TodoItem
+              key={item.id}
+              href={item.href}
+              title={item.title}
+              detail={`${item.detail} • Ägare: ${item.ownerLabel}`}
+              badge={item.badge}
+              tone={item.tone}
+            />
+          ))
+        ) : (
+          <p className="text-sm text-foreground/65">{emptyText}</p>
+        )}
+      </div>
+
+      <div className="mt-3">
+        <Button asChild variant="ghost" className="w-full justify-between rounded-xl">
+          <Link href={href}>
+            {href.startsWith('/invoices') ? 'Öppna i fakturakö' : 'Öppna steg'}
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function TodoSection({
   id,
   title,
@@ -1207,12 +1636,13 @@ function TodoItem({
   title: string;
   detail: string;
   badge: string;
-  tone?: 'blue' | 'amber' | 'rose';
+  tone?: 'blue' | 'amber' | 'rose' | 'emerald';
 }) {
   const badgeTone = {
     blue: 'border-sky-300/70 bg-sky-100/70 text-sky-900 dark:border-sky-900/50 dark:bg-sky-500/15 dark:text-sky-200',
     amber: 'border-amber-300/70 bg-amber-100/70 text-amber-900 dark:border-amber-900/50 dark:bg-amber-500/15 dark:text-amber-200',
-    rose: 'border-rose-300/70 bg-rose-100/70 text-rose-900 dark:border-rose-900/50 dark:bg-rose-500/15 dark:text-rose-200'
+    rose: 'border-rose-300/70 bg-rose-100/70 text-rose-900 dark:border-rose-900/50 dark:bg-rose-500/15 dark:text-rose-200',
+    emerald: 'border-emerald-300/70 bg-emerald-100/70 text-emerald-900 dark:border-emerald-900/50 dark:bg-emerald-500/15 dark:text-emerald-200'
   } as const;
 
   return (

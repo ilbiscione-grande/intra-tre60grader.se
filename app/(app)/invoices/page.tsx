@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import type { Route } from 'next';
 import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FileText, Receipt, Wallet } from 'lucide-react';
 import { toast } from 'sonner';
@@ -191,6 +192,7 @@ function buildTimePreviewLines({
 
 export default function InvoicesPage() {
   const { companyId, role, capabilities } = useAppContext();
+  const searchParams = useSearchParams();
   const supabase = useMemo(() => createClient(), []);
   const queryClient = useQueryClient();
   const canReadFinance = canViewFinance(role, capabilities);
@@ -217,6 +219,19 @@ export default function InvoicesPage() {
   const [timeUnitPrice, setTimeUnitPrice] = useState('');
   const [timeLineUnitPriceOverrides, setTimeLineUnitPriceOverrides] = useState<Record<string, number>>({});
   const [queueFilter, setQueueFilter] = useState<QueueFilter>('all');
+
+  useEffect(() => {
+    const nextQueue = searchParams.get('queue');
+    if (
+      nextQueue === 'all' ||
+      nextQueue === 'waiting_for_me' ||
+      nextQueue === 'overdue' ||
+      nextQueue === 'time_without_order' ||
+      nextQueue === 'completed_without_invoice'
+    ) {
+      setQueueFilter(nextQueue);
+    }
+  }, [searchParams]);
 
   const query = useQuery<InvoiceListRow[]>({
     queryKey: ['invoices', companyId, 'all'],
