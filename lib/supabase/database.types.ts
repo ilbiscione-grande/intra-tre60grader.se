@@ -233,8 +233,11 @@ export type Database = {
           created_at: string
           id: string
           invoice_readiness_status: string
+          order_kind: string
           order_no: string | null
+          parent_order_id: string | null
           project_id: string
+          sort_index: number
           status: string
           total: number
         }
@@ -243,8 +246,11 @@ export type Database = {
           created_at?: string
           id?: string
           invoice_readiness_status?: string
+          order_kind?: string
           order_no?: string | null
+          parent_order_id?: string | null
           project_id: string
+          sort_index?: number
           status?: string
           total?: number
         }
@@ -253,8 +259,11 @@ export type Database = {
           created_at?: string
           id?: string
           invoice_readiness_status?: string
+          order_kind?: string
           order_no?: string | null
+          parent_order_id?: string | null
           project_id?: string
+          sort_index?: number
           status?: string
           total?: number
         }
@@ -269,8 +278,15 @@ export type Database = {
           {
             foreignKeyName: "orders_project_id_fkey"
             columns: ["project_id"]
-            isOneToOne: true
+            isOneToOne: false
             referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_parent_order_id_fkey"
+            columns: ["parent_order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
             referencedColumns: ["id"]
           },
         ]

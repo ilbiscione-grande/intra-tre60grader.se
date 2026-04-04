@@ -33,7 +33,10 @@ import type { Role } from '@/lib/types';
 import { useAutoScrollActiveTab } from '@/lib/ui/useAutoScrollActiveTab';
 import { useSwipeTabs } from '@/lib/ui/useSwipeTabs';
 
-type OrderRow = Pick<DbRow<'orders'>, 'id' | 'order_no' | 'project_id' | 'status' | 'invoice_readiness_status' | 'total' | 'created_at'>;
+type OrderRow = Pick<
+  DbRow<'orders'>,
+  'id' | 'order_no' | 'project_id' | 'status' | 'order_kind' | 'parent_order_id' | 'sort_index' | 'invoice_readiness_status' | 'total' | 'created_at'
+>;
 type ProjectRow = Pick<DbRow<'projects'>, 'id' | 'title' | 'customer_id' | 'invoice_readiness_status'>;
 type CustomerRow = Pick<DbRow<'customers'>, 'id' | 'name'>;
 type OrderLineRow = Pick<DbRow<'order_lines'>, 'id' | 'title' | 'qty' | 'unit_price' | 'vat_rate' | 'total' | 'created_at'>;
@@ -78,6 +81,15 @@ function orderStatusIconClass(status: string) {
   if (status === 'cancelled') return 'text-rose-600';
   if (status === 'sent') return 'text-sky-600';
   return 'text-amber-600';
+}
+
+function orderKindLabel(kind: string) {
+  const map: Record<string, string> = {
+    primary: 'Huvudorder',
+    change: 'Ändringsorder',
+    supplement: 'Tilläggsorder'
+  };
+  return map[kind] ?? kind;
 }
 
 function fakturaStatusEtikett(status: string) {
@@ -162,7 +174,7 @@ export default function OrderDetailsPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('orders')
-        .select('id,order_no,project_id,status,invoice_readiness_status,total,created_at')
+        .select('id,order_no,project_id,status,order_kind,parent_order_id,sort_index,invoice_readiness_status,total,created_at')
         .eq('company_id', companyId)
         .eq('id', orderId)
         .maybeSingle<OrderRow>();
@@ -185,6 +197,25 @@ export default function OrderDetailsPage() {
         .maybeSingle<ProjectRow>();
       if (error) throw error;
       return data;
+    }
+  });
+
+  const projectOrdersQuery = useQuery<OrderRow[]>({
+    queryKey: ['order-project-orders', companyId, orderQuery.data?.project_id ?? 'none'],
+    enabled: Boolean(orderQuery.data?.project_id),
+    queryFn: async () => {
+      const projectId = orderQuery.data?.project_id;
+      if (!projectId) return [];
+      const { data, error } = await supabase
+        .from('orders')
+        .select('id,order_no,project_id,status,order_kind,parent_order_id,sort_index,invoice_readiness_status,total,created_at')
+        .eq('company_id', companyId)
+        .eq('project_id', projectId)
+        .order('sort_index', { ascending: true })
+        .order('created_at', { ascending: true })
+        .returns<OrderRow[]>();
+      if (error) throw error;
+      return data ?? [];
     }
   });
 
@@ -408,6 +439,9 @@ export default function OrderDetailsPage() {
   const invoiceReadinessOptions = getInvoiceReadinessOptions(role, invoiceReadiness);
   const invoiceAttachments = (invoicesQuery.data ?? []).filter((invoice) => Boolean(invoice.attachment_path));
   const members = membersQuery.data ?? [];
+  const projectOrders = projectOrdersQuery.data ?? [];
+  const parentOrder = projectOrders.find((item) => item.id === order.parent_order_id) ?? null;
+  const childOrders = projectOrders.filter((item) => item.parent_order_id === order.id);
   const invoiceTotal = (invoicesQuery.data ?? []).reduce((sum, invoice) => sum + Number(invoice.total ?? 0), 0);
   const outstandingInvoiceValue = (invoicesQuery.data ?? [])
     .filter((invoice) => invoice.status !== 'paid' && invoice.status !== 'void')
@@ -461,6 +495,9 @@ export default function OrderDetailsPage() {
               <CircleDollarSign className="h-3 w-3" />
               {Number(order.total).toFixed(2)} kr
             </Badge>
+            <Badge className="gap-1.5 px-2 py-1 text-[11px]">
+              {orderKindLabel(order.order_kind)}
+            </Badge>
             <Badge className="gap-1.5 px-2 py-1 text-[11px]">{getInvoiceReadinessLabel(invoiceReadiness)}</Badge>
             <Badge className="gap-1.5 px-2 py-1 text-[11px]">
               <CalendarDays className="h-3 w-3" />
@@ -502,6 +539,17 @@ export default function OrderDetailsPage() {
                   <p className="text-sm text-foreground/70">Kund</p>
                   <p className="mt-1 font-medium">{customerQuery.data?.name ?? 'Ingen kund kopplad'}</p>
                 </div>
+                <div className="border-t border-border/70 pt-3">
+                  <p className="text-sm text-foreground/70">Struktur</p>
+                  <p className="mt-1 font-medium">{orderKindLabel(order.order_kind)}</p>
+                  <p className="mt-1 text-xs text-foreground/60">
+                    {parentOrder
+                      ? `Under ${parentOrder.order_no ?? parentOrder.id}`
+                      : childOrders.length > 0
+                        ? `${childOrders.length} underordnade ordrar`
+                        : 'Ingen överordnad order'}
+                  </p>
+                </div>
               </CardContent>
             </Card>
             <Card>
@@ -539,6 +587,43 @@ export default function OrderDetailsPage() {
               </CardContent>
             </Card>
           </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Orderstruktur</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-3 md:grid-cols-2">
+              <div className="rounded-xl border border-border/70 bg-muted/15 p-3">
+                <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Nuvarande order</p>
+                <p className="mt-1 font-medium">{orderKindLabel(order.order_kind)}</p>
+                <p className="mt-1 text-sm text-foreground/65">{order.order_no ?? order.id}</p>
+              </div>
+              <div className="rounded-xl border border-border/70 bg-muted/15 p-3">
+                <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Relation</p>
+                {parentOrder ? (
+                  <div className="mt-1 space-y-2">
+                    <p className="text-sm text-foreground/65">Kopplad under överordnad order</p>
+                    <Button asChild size="sm" variant="outline">
+                      <Link href={`/orders/${parentOrder.id}`}>Öppna överordnad order</Link>
+                    </Button>
+                  </div>
+                ) : childOrders.length > 0 ? (
+                  <div className="mt-1 space-y-2">
+                    <p className="text-sm text-foreground/65">{childOrders.length} underordnade ordrar kopplade</p>
+                    <div className="flex flex-wrap gap-2">
+                      {childOrders.map((item) => (
+                        <Button key={item.id} asChild size="sm" variant="ghost">
+                          <Link href={`/orders/${item.id}`}>{item.order_no ?? item.id}</Link>
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <p className="mt-1 text-sm text-foreground/65">Ingen hierarkikoppling ännu.</p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
 
           <Card>
             <CardHeader>

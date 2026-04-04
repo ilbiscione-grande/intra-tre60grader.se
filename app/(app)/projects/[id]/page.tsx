@@ -57,7 +57,10 @@ type ProjectRow = Pick<
 >;
 
 type CustomerRow = Pick<DbRow<'customers'>, 'id' | 'name'>;
-type OrderRow = Pick<DbRow<'orders'>, 'id' | 'project_id' | 'status' | 'invoice_readiness_status' | 'total' | 'created_at'>;
+type OrderRow = Pick<
+  DbRow<'orders'>,
+  'id' | 'order_no' | 'project_id' | 'status' | 'order_kind' | 'parent_order_id' | 'sort_index' | 'invoice_readiness_status' | 'total' | 'created_at'
+>;
 type OrderLineRow = Pick<DbRow<'order_lines'>, 'id' | 'title' | 'qty' | 'unit_price' | 'vat_rate' | 'total' | 'created_at'>;
 type InvoiceSourceLinkRow = Pick<DbRow<'invoice_sources'>, 'invoice_id' | 'project_id' | 'order_id' | 'position'>;
 type InvoiceSourceCountRow = Pick<DbRow<'invoice_sources'>, 'invoice_id'>;
@@ -166,6 +169,15 @@ function orderStatusEtikett(status: string) {
     invoiced: 'Fakturerad'
   };
   return map[status] ?? status;
+}
+
+function orderKindLabel(kind: string) {
+  const map: Record<string, string> = {
+    primary: 'Huvudorder',
+    change: 'Ändringsorder',
+    supplement: 'Tilläggsorder'
+  };
+  return map[kind] ?? kind;
 }
 
 function fakturaStatusEtikett(status: string) {
@@ -425,13 +437,31 @@ export default function ProjectDetailsPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('orders')
-        .select('id,project_id,status,invoice_readiness_status,total,created_at')
+        .select('id,order_no,project_id,status,order_kind,parent_order_id,sort_index,invoice_readiness_status,total,created_at')
         .eq('company_id', companyId)
         .eq('project_id', projectId)
+        .eq('order_kind', 'primary')
         .maybeSingle<OrderRow>();
 
       if (error) throw error;
       return data;
+    }
+  });
+
+  const projectOrdersQuery = useQuery<OrderRow[]>({
+    queryKey: ['project-orders', companyId, projectId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('orders')
+        .select('id,order_no,project_id,status,order_kind,parent_order_id,sort_index,invoice_readiness_status,total,created_at')
+        .eq('company_id', companyId)
+        .eq('project_id', projectId)
+        .order('sort_index', { ascending: true })
+        .order('created_at', { ascending: true })
+        .returns<OrderRow[]>();
+
+      if (error) throw error;
+      return data ?? [];
     }
   });
 
@@ -695,7 +725,7 @@ export default function ProjectDetailsPage() {
     const { data, error } = await supabase
       .from('orders')
       .insert({ company_id: companyId, project_id: projectId, status: 'draft', total: 0 })
-      .select('id,project_id,status,invoice_readiness_status,total,created_at')
+      .select('id,order_no,project_id,status,order_kind,parent_order_id,sort_index,invoice_readiness_status,total,created_at')
       .single<OrderRow>();
 
     if (error) throw error;
@@ -816,6 +846,7 @@ export default function ProjectDetailsPage() {
     },
     onSuccess: async (status) => {
       await queryClient.invalidateQueries({ queryKey: ['project-order', companyId, projectId] });
+      await queryClient.invalidateQueries({ queryKey: ['project-orders', companyId, projectId] });
       addLocalActivity(`Orderstatus ändrad till ${orderStatusEtikett(status)}`);
       toast.success('Orderstatus uppdaterad');
     },
@@ -837,6 +868,7 @@ export default function ProjectDetailsPage() {
     },
     onSuccess: async (status) => {
       await queryClient.invalidateQueries({ queryKey: ['project-order', companyId, projectId] });
+      await queryClient.invalidateQueries({ queryKey: ['project-orders', companyId, projectId] });
       addLocalActivity(`Orderns faktureringsläge uppdaterat till ${getInvoiceReadinessLabel(status)}`);
       toast.success('Orderns faktureringsläge uppdaterat');
     },
@@ -849,6 +881,7 @@ export default function ProjectDetailsPage() {
     mutationFn: async () => ensureOrderId(),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['project-order', companyId, projectId] });
+      await queryClient.invalidateQueries({ queryKey: ['project-orders', companyId, projectId] });
       toast.success('Order skapad');
     },
     onError: (error) => {
@@ -1382,6 +1415,9 @@ export default function ProjectDetailsPage() {
   const projectStatusLabel = projectColumnTitle(draftWorkflowStatus || project.workflow_status || project.status, statusColumns);
   const projectInvoiceReadiness = draftInvoiceReadinessStatus;
   const orderInvoiceReadiness = resolveInvoiceReadinessStatus(orderQuery.data?.invoice_readiness_status, orderQuery.data?.status);
+  const projectOrders = projectOrdersQuery.data ?? [];
+  const primaryOrder = orderQuery.data ?? null;
+  const secondaryOrders = projectOrders.filter((item) => item.id !== primaryOrder?.id);
   const projectInvoiceReadinessOptions = getInvoiceReadinessOptions(role, projectInvoiceReadiness);
   const orderInvoiceReadinessOptions = getInvoiceReadinessOptions(role, orderInvoiceReadiness);
   const canEditInvoiceReadiness = role !== 'auditor';
@@ -1899,6 +1935,61 @@ export default function ProjectDetailsPage() {
                 <div className="rounded-xl border border-border/70 bg-muted/20 p-4">
                   <p className="mb-2 text-xs font-medium uppercase tracking-[0.16em] text-foreground/45">Orderunderlaget behöver</p>
                   <ReadinessChecklist items={orderReadinessChecklist} />
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-border/70 bg-muted/10 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-xs font-medium uppercase tracking-[0.16em] text-foreground/45">Orderstruktur</p>
+                    <p className="mt-1 text-sm text-foreground/65">Nuvarande ekonomi- och fakturaflöde använder huvudordern. Eventuella tilläggsordrar visas här som referens.</p>
+                  </div>
+                  <Badge>
+                    {projectOrders.length} {projectOrders.length === 1 ? 'order' : 'ordrar'}
+                  </Badge>
+                </div>
+
+                <div className="mt-4 grid gap-3 xl:grid-cols-2">
+                  <div className="rounded-xl border border-emerald-200/70 bg-emerald-50/60 p-3 dark:border-emerald-500/20 dark:bg-emerald-500/10">
+                    <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-emerald-900/70 dark:text-emerald-100/75">Huvudorder</p>
+                    {primaryOrder ? (
+                      <div className="mt-2 space-y-2">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="font-medium text-emerald-950 dark:text-emerald-50">{primaryOrder.order_no ?? primaryOrder.id}</p>
+                          <Badge className="bg-white/70 text-emerald-900 dark:bg-emerald-950/50 dark:text-emerald-100">
+                            {orderStatusEtikett(primaryOrder.status)}
+                          </Badge>
+                        </div>
+                        <p className="text-sm text-emerald-900/80 dark:text-emerald-100/80">{Number(primaryOrder.total ?? 0).toFixed(2)} kr</p>
+                        <Button asChild size="sm" variant="outline">
+                          <Link href={`/orders/${primaryOrder.id}`}>Öppna huvudorder</Link>
+                        </Button>
+                      </div>
+                    ) : (
+                      <p className="mt-2 text-sm text-foreground/70">Ingen huvudorder skapad ännu.</p>
+                    )}
+                  </div>
+
+                  <div className="rounded-xl border border-border/70 bg-card/70 p-3">
+                    <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Tilläggsordrar</p>
+                    {secondaryOrders.length === 0 ? (
+                      <p className="mt-2 text-sm text-foreground/70">Inga tilläggsordrar ännu.</p>
+                    ) : (
+                      <div className="mt-2 space-y-2">
+                        {secondaryOrders.map((item) => (
+                          <div key={item.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/70 bg-muted/20 px-3 py-2">
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-medium">{item.order_no ?? item.id}</p>
+                              <p className="text-xs text-foreground/60">{orderKindLabel(item.order_kind)} • {Number(item.total ?? 0).toFixed(2)} kr</p>
+                            </div>
+                            <Button asChild size="sm" variant="ghost">
+                              <Link href={`/orders/${item.id}`}>Öppna</Link>
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 
