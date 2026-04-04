@@ -121,13 +121,16 @@ export default function VerificationDetailsPage() {
         attachment
       });
 
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('verifications')
         .update({ attachment_path: path })
         .eq('company_id', companyId)
-        .eq('id', query.data.id);
+        .eq('id', query.data.id)
+        .select('id,attachment_path')
+        .single();
 
       if (error) throw error;
+      if (!data?.attachment_path) throw new Error('Bilagan kunde inte kopplas till verifikationen.');
 
       await query.refetch();
       toast.success('Underlag uppladdat');
