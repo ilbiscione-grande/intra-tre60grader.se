@@ -1,7 +1,7 @@
 import type { TableRow } from '@/lib/supabase/database.types';
 
 export type Role = 'member' | 'finance' | 'admin' | 'auditor';
-export type InternalAuthRole = 'admin' | 'employee';
+export type InternalAuthRole = 'admin' | 'employee' | 'member';
 export type Capability = 'finance' | 'project_lead' | 'reporting' | 'team_admin';
 
 export type CompanyMember = TableRow<'company_members'>;

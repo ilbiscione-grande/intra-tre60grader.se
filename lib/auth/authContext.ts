@@ -3,7 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { createClient as createServerSupabaseClient } from '@/lib/supabase/server';
 import type { Database } from '@/lib/supabase/database.types';
 
-export type AuthRole = 'admin' | 'employee' | 'customer';
+export type AuthRole = 'admin' | 'employee' | 'member' | 'customer';
 export type AuthStatus = 'active' | 'invited' | 'disabled';
 
 export type AuthContext = {
@@ -17,7 +17,7 @@ export type AuthContext = {
 
 export type StaffAuthContext = AuthContext & {
   user_id: string;
-  role: 'admin' | 'employee';
+  role: 'admin' | 'employee' | 'member';
   status: 'active';
 };
 
@@ -78,7 +78,7 @@ export function isStaff(authContext: AuthContext | null): authContext is StaffAu
   return (
     authContext !== null &&
     authContext.user_id !== null &&
-    (authContext.role === 'admin' || authContext.role === 'employee') &&
+    (authContext.role === 'admin' || authContext.role === 'employee' || authContext.role === 'member') &&
     authContext.status === 'active'
   );
 }
