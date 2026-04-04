@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { requireCompanyPermission, requireElevatedAdminSession, requireRecentSignIn } from '@/lib/auth/companyPermissions';
-import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { getRequestIp, safeLogSecurityEvent } from '@/lib/security/server';
 import type { Capability } from '@/lib/types';
 
@@ -46,8 +46,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: auth.message }, { status: auth.status });
   }
 
-  const supabase = createClient();
-  const { data, error } = await supabase
+  const admin = createAdminClient();
+  const { data, error } = await admin
     .from('company_member_capabilities')
     .select('id,company_id,user_id,capability,created_at,created_by')
     .eq('company_id', companyId)
@@ -95,12 +95,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: stepUp.error }, { status: stepUp.status });
   }
 
-  const supabase = createClient();
-  const { error } = await supabase.from('company_member_capabilities').upsert(
+  const admin = createAdminClient();
+  const { error } = await admin.from('company_member_capabilities').upsert(
     {
       company_id: companyId,
       user_id: userId,
-      capability
+      capability,
+      created_by: auth.userId
     },
     { onConflict: 'company_id,user_id,capability' }
   );
@@ -161,8 +162,8 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: stepUp.error }, { status: stepUp.status });
   }
 
-  const supabase = createClient();
-  const { error } = await supabase
+  const admin = createAdminClient();
+  const { error } = await admin
     .from('company_member_capabilities')
     .delete()
     .eq('company_id', companyId)
