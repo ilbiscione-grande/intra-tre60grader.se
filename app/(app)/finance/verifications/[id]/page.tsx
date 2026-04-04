@@ -19,6 +19,15 @@ import {
 import { createAttachmentSignedUrl, fileToAttachment, uploadVerificationAttachment } from '@/features/finance/attachmentStorage';
 import { createClient } from '@/lib/supabase/client';
 
+type AttachmentPreview = {
+  id: string;
+  path: string;
+  fileName: string;
+  mimeType: string | null;
+  createdAt: string;
+  signedUrl: string;
+};
+
 function sourceLabel(source: string | null) {
   if (source === 'mobile') return 'Mobil';
   if (source === 'desktop') return 'Desktop';
@@ -36,6 +45,13 @@ function verificationNumberLabel(fiscalYear: number | null, verificationNo: numb
   return `${fiscalYear}-${String(verificationNo).padStart(5, '0')}`;
 }
 
+function fileExtension(path: string | null | undefined) {
+  if (!path) return '';
+  const cleanPath = path.split('?')[0] ?? path;
+  const extension = cleanPath.split('.').pop();
+  return extension ? extension.toLowerCase() : '';
+}
+
 export default function VerificationDetailsPage() {
   const { role, companyId } = useAppContext();
   const params = useParams<{ id: string }>();
@@ -44,7 +60,7 @@ export default function VerificationDetailsPage() {
   const voidMutation = useVoidVerification(companyId);
   const reversalMutation = useCreateReversalVerification(companyId);
 
-  const [signedUrl, setSignedUrl] = useState<string | null>(null);
+  const [attachments, setAttachments] = useState<AttachmentPreview[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [voidReason, setVoidReason] = useState('');
   const [reversalReason, setReversalReason] = useState('');
@@ -71,28 +87,40 @@ export default function VerificationDetailsPage() {
   useEffect(() => {
     let active = true;
 
-    async function loadAttachment() {
-      const path = query.data?.attachment_path;
-      if (!path) {
-        setSignedUrl(null);
+    async function loadAttachments() {
+      const rows = [...(query.data?.verification_attachments ?? [])].sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
+
+      if (rows.length === 0) {
+        setAttachments([]);
         return;
       }
 
       try {
-        const url = await createAttachmentSignedUrl(path);
+        const signed = await Promise.all(
+          rows.map(async (row) => ({
+            id: row.id,
+            path: row.path,
+            fileName: row.file_name || row.path.split('/').pop() || 'Bilaga',
+            mimeType: row.mime_type,
+            createdAt: row.created_at,
+            signedUrl: await createAttachmentSignedUrl(row.path)
+          }))
+        );
         if (!active) return;
-        setSignedUrl(url);
+        setAttachments(signed);
       } catch {
         if (!active) return;
-        setSignedUrl(null);
+        setAttachments([]);
       }
     }
 
-    void loadAttachment();
+    void loadAttachments();
     return () => {
       active = false;
     };
-  }, [query.data?.attachment_path]);
+  }, [query.data?.verification_attachments]);
 
   const actorLabel = useMemo(() => {
     const actor = query.data?.created_by;
@@ -108,6 +136,8 @@ export default function VerificationDetailsPage() {
     return `${actor.slice(0, 8)}...`;
   }, [query.data?.voided_by, currentUserId]);
 
+  const attachmentCount = attachments.length;
+
   async function handleAttachmentPick(file: File) {
     if (!query.data) return;
 
@@ -121,16 +151,31 @@ export default function VerificationDetailsPage() {
         attachment
       });
 
-      const { data, error } = await supabase
-        .from('verifications')
-        .update({ attachment_path: path })
-        .eq('company_id', companyId)
-        .eq('id', query.data.id)
-        .select('id,attachment_path')
-        .single();
+      const { error: attachmentError } = await supabase
+        .from('verification_attachments')
+        .insert({
+          company_id: companyId,
+          verification_id: query.data.id,
+          path,
+          file_name: attachment.name,
+          mime_type: attachment.type,
+          created_by: currentUserId
+        });
 
-      if (error) throw error;
-      if (!data?.attachment_path) throw new Error('Bilagan kunde inte kopplas till verifikationen.');
+      if (attachmentError) throw attachmentError;
+
+      if (!query.data.attachment_path) {
+        const { data, error } = await supabase
+          .from('verifications')
+          .update({ attachment_path: path })
+          .eq('company_id', companyId)
+          .eq('id', query.data.id)
+          .select('id,attachment_path')
+          .single();
+
+        if (error) throw error;
+        if (!data?.attachment_path) throw new Error('Bilagan kunde inte kopplas till verifikationen.');
+      }
 
       await query.refetch();
       toast.success('Underlag uppladdat');
@@ -243,29 +288,70 @@ export default function VerificationDetailsPage() {
 
             <Card className="space-y-2 p-4 text-sm">
               <p className="font-medium">Bilaga</p>
-              {signedUrl ? (
+              {attachmentCount > 0 ? (
                 <div className="space-y-3">
-                  <div className="flex flex-wrap gap-2">
-                    <Button asChild>
-                      <a href={signedUrl} target="_blank" rel="noreferrer">
-                        Öppna bilaga
-                      </a>
-                    </Button>
-                    <Button variant="secondary" asChild>
-                      <a href={signedUrl} download>
-                        Ladda ner
-                      </a>
-                    </Button>
+                  <p className="text-xs text-muted-foreground">
+                    {attachmentCount === 1 ? '1 bilaga sparad' : `${attachmentCount} bilagor sparade`}
+                  </p>
+                  <div className="space-y-4">
+                    {attachments.map((attachment) => {
+                      const extension = fileExtension(attachment.fileName || attachment.path);
+                      const canPreviewAsImage = ['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(extension);
+                      const canPreviewAsPdf = extension === 'pdf';
+
+                      return (
+                        <div key={attachment.id} className="space-y-3 rounded-lg border p-3">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="truncate font-medium">{attachment.fileName}</p>
+                              <p className="text-xs text-muted-foreground">
+                                Uppladdad {new Date(attachment.createdAt).toLocaleString('sv-SE')}
+                              </p>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              <Button asChild>
+                                <a href={attachment.signedUrl} target="_blank" rel="noreferrer">
+                                  Öppna
+                                </a>
+                              </Button>
+                              <Button variant="secondary" asChild>
+                                <a href={attachment.signedUrl} download={attachment.fileName}>
+                                  Ladda ner
+                                </a>
+                              </Button>
+                            </div>
+                          </div>
+                          {canPreviewAsImage ? (
+                            <div className="overflow-hidden rounded-lg border bg-muted/30">
+                              <img
+                                src={attachment.signedUrl}
+                                alt={`Bilageförhandsvisning ${attachment.fileName}`}
+                                className="max-h-[28rem] w-full object-contain"
+                              />
+                            </div>
+                          ) : null}
+                          {canPreviewAsPdf ? (
+                            <div className="overflow-hidden rounded-lg border bg-white">
+                              <iframe
+                                src={attachment.signedUrl}
+                                title={`Bilageförhandsvisning ${attachment.fileName}`}
+                                className="h-[32rem] w-full"
+                              />
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    })}
                   </div>
                   {query.data.status !== 'voided' && role !== 'auditor' ? (
                     <div className="space-y-2">
-                      <p className="text-xs text-muted-foreground">Byt eller komplettera underlaget om du har en bättre bild eller PDF.</p>
+                      <p className="text-xs text-muted-foreground">Lägg till fler underlag som bild eller PDF.</p>
                       {attachmentPending ? (
                         <p className="text-xs text-muted-foreground">Laddar upp underlag...</p>
                       ) : null}
                       <MobileAttachmentPicker
                         label="Underlag"
-                        valueLabel={query.data.attachment_path ? 'Bilaga finns' : undefined}
+                        valueLabel={`${attachmentCount} bilag${attachmentCount === 1 ? 'a' : 'or'} finns`}
                         onPick={handleAttachmentPick}
                       />
                     </div>

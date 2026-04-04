@@ -32,6 +32,10 @@ type FinanceOverviewRow = Pick<
 >;
 
 type VerificationDetailLineRow = Pick<TableRow<'verification_lines'>, 'id' | 'account_no' | 'debit' | 'credit' | 'vat_code'>;
+type VerificationAttachmentRow = Pick<
+  TableRow<'verification_attachments'>,
+  'id' | 'path' | 'file_name' | 'mime_type' | 'created_at' | 'created_by'
+>;
 
 type VerificationDetailRow = Pick<
   TableRow<'verifications'>,
@@ -52,6 +56,7 @@ type VerificationDetailRow = Pick<
   | 'verification_no'
   | 'reversed_from_id'
 > & {
+  verification_attachments: VerificationAttachmentRow[];
   verification_lines: VerificationDetailLineRow[];
 };
 
@@ -111,7 +116,7 @@ export function useVerificationById(companyId: string, verificationId: string) {
       const supabase = createClient();
       const { data, error } = await supabase
         .from('verifications')
-        .select('id,company_id,date,description,total,attachment_path,created_at,created_by,source,status,voided_at,voided_by,void_reason,fiscal_year,verification_no,reversed_from_id,verification_lines(id,account_no,debit,credit,vat_code)')
+        .select('id,company_id,date,description,total,attachment_path,created_at,created_by,source,status,voided_at,voided_by,void_reason,fiscal_year,verification_no,reversed_from_id,verification_lines(id,account_no,debit,credit,vat_code),verification_attachments(id,path,file_name,mime_type,created_at,created_by)')
         .eq('company_id', companyId)
         .eq('id', verificationId)
         .maybeSingle<VerificationDetailRow>();

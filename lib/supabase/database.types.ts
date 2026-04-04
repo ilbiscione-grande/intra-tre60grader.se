@@ -1708,6 +1708,54 @@ export type Database = {
           },
         ]
       }
+      verification_attachments: {
+        Row: {
+          company_id: string
+          created_at: string
+          created_by: string | null
+          file_name: string | null
+          id: string
+          mime_type: string | null
+          path: string
+          verification_id: string
+        }
+        Insert: {
+          company_id: string
+          created_at?: string
+          created_by?: string | null
+          file_name?: string | null
+          id?: string
+          mime_type?: string | null
+          path: string
+          verification_id: string
+        }
+        Update: {
+          company_id?: string
+          created_at?: string
+          created_by?: string | null
+          file_name?: string | null
+          id?: string
+          mime_type?: string | null
+          path?: string
+          verification_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "verification_attachments_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "verification_attachments_verification_id_fkey"
+            columns: ["verification_id"]
+            isOneToOne: false
+            referencedRelation: "verifications"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       verifications: {
         Row: {
           attachment_path: string | null
