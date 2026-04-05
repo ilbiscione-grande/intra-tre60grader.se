@@ -730,22 +730,19 @@ export default function OrderDetailsPage() {
     return counts;
   }, [invoiceSourceCountsQuery.data]);
 
-  if (orderQuery.isLoading) return <p>Laddar order...</p>;
-  if (!orderQuery.data) return <p>Order hittades inte.</p>;
-
   const order = orderQuery.data;
-  const statusValue = orderStatuses.includes(order.status as OrderStatus) ? (order.status as OrderStatus) : 'draft';
-  const invoiceReadiness = resolveInvoiceReadinessStatus(order.invoice_readiness_status, order.status);
+  const statusValue = orderStatuses.includes((order?.status ?? 'draft') as OrderStatus) ? ((order?.status ?? 'draft') as OrderStatus) : 'draft';
+  const invoiceReadiness = resolveInvoiceReadinessStatus(order?.invoice_readiness_status, order?.status);
   const orderIsApprovedForInvoicing = invoiceReadiness === 'approved_for_invoicing';
   const invoiceReadinessOptions = getInvoiceReadinessOptions(role, invoiceReadiness);
   const invoiceAttachments = (invoicesQuery.data ?? []).filter((invoice) => Boolean(invoice.attachment_path));
   const members = membersQuery.data ?? [];
   const projectOrders = projectOrdersQuery.data ?? [];
-  const parentOrder = projectOrders.find((item) => item.id === order.parent_order_id) ?? null;
-  const childOrders = projectOrders.filter((item) => item.parent_order_id === order.id);
-  const familyOrders = projectOrders.filter((item) => item.root_order_id === order.root_order_id);
+  const parentOrder = projectOrders.find((item) => item.id === order?.parent_order_id) ?? null;
+  const childOrders = projectOrders.filter((item) => item.parent_order_id === order?.id);
+  const familyOrders = projectOrders.filter((item) => item.root_order_id === order?.root_order_id);
   const orderFamilyRollup =
-    (orderFamilyRollupsQuery.data ?? []).find((item) => item.root_order_id === order.root_order_id) ?? null;
+    (orderFamilyRollupsQuery.data ?? []).find((item) => item.root_order_id === order?.root_order_id) ?? null;
   const creditedGrossTotalByInvoiceId = useMemo(() => {
     const totals = new Map<string, number>();
 
@@ -790,7 +787,7 @@ export default function OrderDetailsPage() {
     0
   );
   const invoiceProgress = resolveOrderInvoiceProgress(
-    orderGrossTotal > 0 ? orderGrossTotal : Number(order.total ?? 0),
+    orderGrossTotal > 0 ? orderGrossTotal : Number(order?.total ?? 0),
     allocatedInvoiceTotal
   );
   const allocatedInvoiceLineTotalByLineId = useMemo(() => {
@@ -860,8 +857,11 @@ export default function OrderDetailsPage() {
     customerName: customerQuery.data?.name,
     projectTitle: projectQuery.data?.title,
     lineCount: linesQuery.data?.length ?? 0,
-    orderTotal: Number(order.total ?? 0)
+    orderTotal: Number(order?.total ?? 0)
   });
+
+  if (orderQuery.isLoading) return <p>Laddar order...</p>;
+  if (!order) return <p>Order hittades inte.</p>;
 
   return (
     <section className="space-y-4">
