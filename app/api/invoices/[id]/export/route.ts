@@ -45,6 +45,59 @@ type InvoiceSourceRow = {
   source_position: number;
 };
 
+type InvoiceSourceLineRow = {
+  order_id: string;
+  order_line_id: string;
+  allocated_total: number;
+};
+
+type OrderLineLookupRow = {
+  id: string;
+  title: string;
+  order_id: string;
+};
+
+type OrderLookupRow = {
+  id: string;
+  order_no: string | null;
+};
+
+type ExportInvoiceLineTrace = {
+  invoice_line_id: string;
+  invoice_line_title: string;
+  order_id: string | null;
+  order_no: string | null;
+  order_line_id: string | null;
+  order_line_title: string | null;
+  trace_mode: 'exact_order_line' | 'order_linked' | 'unresolved';
+  allocated_gross_total: number;
+};
+
+function asLines(value: Json | undefined): Array<{
+  id: string;
+  title: string;
+  order_id: string | null;
+}> {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .map((line, index) => {
+      const row = line && typeof line === 'object' && !Array.isArray(line) ? (line as Record<string, unknown>) : null;
+      if (!row) return null;
+
+      return {
+        id: String(row.id ?? index),
+        title: String(row.title ?? ''),
+        order_id: typeof row.order_id === 'string' ? row.order_id : null
+      };
+    })
+    .filter((item): item is { id: string; title: string; order_id: string | null } => item !== null);
+}
+
+function isUuidLike(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
 export async function GET(
   request: Request,
   { params }: { params: { id: string } }
@@ -115,10 +168,87 @@ export async function GET(
     return NextResponse.json({ error: sourcesError.message }, { status: 500 });
   }
 
+  const { data: sourceLines, error: sourceLinesError } = await supabase
+    .from('invoice_source_lines')
+    .select('order_id,order_line_id,allocated_total')
+    .eq('company_id', data.company_id)
+    .eq('invoice_id', data.id)
+    .returns<InvoiceSourceLineRow[]>();
+
+  if (sourceLinesError) {
+    return NextResponse.json({ error: sourceLinesError.message }, { status: 500 });
+  }
+
+  const invoiceLines = asLines(data.lines_snapshot);
+  const invoiceLineIds = invoiceLines.map((line) => line.id).filter((value) => isUuidLike(value));
+  const invoiceOrderIds = Array.from(
+    new Set(
+      invoiceLines
+        .map((line) => line.order_id)
+        .filter((value): value is string => Boolean(value))
+    )
+  );
+
+  const { data: orderLines, error: orderLinesError } = invoiceLineIds.length
+    ? await supabase
+        .from('order_lines')
+        .select('id,title,order_id')
+        .eq('company_id', data.company_id)
+        .in('id', invoiceLineIds)
+        .returns<OrderLineLookupRow[]>()
+    : { data: [] as OrderLineLookupRow[], error: null };
+
+  if (orderLinesError) {
+    return NextResponse.json({ error: orderLinesError.message }, { status: 500 });
+  }
+
+  const { data: orders, error: ordersError } = invoiceOrderIds.length
+    ? await supabase
+        .from('orders')
+        .select('id,order_no')
+        .eq('company_id', data.company_id)
+        .in('id', invoiceOrderIds)
+        .returns<OrderLookupRow[]>()
+    : { data: [] as OrderLookupRow[], error: null };
+
+  if (ordersError) {
+    return NextResponse.json({ error: ordersError.message }, { status: 500 });
+  }
+
+  const sourceLinesByOrderLineId = new Map<string, InvoiceSourceLineRow[]>();
+  for (const row of sourceLines ?? []) {
+    const current = sourceLinesByOrderLineId.get(row.order_line_id) ?? [];
+    current.push(row);
+    sourceLinesByOrderLineId.set(row.order_line_id, current);
+  }
+
+  const orderLineById = new Map((orderLines ?? []).map((row) => [row.id, row]));
+  const orderById = new Map((orders ?? []).map((row) => [row.id, row]));
+
+  const line_trace: ExportInvoiceLineTrace[] = invoiceLines.map((line) => {
+    const exactLinks = isUuidLike(line.id) ? sourceLinesByOrderLineId.get(line.id) ?? [] : [];
+    const resolvedOrderId = exactLinks[0]?.order_id ?? line.order_id ?? null;
+    const orderMeta = resolvedOrderId ? orderById.get(resolvedOrderId) : null;
+    const orderLineMeta = isUuidLike(line.id) ? orderLineById.get(line.id) ?? null : null;
+
+    return {
+      invoice_line_id: line.id,
+      invoice_line_title: line.title,
+      order_id: resolvedOrderId,
+      order_no: orderMeta?.order_no ?? null,
+      order_line_id: orderLineMeta?.id ?? null,
+      order_line_title: orderLineMeta?.title ?? null,
+      trace_mode: orderLineMeta ? 'exact_order_line' : resolvedOrderId ? 'order_linked' : 'unresolved',
+      allocated_gross_total: exactLinks.reduce((sum, row) => sum + Number(row.allocated_total ?? 0), 0)
+    };
+  });
+
   return NextResponse.json(
     {
       ...data,
       invoice_sources: ((sources ?? []) as InvoiceSourceRow[]),
+      invoice_source_lines: sourceLines ?? [],
+      line_trace,
       payments: payments ?? [],
       reminders: reminders ?? [],
       export_mode: 'full'

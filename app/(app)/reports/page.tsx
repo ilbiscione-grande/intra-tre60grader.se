@@ -22,8 +22,34 @@ import {
   vatReport
 } from '@/lib/rpc';
 import { useVerificationAuditLog, type VerificationStatusFilter } from '@/features/finance/financeQueries';
+import { createClient } from '@/lib/supabase/client';
 
 type GenericRecord = Record<string, unknown>;
+type OrderKind = 'primary' | 'change' | 'supplement';
+type OrderMixProjectSummary = {
+  projectId: string;
+  projectTitle: string;
+  primaryTotal: number;
+  changeTotal: number;
+  supplementTotal: number;
+  total: number;
+  orderCount: number;
+};
+type InvoiceOrderTrendRow = {
+  month: string;
+  primary: number;
+  change: number;
+  supplement: number;
+  total: number;
+};
+type OpenOrderValueSummary = {
+  primary: number;
+  change: number;
+  supplement: number;
+  total: number;
+};
+
+const DEFAULT_LARGE_OPEN_ORDER_VALUE_THRESHOLD = 10000;
 
 function sourceLabel(source: string | null) {
   if (source === 'mobile') return 'Mobil';
@@ -67,8 +93,14 @@ function getVatBox(data: unknown, key: '05' | '06' | '07' | '10' | '11' | '12' |
   return Number(boxes[key] ?? 0);
 }
 
+function monthLabel(value: string) {
+  const [year, month] = value.split('-');
+  return `${year}-${month}`;
+}
+
 export default function ReportsPage() {
   const { companyId, role, capabilities } = useAppContext();
+  const supabase = useMemo(() => createClient(), []);
   const canReadReports = canViewReporting(role, capabilities);
   const [periodStart, setPeriodStart] = useState(
     new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10)
@@ -115,6 +147,83 @@ export default function ReportsPage() {
   const financeAuditChainVerifyQuery = useQuery({
     queryKey: ['finance-audit-chain-verify', companyId],
     queryFn: () => financeAuditChainVerify(companyId),
+    enabled: canReadReports
+  });
+
+  const orderMixOrdersQuery = useQuery({
+    queryKey: ['reports-order-mix-orders', companyId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('orders')
+        .select('id,project_id,order_kind,total')
+        .eq('company_id', companyId)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      return (data ?? []) as Array<{ id: string; project_id: string | null; order_kind: OrderKind; total: number | null }>;
+    },
+    enabled: canReadReports
+  });
+
+  const orderMixProjectsQuery = useQuery({
+    queryKey: ['reports-order-mix-projects', companyId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('projects')
+        .select('id,title')
+        .eq('company_id', companyId);
+
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: canReadReports
+  });
+
+  const companyPriorityThresholdQuery = useQuery({
+    queryKey: ['reports-company-invoice-priority-threshold', companyId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('companies')
+        .select('invoice_priority_threshold')
+        .eq('id', companyId)
+        .maybeSingle();
+
+      if (error) throw error;
+      return Number(data?.invoice_priority_threshold ?? DEFAULT_LARGE_OPEN_ORDER_VALUE_THRESHOLD);
+    },
+    enabled: canReadReports
+  });
+
+  const invoiceTrendQuery = useQuery({
+    queryKey: ['reports-invoice-order-trend', companyId, periodStart, periodEnd],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('invoices')
+        .select('issue_date,total,order_id')
+        .eq('company_id', companyId)
+        .gte('issue_date', periodStart)
+        .lte('issue_date', periodEnd)
+        .neq('status', 'void')
+        .order('issue_date', { ascending: true });
+
+      if (error) throw error;
+      return (data ?? []) as Array<{ issue_date: string; total: number | null; order_id: string | null }>;
+    },
+    enabled: canReadReports
+  });
+
+  const allInvoicesByOrderTypeQuery = useQuery({
+    queryKey: ['reports-invoice-order-type-all-time', companyId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('invoices')
+        .select('total,order_id')
+        .eq('company_id', companyId)
+        .neq('status', 'void');
+
+      if (error) throw error;
+      return (data ?? []) as Array<{ total: number | null; order_id: string | null }>;
+    },
     enabled: canReadReports
   });
 
@@ -186,6 +295,119 @@ export default function ReportsPage() {
   const financeAuditRows = toArray(financeAuditLogQuery.data);
   const auditChainVerify = toObject(financeAuditChainVerifyQuery.data);
   const auditRows = auditQuery.data ?? [];
+  const orderMix = useMemo(() => {
+    const projectsById = new Map((orderMixProjectsQuery.data ?? []).map((project) => [project.id, project.title]));
+    const perProject = new Map<string, OrderMixProjectSummary>();
+
+    let primaryTotal = 0;
+    let changeTotal = 0;
+    let supplementTotal = 0;
+
+    for (const order of orderMixOrdersQuery.data ?? []) {
+      if (!order.project_id) continue;
+
+      const projectId = order.project_id;
+      const total = Number(order.total ?? 0);
+      const existing = perProject.get(projectId) ?? {
+        projectId,
+        projectTitle: projectsById.get(projectId) ?? 'Projekt utan titel',
+        primaryTotal: 0,
+        changeTotal: 0,
+        supplementTotal: 0,
+        total: 0,
+        orderCount: 0
+      };
+
+      existing.orderCount += 1;
+      existing.total += total;
+
+      if (order.order_kind === 'change') {
+        existing.changeTotal += total;
+        changeTotal += total;
+      } else if (order.order_kind === 'supplement') {
+        existing.supplementTotal += total;
+        supplementTotal += total;
+      } else {
+        existing.primaryTotal += total;
+        primaryTotal += total;
+      }
+
+      perProject.set(projectId, existing);
+    }
+
+    const rows = [...perProject.values()]
+      .filter((row) => row.total > 0)
+      .sort((a, b) => b.total - a.total);
+
+    const total = primaryTotal + changeTotal + supplementTotal;
+
+    return {
+      rows,
+      totals: {
+        primary: primaryTotal,
+        change: changeTotal,
+        supplement: supplementTotal,
+        total
+      }
+    };
+  }, [orderMixOrdersQuery.data, orderMixProjectsQuery.data]);
+  const invoiceTrend = useMemo(() => {
+    const orderKindById = new Map((orderMixOrdersQuery.data ?? []).map((order) => [order.id, order.order_kind]));
+    const grouped = new Map<string, InvoiceOrderTrendRow>();
+
+    for (const invoice of invoiceTrendQuery.data ?? []) {
+      const month = monthLabel(String(invoice.issue_date).slice(0, 7));
+      const current = grouped.get(month) ?? {
+        month,
+        primary: 0,
+        change: 0,
+        supplement: 0,
+        total: 0
+      };
+
+      const amount = Number(invoice.total ?? 0);
+      const kind = invoice.order_id ? orderKindById.get(invoice.order_id) : 'primary';
+
+      current.total += amount;
+      if (kind === 'change') current.change += amount;
+      else if (kind === 'supplement') current.supplement += amount;
+      else current.primary += amount;
+
+      grouped.set(month, current);
+    }
+
+    return [...grouped.values()].sort((a, b) => a.month.localeCompare(b.month));
+  }, [invoiceTrendQuery.data, orderMixOrdersQuery.data]);
+  const openOrderValue = useMemo<OpenOrderValueSummary>(() => {
+    const orderKindById = new Map((orderMixOrdersQuery.data ?? []).map((order) => [order.id, order.order_kind]));
+    const invoiced = {
+      primary: 0,
+      change: 0,
+      supplement: 0
+    };
+
+    for (const invoice of allInvoicesByOrderTypeQuery.data ?? []) {
+      const amount = Number(invoice.total ?? 0);
+      const kind = invoice.order_id ? orderKindById.get(invoice.order_id) : 'primary';
+
+      if (kind === 'change') invoiced.change += amount;
+      else if (kind === 'supplement') invoiced.supplement += amount;
+      else invoiced.primary += amount;
+    }
+
+    const primary = Math.max(orderMix.totals.primary - invoiced.primary, 0);
+    const change = Math.max(orderMix.totals.change - invoiced.change, 0);
+    const supplement = Math.max(orderMix.totals.supplement - invoiced.supplement, 0);
+
+    return {
+      primary,
+      change,
+      supplement,
+      total: primary + change + supplement
+    };
+  }, [allInvoicesByOrderTypeQuery.data, orderMix.totals.change, orderMix.totals.primary, orderMix.totals.supplement, orderMixOrdersQuery.data]);
+  const largeOpenOrderValueThreshold =
+    companyPriorityThresholdQuery.data ?? DEFAULT_LARGE_OPEN_ORDER_VALUE_THRESHOLD;
 
   return (
     <section className="space-y-4">
@@ -224,8 +446,188 @@ export default function ReportsPage() {
             <ReportMetricCard icon={ReceiptText} title="Moms ruta 49" value={fmt(getVatBox(vatQuery.data, '49'))} />
             <ReportMetricCard icon={FileSpreadsheet} title="Huvudboksrader" value={String(glRows.length)} />
             <ReportMetricCard icon={BarChart3} title="Konton i saldolista" value={String(tbRows.length)} />
-            <ReportMetricCard icon={ClipboardCheck} title="Verifikationer i revisionslogg" value={String(auditRows.length)} />
+            <ReportMetricCard icon={ClipboardCheck} title="Ordervärde totalt" value={fmt(orderMix.totals.total)} />
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <CardTitle>Projektorderfördelning</CardTitle>
+            <Badge className="border-border/70 bg-muted/40 text-foreground/80 hover:bg-muted/40">
+              Huvudorder vs ändringar och tillägg
+            </Badge>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+            <SummaryCard title="Huvudorder" value={fmt(orderMix.totals.primary)} />
+            <SummaryCard title="Ändringsordrar" value={fmt(orderMix.totals.change)} />
+            <SummaryCard title="Tilläggsordrar" value={fmt(orderMix.totals.supplement)} />
+            <SummaryCard title="Projekt med ordervärde" value={String(orderMix.rows.length)} />
+          </div>
+
+          <Table>
+            <TableHeader className="bg-muted">
+              <TableRow>
+                <TableHead>Projekt</TableHead>
+                <TableHead className="text-right">Huvudorder</TableHead>
+                <TableHead className="text-right">Ändringar</TableHead>
+                <TableHead className="text-right">Tillägg</TableHead>
+                <TableHead className="text-right">Totalt</TableHead>
+                <TableHead className="text-right">Ordrar</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {orderMix.rows.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-foreground/70">Inga ordervärden att summera ännu.</TableCell>
+                </TableRow>
+              ) : (
+                orderMix.rows.map((row) => (
+                  <TableRow key={row.projectId} className="transition-colors hover:bg-muted/20">
+                    <TableCell>
+                      <Link href={`/projects/${row.projectId}`} className="underline-offset-4 hover:underline">
+                        {row.projectTitle}
+                      </Link>
+                    </TableCell>
+                    <TableCell className="text-right">{fmt(row.primaryTotal)}</TableCell>
+                    <TableCell className="text-right">{fmt(row.changeTotal)}</TableCell>
+                    <TableCell className="text-right">{fmt(row.supplementTotal)}</TableCell>
+                    <TableCell className="text-right font-semibold">{fmt(row.total)}</TableCell>
+                    <TableCell className="text-right">{row.orderCount}</TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <CardTitle>Fakturerat per månad och ordertyp</CardTitle>
+            <Badge className="border-border/70 bg-muted/40 text-foreground/80 hover:bg-muted/40">
+              Vald period: {periodStart} - {periodEnd}
+            </Badge>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-2 md:grid-cols-3">
+            <SummaryCard
+              title="Fakturerat huvudorder"
+              value={fmt(invoiceTrend.reduce((sum, row) => sum + row.primary, 0))}
+            />
+            <SummaryCard
+              title="Fakturerat ändringar"
+              value={fmt(invoiceTrend.reduce((sum, row) => sum + row.change, 0))}
+            />
+            <SummaryCard
+              title="Fakturerat tillägg"
+              value={fmt(invoiceTrend.reduce((sum, row) => sum + row.supplement, 0))}
+            />
+          </div>
+
+          <Table>
+            <TableHeader className="bg-muted">
+              <TableRow>
+                <TableHead>Månad</TableHead>
+                <TableHead className="text-right">Huvudorder</TableHead>
+                <TableHead className="text-right">Ändringar</TableHead>
+                <TableHead className="text-right">Tillägg</TableHead>
+                <TableHead className="text-right">Totalt</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {invoiceTrend.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="text-foreground/70">Inga fakturor i vald period.</TableCell>
+                </TableRow>
+              ) : (
+                invoiceTrend.map((row) => (
+                  <TableRow key={row.month} className="transition-colors hover:bg-muted/20">
+                    <TableCell>{row.month}</TableCell>
+                    <TableCell className="text-right">{fmt(row.primary)}</TableCell>
+                    <TableCell className="text-right">{fmt(row.change)}</TableCell>
+                    <TableCell className="text-right">{fmt(row.supplement)}</TableCell>
+                    <TableCell className="text-right font-semibold">{fmt(row.total)}</TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <CardTitle>Kvar att fakturera per ordertyp</CardTitle>
+            <Badge className="border-border/70 bg-muted/40 text-foreground/80 hover:bg-muted/40">
+              Nuvarande öppet ordervärde
+            </Badge>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+            <SummaryCard title="Huvudorder kvar" value={fmt(openOrderValue.primary)} />
+            <SummaryCard title="Ändringar kvar" value={fmt(openOrderValue.change)} />
+            <SummaryCard title="Tillägg kvar" value={fmt(openOrderValue.supplement)} />
+            <SummaryCard title="Totalt kvar" value={fmt(openOrderValue.total)} />
+          </div>
+          <p className="text-xs text-foreground/55">
+            Prioriteringsnivå för stora öppna ändrings- och tilläggsvärden: {fmt(largeOpenOrderValueThreshold)}.
+          </p>
+
+          <Table>
+            <TableHeader className="bg-muted">
+              <TableRow>
+                <TableHead>Ordertyp</TableHead>
+                <TableHead className="text-right">Ordervärde</TableHead>
+                <TableHead className="text-right">Fakturerat hittills</TableHead>
+                <TableHead className="text-right">Kvar att fakturera</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {[
+                {
+                  label: 'Huvudorder',
+                  total: orderMix.totals.primary,
+                  open: openOrderValue.primary
+                },
+                {
+                  label: 'Ändringsordrar',
+                  total: orderMix.totals.change,
+                  open: openOrderValue.change,
+                  isPriority: openOrderValue.change >= largeOpenOrderValueThreshold
+                },
+                {
+                  label: 'Tilläggsordrar',
+                  total: orderMix.totals.supplement,
+                  open: openOrderValue.supplement,
+                  isPriority: openOrderValue.supplement >= largeOpenOrderValueThreshold
+                }
+              ].map((row) => (
+                <TableRow key={row.label} className="transition-colors hover:bg-muted/20">
+                  <TableCell>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span>{row.label}</span>
+                      {row.isPriority ? (
+                        <Badge className="border-amber-300/80 bg-amber-100/80 text-amber-900 hover:bg-amber-100/80 dark:border-amber-900/60 dark:bg-amber-950/60 dark:text-amber-200">
+                          Hög prioritet
+                        </Badge>
+                      ) : null}
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-right">{fmt(row.total)}</TableCell>
+                  <TableCell className="text-right">{fmt(Math.max(row.total - row.open, 0))}</TableCell>
+                  <TableCell className="text-right font-semibold">{fmt(row.open)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         </CardContent>
       </Card>
 

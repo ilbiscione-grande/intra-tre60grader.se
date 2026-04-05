@@ -10,10 +10,13 @@ type CreateProjectWithOrderArgs = Fn['create_project_with_order']['Args'];
 type CreateVerificationArgs = Fn['create_verification_from_wizard']['Args'];
 type CreateInvoiceArgs = Fn['create_invoice_from_order']['Args'];
 type CreateCombinedInvoiceArgs = Fn['create_invoice_from_orders']['Args'];
+type CreatePartialInvoiceArgs = Fn['create_partial_invoice_from_order']['Args'];
+type CreatePartialInvoiceFromLinesArgs = Fn['create_partial_invoice_from_order_lines']['Args'];
 type VatReportArgs = Fn['vat_report']['Args'];
 type VoidVerificationArgs = Fn['void_verification']['Args'];
 type CreateReversalVerificationArgs = Fn['create_reversal_verification']['Args'];
 type CreateCreditInvoiceArgs = Fn['create_credit_invoice']['Args'];
+type CreateCreditInvoiceFromLinesArgs = Fn['create_credit_invoice_from_lines']['Args'];
 type BookInvoiceIssueArgs = Fn['book_invoice_issue']['Args'];
 type RegisterInvoicePaymentArgs = Fn['register_invoice_payment']['Args'];
 type RefundInvoicePaymentArgs = Fn['refund_invoice_payment']['Args'];
@@ -104,6 +107,34 @@ export async function createInvoiceFromOrders(order_ids: CreateCombinedInvoiceAr
   return data;
 }
 
+export async function createPartialInvoiceFromOrder(
+  p_order_id: CreatePartialInvoiceArgs['p_order_id'],
+  p_invoice_total: CreatePartialInvoiceArgs['p_invoice_total']
+) {
+  const supabase = createClient();
+  const { data, error } = await supabase.rpc('create_partial_invoice_from_order', {
+    p_order_id,
+    p_invoice_total
+  });
+
+  throwRpcError(error);
+  return data;
+}
+
+export async function createPartialInvoiceFromOrderLines(
+  p_order_id: CreatePartialInvoiceFromLinesArgs['p_order_id'],
+  p_order_line_ids: CreatePartialInvoiceFromLinesArgs['p_order_line_ids']
+) {
+  const supabase = createClient();
+  const { data, error } = await supabase.rpc('create_partial_invoice_from_order_lines', {
+    p_order_id,
+    p_order_line_ids
+  });
+
+  throwRpcError(error);
+  return data;
+}
+
 export async function createCreditInvoice(
   p_original_invoice_id: CreateCreditInvoiceArgs['p_original_invoice_id'],
   p_reason?: CreateCreditInvoiceArgs['p_reason']
@@ -111,6 +142,22 @@ export async function createCreditInvoice(
   const supabase = createClient();
   const { data, error } = await supabase.rpc('create_credit_invoice', {
     p_original_invoice_id,
+    p_reason: p_reason ?? null
+  });
+
+  throwRpcError(error);
+  return data;
+}
+
+export async function createCreditInvoiceFromLines(
+  p_original_invoice_id: CreateCreditInvoiceFromLinesArgs['p_original_invoice_id'],
+  p_line_ids: CreateCreditInvoiceFromLinesArgs['p_line_ids'],
+  p_reason?: CreateCreditInvoiceFromLinesArgs['p_reason']
+) {
+  const supabase = createClient();
+  const { data, error } = await supabase.rpc('create_credit_invoice_from_lines', {
+    p_original_invoice_id,
+    p_line_ids,
     p_reason: p_reason ?? null
   });
 

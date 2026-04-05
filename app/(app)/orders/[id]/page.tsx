@@ -12,6 +12,8 @@ import { useAppContext } from '@/components/providers/AppContext';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
 import SimpleSelect from '@/components/ui/simple-select';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -26,7 +28,8 @@ import {
   resolveInvoiceReadinessStatus,
   type InvoiceReadinessStatus
 } from '@/lib/finance/invoiceReadiness';
-import { createInvoiceFromOrder } from '@/lib/rpc';
+import { getOrderInvoiceProgressLabel, resolveOrderInvoiceProgress } from '@/lib/finance/orderInvoiceProgress';
+import { createInvoiceFromOrder, createPartialInvoiceFromOrder, createPartialInvoiceFromOrderLines } from '@/lib/rpc';
 import { createClient } from '@/lib/supabase/client';
 import type { Json, TableRow as DbRow } from '@/lib/supabase/database.types';
 import type { Role } from '@/lib/types';
@@ -40,9 +43,13 @@ type OrderRow = Pick<
 type ProjectRow = Pick<DbRow<'projects'>, 'id' | 'title' | 'customer_id' | 'invoice_readiness_status'>;
 type CustomerRow = Pick<DbRow<'customers'>, 'id' | 'name'>;
 type OrderLineRow = Pick<DbRow<'order_lines'>, 'id' | 'title' | 'qty' | 'unit_price' | 'vat_rate' | 'total' | 'created_at'>;
-type InvoiceSourceLinkRow = Pick<DbRow<'invoice_sources'>, 'invoice_id' | 'order_id' | 'project_id' | 'position'>;
+type InvoiceSourceLinkRow = Pick<DbRow<'invoice_sources'>, 'invoice_id' | 'order_id' | 'project_id' | 'position' | 'allocated_total'>;
+type InvoiceSourceLineLinkRow = Pick<DbRow<'invoice_source_lines'>, 'invoice_id' | 'order_id' | 'order_line_id' | 'allocated_total'>;
 type InvoiceSourceCountRow = Pick<DbRow<'invoice_sources'>, 'invoice_id'>;
-type InvoiceRow = Pick<DbRow<'invoices'>, 'id' | 'invoice_no' | 'status' | 'currency' | 'total' | 'created_at' | 'attachment_path' | 'due_date' | 'order_id' | 'project_id'>;
+type InvoiceRow = Pick<
+  DbRow<'invoices'>,
+  'id' | 'invoice_no' | 'kind' | 'status' | 'currency' | 'total' | 'created_at' | 'attachment_path' | 'due_date' | 'order_id' | 'project_id'
+>;
 type MemberView = {
   id: string;
   company_id: string;
@@ -53,6 +60,9 @@ type MemberView = {
   display_name: string | null;
 };
 type OrderTab = 'overview' | 'updates' | 'economy' | 'attachments' | 'members' | 'logs';
+type PartialInvoiceMode = 'quarter' | 'half' | 'remaining' | 'custom';
+type PartialInvoiceMethod = 'amount' | 'lines';
+type OrderLineFilter = 'all' | 'not_invoiced' | 'partially_invoiced' | 'fully_invoiced';
 
 const orderStatuses = ['draft', 'sent', 'paid', 'cancelled', 'invoiced'] as const;
 type OrderStatus = (typeof orderStatuses)[number];
@@ -92,6 +102,12 @@ function orderKindLabel(kind: string) {
   return map[kind] ?? kind;
 }
 
+function orderKindPurposeText(kind: string) {
+  if (kind === 'change') return 'Den här ordern används för ändringar eller omförhandlingar av tidigare beställning.';
+  if (kind === 'supplement') return 'Den här ordern används för tilläggsarbete eller extra omfattning utöver huvudordern.';
+  return 'Den här ordern är huvudbeställningen för projektet.';
+}
+
 function fakturaStatusEtikett(status: string) {
   const map: Record<string, string> = {
     issued: 'Utfärdad',
@@ -100,6 +116,11 @@ function fakturaStatusEtikett(status: string) {
     void: 'Makulerad'
   };
   return map[status] ?? status;
+}
+
+function fakturaTypEtikett(kind: string) {
+  if (kind === 'credit_note') return 'Kredit';
+  return 'Faktura';
 }
 
 function canManageOrder(role: Role) {
@@ -114,6 +135,13 @@ function roleLabel(role: Role) {
     auditor: 'Revisor'
   };
   return map[role];
+}
+
+function getOrderLineInvoiceStatusLabel(invoicedTotal: number, grossTotal: number) {
+  if (grossTotal <= 0) return 'Ej fakturerad';
+  if (invoicedTotal <= 0) return 'Ej fakturerad';
+  if (invoicedTotal + 0.01 >= grossTotal) return 'Slutfakturerad';
+  return 'Delfakturerad';
 }
 
 function extractInvoiceSummary(result: unknown) {
@@ -162,6 +190,12 @@ export default function OrderDetailsPage() {
   const supabase = createClient();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<OrderTab>('overview');
+  const [partialInvoiceDialogOpen, setPartialInvoiceDialogOpen] = useState(false);
+  const [partialInvoiceMethod, setPartialInvoiceMethod] = useState<PartialInvoiceMethod>('amount');
+  const [partialInvoiceMode, setPartialInvoiceMode] = useState<PartialInvoiceMode>('remaining');
+  const [partialInvoiceAmount, setPartialInvoiceAmount] = useState('');
+  const [selectedPartialLineIds, setSelectedPartialLineIds] = useState<string[]>([]);
+  const [orderLineFilter, setOrderLineFilter] = useState<OrderLineFilter>('all');
   const swipeHandlers = useSwipeTabs({
     tabs: orderTabs.map((tab) => tab.id),
     activeTab,
@@ -256,11 +290,25 @@ export default function OrderDetailsPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('invoice_sources')
-        .select('invoice_id,order_id,project_id,position')
+        .select('invoice_id,order_id,project_id,position,allocated_total')
         .eq('company_id', companyId)
         .eq('order_id', orderId)
         .order('position', { ascending: true })
         .returns<InvoiceSourceLinkRow[]>();
+      if (error) throw error;
+      return data ?? [];
+    }
+  });
+
+  const invoiceSourceLineLinksQuery = useQuery<InvoiceSourceLineLinkRow[]>({
+    queryKey: ['order-invoice-source-line-links', companyId, orderId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('invoice_source_lines')
+        .select('invoice_id,order_id,order_line_id,allocated_total')
+        .eq('company_id', companyId)
+        .eq('order_id', orderId)
+        .returns<InvoiceSourceLineLinkRow[]>();
       if (error) throw error;
       return data ?? [];
     }
@@ -272,7 +320,7 @@ export default function OrderDetailsPage() {
       const invoiceIds = (invoiceSourceLinksQuery.data ?? []).map((row) => row.invoice_id);
       let query = supabase
         .from('invoices')
-        .select('id,invoice_no,status,currency,total,created_at,attachment_path,due_date,order_id,project_id')
+        .select('id,invoice_no,kind,status,currency,total,created_at,attachment_path,due_date,order_id,project_id')
         .eq('company_id', companyId)
         .order('created_at', { ascending: false });
 
@@ -362,9 +410,47 @@ export default function OrderDetailsPage() {
       await queryClient.invalidateQueries({ queryKey: ['order', companyId, orderId] });
       await queryClient.invalidateQueries({ queryKey: ['orders', companyId] });
       await queryClient.invalidateQueries({ queryKey: ['order-invoices', companyId, orderId] });
+      await queryClient.invalidateQueries({ queryKey: ['order-invoice-source-line-links', companyId, orderId] });
       await queryClient.invalidateQueries({ queryKey: ['invoices', companyId] });
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : 'Kunde inte skapa faktura')
+  });
+  const partialInvoiceMutation = useMutation({
+    mutationFn: async (invoiceTotal: number) => createPartialInvoiceFromOrder(orderId, invoiceTotal),
+    onSuccess: async () => {
+      toast.success('Delfaktura skapad');
+      setPartialInvoiceDialogOpen(false);
+      setPartialInvoiceAmount('');
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['order', companyId, orderId] }),
+        queryClient.invalidateQueries({ queryKey: ['order-invoice-source-links', companyId, orderId] }),
+        queryClient.invalidateQueries({ queryKey: ['order-invoice-source-line-links', companyId, orderId] }),
+        queryClient.invalidateQueries({ queryKey: ['order-invoices', companyId, orderId] }),
+        queryClient.invalidateQueries({ queryKey: ['invoices', companyId] }),
+        queryClient.invalidateQueries({ queryKey: ['orders', companyId] }),
+        queryClient.invalidateQueries({ queryKey: ['projects', companyId] })
+      ]);
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'Kunde inte skapa delfaktura')
+  });
+  const partialInvoiceLinesMutation = useMutation({
+    mutationFn: async (orderLineIds: string[]) => createPartialInvoiceFromOrderLines(orderId, orderLineIds),
+    onSuccess: async () => {
+      toast.success('Delfaktura skapad från valda orderrader');
+      setPartialInvoiceDialogOpen(false);
+      setSelectedPartialLineIds([]);
+      setPartialInvoiceAmount('');
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['order', companyId, orderId] }),
+        queryClient.invalidateQueries({ queryKey: ['order-invoice-source-links', companyId, orderId] }),
+        queryClient.invalidateQueries({ queryKey: ['order-invoice-source-line-links', companyId, orderId] }),
+        queryClient.invalidateQueries({ queryKey: ['order-invoices', companyId, orderId] }),
+        queryClient.invalidateQueries({ queryKey: ['invoices', companyId] }),
+        queryClient.invalidateQueries({ queryKey: ['orders', companyId] }),
+        queryClient.invalidateQueries({ queryKey: ['projects', companyId] })
+      ]);
+    },
+    onError: (error) => toast.error(error instanceof Error ? error.message : 'Kunde inte skapa delfaktura från orderrader')
   });
   const updates = useMemo(() => {
     if (!orderQuery.data) return [];
@@ -385,8 +471,8 @@ export default function OrderDetailsPage() {
       })),
       ...(invoicesQuery.data ?? []).map((inv) => ({
         id: `invoice-${inv.id}`,
-        title: `Faktura ${inv.invoice_no}`,
-        meta: `${fakturaStatusEtikett(inv.status)} • ${Number(inv.total).toFixed(2)} ${inv.currency}`,
+        title: `${fakturaTypEtikett(inv.kind)} ${inv.invoice_no}`,
+        meta: `${fakturaTypEtikett(inv.kind)} • ${fakturaStatusEtikett(inv.status)} • ${Number(inv.total).toFixed(2)} ${inv.currency}`,
         at: inv.created_at
       }))
     ];
@@ -414,7 +500,7 @@ export default function OrderDetailsPage() {
       ...(invoicesQuery.data ?? []).map((invoice) => ({
         id: `log-invoice-${invoice.id}`,
         title: 'Fakturakoppling registrerad',
-        detail: `${invoice.invoice_no} • ${fakturaStatusEtikett(invoice.status)}`,
+        detail: `${invoice.invoice_no} • ${fakturaTypEtikett(invoice.kind)} • ${fakturaStatusEtikett(invoice.status)}`,
         at: invoice.created_at
       }))
     ];
@@ -442,7 +528,70 @@ export default function OrderDetailsPage() {
   const projectOrders = projectOrdersQuery.data ?? [];
   const parentOrder = projectOrders.find((item) => item.id === order.parent_order_id) ?? null;
   const childOrders = projectOrders.filter((item) => item.parent_order_id === order.id);
-  const invoiceTotal = (invoicesQuery.data ?? []).reduce((sum, invoice) => sum + Number(invoice.total ?? 0), 0);
+  const allocatedInvoiceTotal =
+    (invoiceSourceLinksQuery.data ?? []).length > 0
+      ? (invoiceSourceLinksQuery.data ?? []).reduce((sum, source) => {
+          const invoice = (invoicesQuery.data ?? []).find((item) => item.id === source.invoice_id);
+          if (invoice?.status === 'void') return sum;
+          return sum + Number(source.allocated_total ?? 0);
+        }, 0)
+      : (invoicesQuery.data ?? [])
+          .filter((invoice) => invoice.status !== 'void')
+          .reduce((sum, invoice) => sum + Number(invoice.total ?? 0), 0);
+  const grossInvoicedTotal = (invoicesQuery.data ?? [])
+    .filter((invoice) => invoice.status !== 'void' && invoice.kind !== 'credit_note')
+    .reduce((sum, invoice) => sum + Number(invoice.total ?? 0), 0);
+  const creditedInvoiceTotal = Math.abs(
+    (invoicesQuery.data ?? [])
+      .filter((invoice) => invoice.status !== 'void' && invoice.kind === 'credit_note')
+      .reduce((sum, invoice) => sum + Number(invoice.total ?? 0), 0)
+  );
+  const netInvoicedTotal = grossInvoicedTotal - creditedInvoiceTotal;
+  const orderGrossTotal = (linesQuery.data ?? []).reduce(
+    (sum, line) => sum + Number(line.total ?? 0) * (1 + Number(line.vat_rate ?? 0) / 100),
+    0
+  );
+  const invoiceProgress = resolveOrderInvoiceProgress(
+    orderGrossTotal > 0 ? orderGrossTotal : Number(order.total ?? 0),
+    allocatedInvoiceTotal
+  );
+  const allocatedInvoiceLineTotalByLineId = (invoiceSourceLineLinksQuery.data ?? []).reduce((map, row) => {
+    const invoice = (invoicesQuery.data ?? []).find((item) => item.id === row.invoice_id);
+    if (invoice?.status === 'void') return map;
+    map.set(row.order_line_id, (map.get(row.order_line_id) ?? 0) + Number(row.allocated_total ?? 0));
+    return map;
+  }, new Map<string, number>());
+  const partialInvoiceLineOptions = (linesQuery.data ?? []).map((line) => {
+    const grossTotal = Number(line.total ?? 0) * (1 + Number(line.vat_rate ?? 0) / 100);
+    const allocatedTotal = Number(allocatedInvoiceLineTotalByLineId.get(line.id) ?? 0);
+    const remainingTotal = Math.max(grossTotal - allocatedTotal, 0);
+    return {
+      ...line,
+      grossTotal,
+      allocatedTotal,
+      remainingTotal
+    };
+  });
+  const filteredOrderLineOptions = partialInvoiceLineOptions.filter((line) => {
+    if (orderLineFilter === 'not_invoiced') return line.allocatedTotal <= 0;
+    if (orderLineFilter === 'partially_invoiced') return line.allocatedTotal > 0 && line.remainingTotal > 0;
+    if (orderLineFilter === 'fully_invoiced') return line.remainingTotal <= 0;
+    return true;
+  });
+  const resolvedPartialInvoiceAmount =
+    partialInvoiceMode === 'quarter'
+      ? invoiceProgress.remaining * 0.25
+      : partialInvoiceMode === 'half'
+        ? invoiceProgress.remaining * 0.5
+        : partialInvoiceMode === 'remaining'
+          ? invoiceProgress.remaining
+          : Number(partialInvoiceAmount);
+  const normalizedPartialInvoiceAmount = Number.isFinite(resolvedPartialInvoiceAmount)
+    ? Math.round(resolvedPartialInvoiceAmount * 100) / 100
+    : Number.NaN;
+  const selectedPartialLinesTotal = partialInvoiceLineOptions
+    .filter((line) => selectedPartialLineIds.includes(line.id))
+    .reduce((sum, line) => sum + line.remainingTotal, 0);
   const outstandingInvoiceValue = (invoicesQuery.data ?? [])
     .filter((invoice) => invoice.status !== 'paid' && invoice.status !== 'void')
     .reduce((sum, invoice) => sum + Number(invoice.total ?? 0), 0);
@@ -498,6 +647,9 @@ export default function OrderDetailsPage() {
             <Badge className="gap-1.5 px-2 py-1 text-[11px]">
               {orderKindLabel(order.order_kind)}
             </Badge>
+            <Badge className="gap-1.5 px-2 py-1 text-[11px]">
+              {getOrderInvoiceProgressLabel(invoiceProgress.status)}
+            </Badge>
             <Badge className="gap-1.5 px-2 py-1 text-[11px]">{getInvoiceReadinessLabel(invoiceReadiness)}</Badge>
             <Badge className="gap-1.5 px-2 py-1 text-[11px]">
               <CalendarDays className="h-3 w-3" />
@@ -549,6 +701,7 @@ export default function OrderDetailsPage() {
                         ? `${childOrders.length} underordnade ordrar`
                         : 'Ingen överordnad order'}
                   </p>
+                  <p className="mt-2 text-xs text-foreground/60">{orderKindPurposeText(order.order_kind)}</p>
                 </div>
               </CardContent>
             </Card>
@@ -580,8 +733,8 @@ export default function OrderDetailsPage() {
                     <p className="mt-1 font-medium">{linesQuery.data?.length ?? 0}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-foreground/70">Fakturor</p>
-                    <p className="mt-1 font-medium">{invoicesQuery.data?.length ?? 0}</p>
+                    <p className="text-sm text-foreground/70">Faktureringsstatus</p>
+                    <p className="mt-1 font-medium">{getOrderInvoiceProgressLabel(invoiceProgress.status)}</p>
                   </div>
                 </div>
               </CardContent>
@@ -630,19 +783,45 @@ export default function OrderDetailsPage() {
               <CardTitle>Orderrader</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" size="sm" variant={orderLineFilter === 'all' ? 'default' : 'outline'} onClick={() => setOrderLineFilter('all')}>
+                  Alla
+                </Button>
+                <Button type="button" size="sm" variant={orderLineFilter === 'not_invoiced' ? 'default' : 'outline'} onClick={() => setOrderLineFilter('not_invoiced')}>
+                  Ej fakturerade
+                </Button>
+                <Button type="button" size="sm" variant={orderLineFilter === 'partially_invoiced' ? 'default' : 'outline'} onClick={() => setOrderLineFilter('partially_invoiced')}>
+                  Delfakturerade
+                </Button>
+                <Button type="button" size="sm" variant={orderLineFilter === 'fully_invoiced' ? 'default' : 'outline'} onClick={() => setOrderLineFilter('fully_invoiced')}>
+                  Slutfakturerade
+                </Button>
+              </div>
               <div className="space-y-3 md:hidden">
-                {(linesQuery.data ?? []).length === 0 && (
+                {filteredOrderLineOptions.length === 0 && (
                   <p className="text-sm text-foreground/70">Inga rader ännu.</p>
                 )}
-                {(linesQuery.data ?? []).map((line) => (
+                {filteredOrderLineOptions.map((line) => (
                   <div key={line.id} className="rounded-xl border border-border/80 bg-card p-3">
+                    {(() => {
+                      const grossTotal = line.grossTotal;
+                      const invoicedTotal = line.allocatedTotal;
+                      const remainingTotal = line.remainingTotal;
+                      return (
+                        <>
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <p className="text-sm font-medium leading-snug">{line.title}</p>
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <Badge>{getOrderLineInvoiceStatusLabel(invoicedTotal, grossTotal)}</Badge>
+                          <span className="text-xs text-foreground/60">
+                            Fakturerat {invoicedTotal.toFixed(2)} kr • Kvar {remainingTotal.toFixed(2)} kr
+                          </span>
+                        </div>
                       </div>
                       <div className="shrink-0 rounded-xl border border-primary/20 bg-primary/10 px-3 py-2 text-right">
                         <p className="text-[10px] font-medium uppercase tracking-[0.16em] text-primary/80">Radtotal</p>
-                        <p className="mt-1 text-sm font-semibold text-primary">{Number(line.total).toFixed(2)} kr</p>
+                        <p className="mt-1 text-sm font-semibold text-primary">{grossTotal.toFixed(2)} kr</p>
                       </div>
                     </div>
 
@@ -660,6 +839,9 @@ export default function OrderDetailsPage() {
                         <p className="mt-1 text-sm font-medium">{Number(line.vat_rate).toFixed(2)}%</p>
                       </div>
                     </div>
+                        </>
+                      );
+                    })()}
                   </div>
                 ))}
               </div>
@@ -676,20 +858,30 @@ export default function OrderDetailsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {(linesQuery.data ?? []).length === 0 && (
+                  {filteredOrderLineOptions.length === 0 && (
                     <TableRow>
                       <TableCell colSpan={5} className="text-foreground/70">
                         Inga rader ännu.
                       </TableCell>
                     </TableRow>
                   )}
-                  {(linesQuery.data ?? []).map((line) => (
+                  {filteredOrderLineOptions.map((line) => (
                     <TableRow key={line.id}>
-                      <TableCell>{line.title}</TableCell>
+                      <TableCell>
+                        <div className="space-y-1">
+                          <div>{line.title}</div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Badge>{getOrderLineInvoiceStatusLabel(line.allocatedTotal, line.grossTotal)}</Badge>
+                            <span className="text-xs text-foreground/60">
+                              Fakturerat {line.allocatedTotal.toFixed(2)} kr • Kvar {line.remainingTotal.toFixed(2)} kr
+                            </span>
+                          </div>
+                        </div>
+                      </TableCell>
                       <TableCell>{Number(line.qty).toFixed(2)}</TableCell>
                       <TableCell>{Number(line.unit_price).toFixed(2)}</TableCell>
                       <TableCell>{Number(line.vat_rate).toFixed(2)}</TableCell>
-                      <TableCell>{Number(line.total).toFixed(2)}</TableCell>
+                      <TableCell>{line.grossTotal.toFixed(2)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -764,6 +956,24 @@ export default function OrderDetailsPage() {
                   >
                     {invoiceMutation.isPending ? 'Skapar...' : hasActiveInvoice ? 'Faktura finns redan' : 'Skapa faktura'}
                   </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setPartialInvoiceMethod('amount');
+                      setPartialInvoiceMode('remaining');
+                      setPartialInvoiceAmount(invoiceProgress.remaining.toFixed(2));
+                      setSelectedPartialLineIds([]);
+                      setPartialInvoiceDialogOpen(true);
+                    }}
+                    disabled={
+                      partialInvoiceMutation.isPending ||
+                      partialInvoiceLinesMutation.isPending ||
+                      !canManageOrder(role) ||
+                      invoiceProgress.remaining <= 0
+                    }
+                  >
+                    {partialInvoiceMutation.isPending || partialInvoiceLinesMutation.isPending ? 'Skapar delfaktura...' : 'Skapa delfaktura'}
+                  </Button>
                 </div>
               </RoleGate>
 
@@ -798,8 +1008,8 @@ export default function OrderDetailsPage() {
                   <p className="mt-1 font-medium">{Number(order.total).toFixed(2)} kr</p>
                 </div>
                 <div className="rounded-lg border p-3">
-                  <p className="text-sm text-foreground/70">Fakturor</p>
-                  <p className="mt-1 font-medium">{invoicesQuery.data?.length ?? 0}</p>
+                  <p className="text-sm text-foreground/70">Faktureringsstatus</p>
+                  <p className="mt-1 font-medium">{getOrderInvoiceProgressLabel(invoiceProgress.status)}</p>
                 </div>
                 <div className="rounded-lg border p-3">
                   <p className="text-sm text-foreground/70">Status</p>
@@ -808,13 +1018,27 @@ export default function OrderDetailsPage() {
                 <div className="rounded-lg border p-3">
                   <p className="text-sm text-foreground/70">Öppet fakturavärde</p>
                   <p className="mt-1 font-medium">{outstandingInvoiceValue.toFixed(2)} kr</p>
+                  <p className="mt-1 text-xs text-foreground/55">
+                    Tar hänsyn till öppna kreditnotor och visar nettot av ej slutreglerade fakturor.
+                  </p>
                 </div>
               </div>
 
-              <div className="grid gap-3 md:grid-cols-3">
+              <div className="grid gap-3 md:grid-cols-4">
                 <div className="rounded-lg border p-3">
-                  <p className="text-sm text-foreground/70">Fakturerat totalt</p>
-                  <p className="mt-1 font-medium">{invoiceTotal.toFixed(2)} kr</p>
+                  <p className="text-sm text-foreground/70">Bruttofakturerat</p>
+                  <p className="mt-1 font-medium">{grossInvoicedTotal.toFixed(2)} kr</p>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <p className="text-sm text-foreground/70">Krediterat</p>
+                  <p className="mt-1 font-medium">{creditedInvoiceTotal.toFixed(2)} kr</p>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <p className="text-sm text-foreground/70">Nettofakturerat</p>
+                  <p className="mt-1 font-medium">{netInvoicedTotal.toFixed(2)} kr</p>
+                  <p className="mt-1 text-xs text-foreground/55">
+                    Separeras från orderns faktureringsprogress så att senare krediteringar syns tydligt.
+                  </p>
                 </div>
                 <div className="rounded-lg border p-3">
                   <p className="text-sm text-foreground/70">Senaste faktura</p>
@@ -827,13 +1051,12 @@ export default function OrderDetailsPage() {
                   ) : null}
                 </div>
                 <div className="rounded-lg border p-3">
-                  <p className="text-sm text-foreground/70">Nästa steg</p>
+                  <p className="text-sm text-foreground/70">Kvar att fakturera</p>
                   <p className="mt-1 font-medium">
-                    {invoicesQuery.data?.length
-                      ? outstandingInvoiceValue > 0
-                        ? 'Följ upp betalning'
-                        : 'Klart'
-                      : 'Skapa första faktura'}
+                    {invoiceProgress.remaining.toFixed(2)} kr
+                  </p>
+                  <p className="mt-1 text-xs text-foreground/55">
+                    {invoiceProgress.status === 'fully_invoiced' ? 'Ordern är fullt omsatt i fakturor.' : 'Visas korrekt även när ordern ingår i samlingsfaktura.'}
                   </p>
                 </div>
               </div>
@@ -852,22 +1075,28 @@ export default function OrderDetailsPage() {
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="font-medium">{inv.invoice_no}</p>
                         {(invoiceSourceCounts.get(inv.id) ?? 0) > 1 ? <Badge>Samlingsfaktura</Badge> : null}
+                        {inv.kind === 'credit_note' ? (
+                          <Badge className="border-rose-500/25 bg-rose-500/10 text-rose-700 dark:text-rose-200">Kredit</Badge>
+                        ) : null}
                       </div>
                       <Badge>{fakturaStatusEtikett(inv.status)}</Badge>
                     </div>
                     <p className="mt-1 text-sm text-foreground/70">
-                    {new Date(inv.created_at).toLocaleString('sv-SE')} • {Number(inv.total).toFixed(2)} {inv.currency}
-                  </p>
-                  <div className="mt-2 flex gap-2">
-                    <Button asChild size="sm" variant="secondary">
-                      <Link href={`/invoices/${inv.id}`}>Öppna faktura</Link>
-                    </Button>
-                    <Button asChild size="sm" variant="outline">
-                      <Link href={`/api/invoices/${inv.id}/export?compact=1`}>Exportera JSON</Link>
-                    </Button>
+                      {new Date(inv.created_at).toLocaleString('sv-SE')} • {fakturaTypEtikett(inv.kind)} • {Number(inv.total).toFixed(2)} {inv.currency}
+                    </p>
+                    <p className="mt-1 text-xs text-foreground/55">
+                      Andel för denna order: {Number((invoiceSourceLinksQuery.data ?? []).find((row) => row.invoice_id === inv.id)?.allocated_total ?? inv.total ?? 0).toFixed(2)} {inv.currency}
+                    </p>
+                    <div className="mt-2 flex gap-2">
+                      <Button asChild size="sm" variant="secondary">
+                        <Link href={`/invoices/${inv.id}`}>Öppna faktura</Link>
+                      </Button>
+                      <Button asChild size="sm" variant="outline">
+                        <Link href={`/api/invoices/${inv.id}/export?compact=1`}>Exportera JSON</Link>
+                      </Button>
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))}
             </CardContent>
           </Card>
         </div>
@@ -1043,6 +1272,159 @@ export default function OrderDetailsPage() {
           </CardContent>
         </Card>
       )}
+
+      <Dialog open={partialInvoiceDialogOpen} onOpenChange={setPartialInvoiceDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Skapa delfaktura</DialogTitle>
+            <DialogDescription>
+              Välj om delfakturan ska baseras på belopp eller specifika orderrader. Kvar att fakturera: {invoiceProgress.remaining.toFixed(2)} kr.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <p className="text-sm">Metod</p>
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" variant={partialInvoiceMethod === 'amount' ? 'default' : 'outline'} onClick={() => setPartialInvoiceMethod('amount')}>
+                  Belopp
+                </Button>
+                <Button type="button" variant={partialInvoiceMethod === 'lines' ? 'default' : 'outline'} onClick={() => setPartialInvoiceMethod('lines')}>
+                  Orderrader
+                </Button>
+              </div>
+            </div>
+            {partialInvoiceMethod === 'amount' ? (
+              <>
+            <div className="space-y-2">
+              <p className="text-sm">Snabbval</p>
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" variant={partialInvoiceMode === 'quarter' ? 'default' : 'outline'} onClick={() => setPartialInvoiceMode('quarter')}>
+                  25% av kvar
+                </Button>
+                <Button type="button" variant={partialInvoiceMode === 'half' ? 'default' : 'outline'} onClick={() => setPartialInvoiceMode('half')}>
+                  50% av kvar
+                </Button>
+                <Button type="button" variant={partialInvoiceMode === 'remaining' ? 'default' : 'outline'} onClick={() => setPartialInvoiceMode('remaining')}>
+                  Restbelopp
+                </Button>
+                <Button type="button" variant={partialInvoiceMode === 'custom' ? 'default' : 'outline'} onClick={() => setPartialInvoiceMode('custom')}>
+                  Egen summa
+                </Button>
+              </div>
+            </div>
+            <label className="space-y-1">
+              <span className="text-sm">Belopp inkl moms</span>
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                value={partialInvoiceAmount}
+                onChange={(event) => {
+                  setPartialInvoiceMode('custom');
+                  setPartialInvoiceAmount(event.target.value);
+                }}
+                disabled={partialInvoiceMode !== 'custom'}
+              />
+            </label>
+            <div className="rounded-lg border border-border/70 bg-muted/20 px-3 py-2 text-sm text-foreground/70">
+              Faktureras nu: {Number.isFinite(normalizedPartialInvoiceAmount) ? normalizedPartialInvoiceAmount.toFixed(2) : '0.00'} kr inkl moms
+            </div>
+              </>
+            ) : (
+              <div className="space-y-3">
+                <div className="rounded-lg border border-border/70 bg-muted/20 px-3 py-2 text-sm text-foreground/70">
+                  Välj en eller flera orderrader. Varje vald rad faktureras med sitt återstående belopp.
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setSelectedPartialLineIds(partialInvoiceLineOptions.filter((line) => line.allocatedTotal <= 0 && line.remainingTotal > 0).map((line) => line.id))}
+                  >
+                    Markera alla ej fakturerade
+                  </Button>
+                  <Button type="button" variant="outline" onClick={() => setSelectedPartialLineIds([])}>
+                    Rensa val
+                  </Button>
+                </div>
+                <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+                  {partialInvoiceLineOptions.map((line) => {
+                    const isSelected = selectedPartialLineIds.includes(line.id);
+                    const isDisabled = line.remainingTotal <= 0;
+                    return (
+                      <button
+                        key={line.id}
+                        type="button"
+                        disabled={isDisabled}
+                        onClick={() =>
+                          setSelectedPartialLineIds((current) =>
+                            current.includes(line.id) ? current.filter((id) => id !== line.id) : [...current, line.id]
+                          )
+                        }
+                        className={`w-full rounded-lg border px-3 py-3 text-left transition ${
+                          isDisabled
+                            ? 'cursor-not-allowed border-border/60 bg-muted/10 text-foreground/40'
+                            : isSelected
+                              ? 'border-primary bg-primary/10'
+                              : 'border-border/70 bg-card hover:bg-muted/20'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium">{line.title}</p>
+                            <p className="mt-1 text-xs text-foreground/60">
+                              {Number(line.qty).toFixed(2)} st • {Number(line.unit_price).toFixed(2)} kr • Moms {Number(line.vat_rate).toFixed(2)}%
+                            </p>
+                          </div>
+                          <div className="text-right text-xs">
+                            <p>Totalt: {line.grossTotal.toFixed(2)} kr</p>
+                            <p>Fakturerat: {line.allocatedTotal.toFixed(2)} kr</p>
+                            <p className="font-medium">Kvar: {line.remainingTotal.toFixed(2)} kr</p>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="rounded-lg border border-border/70 bg-muted/20 px-3 py-2 text-sm text-foreground/70">
+                  Valda rader: {selectedPartialLineIds.length} • Faktureras nu: {selectedPartialLinesTotal.toFixed(2)} kr inkl moms
+                </div>
+              </div>
+            )}
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setPartialInvoiceDialogOpen(false)}>
+                Avbryt
+              </Button>
+              {partialInvoiceMethod === 'amount' ? (
+                <Button
+                  onClick={() => partialInvoiceMutation.mutate(normalizedPartialInvoiceAmount)}
+                  disabled={
+                    partialInvoiceMutation.isPending ||
+                    partialInvoiceLinesMutation.isPending ||
+                    !Number.isFinite(normalizedPartialInvoiceAmount) ||
+                    normalizedPartialInvoiceAmount <= 0 ||
+                    normalizedPartialInvoiceAmount > invoiceProgress.remaining
+                  }
+                >
+                  {partialInvoiceMutation.isPending ? 'Skapar...' : 'Skapa delfaktura'}
+                </Button>
+              ) : (
+                <Button
+                  onClick={() => partialInvoiceLinesMutation.mutate(selectedPartialLineIds)}
+                  disabled={
+                    partialInvoiceLinesMutation.isPending ||
+                    partialInvoiceMutation.isPending ||
+                    selectedPartialLineIds.length === 0 ||
+                    selectedPartialLinesTotal <= 0
+                  }
+                >
+                  {partialInvoiceLinesMutation.isPending ? 'Skapar...' : 'Skapa delfaktura från rader'}
+                </Button>
+              )}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }

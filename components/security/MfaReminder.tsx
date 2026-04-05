@@ -34,25 +34,30 @@ export default function MfaReminder() {
   }
 
   return (
-    <div className="mb-4 flex items-start justify-between gap-4 rounded-2xl border border-amber-300/70 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+    <div className="mb-4 flex items-start justify-between gap-4 rounded-2xl border border-amber-300/70 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-100">
       <div className="flex items-start gap-3">
         <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0" />
         <div>
           <p className="font-medium">Tvåstegsverifiering rekommenderas</p>
-          <p className="mt-1 text-amber-900/85">
+          <p className="mt-1 text-amber-900/85 dark:text-amber-100/80">
             Ditt interna {authRole === 'admin' ? 'adminkonto' : 'medarbetarkonto'} saknar aktiv TOTP-verifiering.
           </p>
         </div>
       </div>
       <div className="flex items-center gap-2">
-        <Button asChild size="sm" variant="outline" className="border-amber-400 bg-white hover:bg-amber-100">
+        <Button
+          asChild
+          size="sm"
+          variant="outline"
+          className="border-amber-400 bg-white hover:bg-amber-100 dark:border-amber-500/35 dark:bg-amber-950/40 dark:text-amber-50 dark:hover:bg-amber-900/40"
+        >
           <Link href={'/settings/security' as Route}>Aktivera MFA</Link>
         </Button>
         <Button
           type="button"
           size="icon"
           variant="ghost"
-          className="h-9 w-9 rounded-full text-amber-900 hover:bg-amber-100"
+          className="h-9 w-9 rounded-full text-amber-900 hover:bg-amber-100 dark:text-amber-100 dark:hover:bg-amber-900/30"
           aria-label="Stäng MFA-påminnelse"
           onClick={() => {
             dismissMfaReminder();

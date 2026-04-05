@@ -13,6 +13,8 @@ import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { canViewFinance } from '@/lib/auth/capabilities';
 import { receivablesOpenReport, receivablesReconciliationReport } from '@/lib/rpc';
+import { createClient } from '@/lib/supabase/client';
+import type { TableRow as DbRow } from '@/lib/supabase/database.types';
 
 type OpenRow = {
   customer_name: string;
@@ -46,6 +48,8 @@ type ReconciliationReport = {
   ok: boolean;
   receivables_open_total: number;
 };
+
+type InvoiceMetaRow = Pick<DbRow<'invoices'>, 'id' | 'kind' | 'credited_at' | 'credit_for_invoice_id'>;
 
 function toNumber(value: unknown) {
   return Number(value ?? 0);
@@ -110,10 +114,18 @@ function parseReconciliationReport(value: unknown): ReconciliationReport {
   };
 }
 
+function receivableCreditStateLabel(meta?: InvoiceMetaRow | null) {
+  if (!meta) return null;
+  if (meta.kind === 'credit_note') return 'Kredit';
+  if (meta.credited_at) return 'Fullkrediterad';
+  return null;
+}
+
 export default function ReceivablesPage() {
   const { companyId, role, capabilities } = useAppContext();
   const [asOf, setAsOf] = useState(new Date().toISOString().slice(0, 10));
   const canReadFinance = canViewFinance(role, capabilities);
+  const supabase = createClient();
 
   const openQuery = useQuery({
     queryKey: ['receivables-open-report', companyId, asOf],
@@ -126,6 +138,24 @@ export default function ReceivablesPage() {
     queryFn: async () => parseReconciliationReport(await receivablesReconciliationReport(companyId, asOf)),
     enabled: canReadFinance
   });
+  const invoiceIds = openQuery.data?.rows.map((row) => row.invoice_id) ?? [];
+  const invoiceMetaQuery = useQuery({
+    queryKey: ['receivables-invoice-meta', companyId, invoiceIds.join(',')],
+    queryFn: async () => {
+      if (invoiceIds.length === 0) return [] as InvoiceMetaRow[];
+
+      const { data, error } = await supabase
+        .from('invoices')
+        .select('id,kind,credited_at,credit_for_invoice_id')
+        .eq('company_id', companyId)
+        .in('id', invoiceIds)
+        .returns<InvoiceMetaRow[]>();
+
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: canReadFinance && invoiceIds.length > 0
+  });
 
   const report = openQuery.data;
   const recon = reconciliationQuery.data;
@@ -133,6 +163,7 @@ export default function ReceivablesPage() {
   const dueSoonRows = (report?.rows ?? []).filter((row) => row.days_overdue <= 0 && row.days_overdue >= -7);
   const overdueShare = share(report?.summary.overdue_total ?? 0, report?.summary.open_total ?? 0);
   const reconciliationOk = Boolean(recon?.ok);
+  const invoiceMetaById = new Map((invoiceMetaQuery.data ?? []).map((row) => [row.id, row]));
 
   if (!canReadFinance) {
     return <p className="rounded-lg bg-muted p-4 text-sm">Kundreskontra är endast tillgänglig för ekonomi, admin eller revisor.</p>;
@@ -230,6 +261,11 @@ export default function ReceivablesPage() {
                       <div className="min-w-0">
                         <p className="text-sm font-medium">{row.invoice_no}</p>
                         <p className="text-sm text-foreground/70">{row.customer_name || '-'}</p>
+                        {receivableCreditStateLabel(invoiceMetaById.get(row.invoice_id)) ? (
+                          <div className="mt-2">
+                            <StatusChip>{receivableCreditStateLabel(invoiceMetaById.get(row.invoice_id))}</StatusChip>
+                          </div>
+                        ) : null}
                       </div>
                       <StatusChip tone={row.days_overdue > 0 ? 'rose' : 'neutral'}>
                         {row.days_overdue > 0 ? `${row.days_overdue} dagar sen` : 'Aktiv'}
@@ -275,6 +311,13 @@ export default function ReceivablesPage() {
                         <Link href={`/invoices/${row.invoice_id}`} className="underline underline-offset-2">
                           {row.invoice_no}
                         </Link>
+                        {receivableCreditStateLabel(invoiceMetaById.get(row.invoice_id)) ? (
+                          <div className="mt-1">
+                            <Badge className="border-border/70 bg-muted/40 text-foreground/75 hover:bg-muted/40">
+                              {receivableCreditStateLabel(invoiceMetaById.get(row.invoice_id))}
+                            </Badge>
+                          </div>
+                        ) : null}
                       </TableCell>
                       <TableCell>{row.customer_name || '-'}</TableCell>
                       <TableCell>{new Date(row.issue_date).toLocaleDateString('sv-SE')}</TableCell>

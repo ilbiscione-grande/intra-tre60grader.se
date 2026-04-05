@@ -61,6 +61,7 @@ type CompanyRow = {
   iban: string | null;
   bic: string | null;
   invoice_prefix: string | null;
+  invoice_priority_threshold: number | null;
   locked_until: string | null;
   default_payment_terms_days: number | null;
   late_payment_interest_rate: number | null;
@@ -122,7 +123,7 @@ export default function SettingsPage() {
       const { data, error } = await supabase
         .from('companies')
         .select(
-          'id,name,created_at,org_no,vat_no,billing_email,phone,address_line1,address_line2,postal_code,city,country,bankgiro,plusgiro,iban,bic,invoice_prefix,locked_until,default_payment_terms_days,late_payment_interest_rate,invoice_terms_note'
+          'id,name,created_at,org_no,vat_no,billing_email,phone,address_line1,address_line2,postal_code,city,country,bankgiro,plusgiro,iban,bic,invoice_prefix,invoice_priority_threshold,locked_until,default_payment_terms_days,late_payment_interest_rate,invoice_terms_note'
         )
         .eq('id', companyId)
         .maybeSingle<CompanyRow>();
@@ -184,6 +185,7 @@ export default function SettingsPage() {
         iban: nullIfEmpty(companyDraft.iban),
         bic: nullIfEmpty(companyDraft.bic),
         invoice_prefix: nullIfEmpty(companyDraft.invoice_prefix),
+        invoice_priority_threshold: toDecimalOrNull(companyDraft.invoice_priority_threshold) ?? 10000,
         default_payment_terms_days: toIntOrDefault(companyDraft.default_payment_terms_days, 30),
         late_payment_interest_rate: toDecimalOrNull(companyDraft.late_payment_interest_rate),
         invoice_terms_note: nullIfEmpty(companyDraft.invoice_terms_note)
@@ -668,6 +670,11 @@ export default function SettingsPage() {
               <InputWithLabel label="IBAN" value={companyDraft.iban ?? ''} onChange={(v) => setField('iban', v)} />
               <InputWithLabel label="BIC/SWIFT" value={companyDraft.bic ?? ''} onChange={(v) => setField('bic', v)} />
               <InputWithLabel label="Fakturaprefix" value={companyDraft.invoice_prefix ?? ''} onChange={(v) => setField('invoice_prefix', v)} />
+              <InputWithLabel
+                label="Tröskel för hög fakturaprioritet"
+                value={String(companyDraft.invoice_priority_threshold ?? 10000)}
+                onChange={(v) => setField('invoice_priority_threshold', Number(v || 0))}
+              />
               <InputWithLabel
                 label="Betalningsvillkor (dagar netto)"
                 value={String(companyDraft.default_payment_terms_days ?? 30)}

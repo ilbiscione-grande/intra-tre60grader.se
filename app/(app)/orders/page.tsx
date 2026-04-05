@@ -15,7 +15,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { createClient } from '@/lib/supabase/client';
 import type { TableRow as DbRow } from '@/lib/supabase/database.types';
 
-type OrderRow = Pick<DbRow<'orders'>, 'id' | 'order_no' | 'project_id' | 'status' | 'total' | 'created_at'>;
+type OrderKindFilter = 'all' | 'primary' | 'change' | 'supplement';
+
+type OrderRow = Pick<DbRow<'orders'>, 'id' | 'order_no' | 'project_id' | 'status' | 'order_kind' | 'total' | 'created_at'>;
 type ProjectRow = Pick<DbRow<'projects'>, 'id' | 'title' | 'customer_id'>;
 type CustomerRow = Pick<DbRow<'customers'>, 'id' | 'name'>;
 
@@ -28,6 +30,25 @@ function orderStatusEtikett(status: string) {
     invoiced: 'Fakturerad'
   };
   return map[status] ?? status;
+}
+
+function orderKindLabel(kind: string) {
+  const map: Record<string, string> = {
+    primary: 'Huvudorder',
+    change: 'Ändringsorder',
+    supplement: 'Tilläggsorder'
+  };
+  return map[kind] ?? kind;
+}
+
+function orderKindBadgeClass(kind: string) {
+  const map: Record<string, string> = {
+    primary: 'border-slate-200/80 bg-slate-100/80 text-slate-800 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-200',
+    change: 'border-violet-200/80 bg-violet-100/80 text-violet-900 dark:border-violet-900/70 dark:bg-violet-950/60 dark:text-violet-200',
+    supplement: 'border-cyan-200/80 bg-cyan-100/80 text-cyan-900 dark:border-cyan-900/70 dark:bg-cyan-950/60 dark:text-cyan-200'
+  };
+
+  return map[kind] ?? 'border-slate-200/80 bg-slate-100/80 text-slate-800 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-200';
 }
 
 function orderStatusBadgeClass(status: string) {
@@ -61,6 +82,7 @@ type OrderListItem = {
   projectTitle: string;
   customerName: string;
   status: string;
+  orderKind: string;
   total: number;
   createdAt: string;
 };
@@ -70,13 +92,14 @@ export default function OrdersPage() {
   const router = useRouter();
   const supabase = createClient();
   const [search, setSearch] = useState('');
+  const [orderKindFilter, setOrderKindFilter] = useState<OrderKindFilter>('all');
 
   const ordersQuery = useQuery<OrderRow[]>({
     queryKey: ['orders', companyId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('orders')
-        .select('id,order_no,project_id,status,total,created_at')
+        .select('id,order_no,project_id,status,order_kind,total,created_at')
         .eq('company_id', companyId)
         .order('created_at', { ascending: false })
         .returns<OrderRow[]>();
@@ -130,6 +153,7 @@ export default function OrdersPage() {
         projectTitle: project?.title ?? order.project_id,
         customerName,
         status: order.status,
+        orderKind: order.order_kind,
         total: Number(order.total ?? 0),
         createdAt: order.created_at
       };
@@ -141,12 +165,16 @@ export default function OrdersPage() {
     if (!normalizedSearch) return rows;
 
     return rows.filter((row) => {
+      if (orderKindFilter !== 'all' && row.orderKind !== orderKindFilter) return false;
+
       const searchableText = [
         row.orderNo,
         row.id,
         row.projectTitle,
         row.projectId,
         row.customerName,
+        orderKindLabel(row.orderKind),
+        row.orderKind,
         orderStatusEtikett(row.status),
         row.status,
         new Date(row.createdAt).toLocaleDateString('sv-SE')
@@ -157,7 +185,7 @@ export default function OrdersPage() {
 
       return searchableText.includes(normalizedSearch);
     });
-  }, [rows, search]);
+  }, [orderKindFilter, rows, search]);
 
   const isLoading = ordersQuery.isLoading || projectsQuery.isLoading || customersQuery.isLoading;
 
@@ -193,6 +221,24 @@ export default function OrdersPage() {
               className="pl-10"
             />
           </div>
+          <div className="flex flex-wrap gap-2">
+            {([
+              { value: 'all', label: 'Alla' },
+              { value: 'primary', label: 'Huvudorder' },
+              { value: 'change', label: 'Ändringsordrar' },
+              { value: 'supplement', label: 'Tilläggsordrar' }
+            ] as Array<{ value: OrderKindFilter; label: string }>).map((option) => (
+              <Button
+                key={option.value}
+                type="button"
+                size="sm"
+                variant={orderKindFilter === option.value ? 'default' : 'outline'}
+                onClick={() => setOrderKindFilter(option.value)}
+              >
+                {option.label}
+              </Button>
+            ))}
+          </div>
           <p className="text-sm text-foreground/65">
             Visar {filteredOrders.length} av {rows.length} ordrar
           </p>
@@ -219,6 +265,7 @@ export default function OrdersPage() {
                   </div>
                   <div className="flex shrink-0 flex-col items-end gap-2">
                     <Badge className={orderStatusBadgeClass(row.status)}>{orderStatusEtikett(row.status)}</Badge>
+                    <Badge className={orderKindBadgeClass(row.orderKind)}>{orderKindLabel(row.orderKind)}</Badge>
                     <button
                       type="button"
                       aria-label="Kopiera ordernummer"
@@ -293,7 +340,10 @@ export default function OrdersPage() {
                 <TableCell>{row.projectTitle}</TableCell>
                 <TableCell>{row.customerName}</TableCell>
                 <TableCell>
-                  <Badge className={orderStatusBadgeClass(row.status)}>{orderStatusEtikett(row.status)}</Badge>
+                  <div className="flex flex-wrap gap-2">
+                    <Badge className={orderStatusBadgeClass(row.status)}>{orderStatusEtikett(row.status)}</Badge>
+                    <Badge className={orderKindBadgeClass(row.orderKind)}>{orderKindLabel(row.orderKind)}</Badge>
+                  </div>
                 </TableCell>
                 <TableCell>{row.total.toFixed(2)} kr</TableCell>
                 <TableCell>{new Date(row.createdAt).toLocaleDateString('sv-SE')}</TableCell>

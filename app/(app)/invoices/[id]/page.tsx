@@ -2,9 +2,10 @@
 
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import ActionSheet from '@/components/common/ActionSheet';
 import RoleGate from '@/components/common/RoleGate';
 import { useAppContext } from '@/components/providers/AppContext';
 import { Badge } from '@/components/ui/badge';
@@ -12,7 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { bookInvoiceIssue, createCreditInvoice, markInvoiceCollectionStage, refundInvoicePayment, registerInvoicePayment, reverseInvoicePayment, sendInvoice, updateInvoiceDeliveryStatus } from '@/lib/rpc';
+import { bookInvoiceIssue, createCreditInvoice, createCreditInvoiceFromLines, markInvoiceCollectionStage, refundInvoicePayment, registerInvoicePayment, reverseInvoicePayment, sendInvoice, updateInvoiceDeliveryStatus } from '@/lib/rpc';
 import { enqueueAction, getQueueCounts } from '@/features/offline/syncQueue';
 import { useOfflineStore } from '@/features/offline/offlineStore';
 import { useOnlineStatus } from '@/lib/ui/useOnlineStatus';
@@ -44,6 +45,7 @@ type InvoiceDetailRow = {
   rpc_result: Json;
   created_at: string;
   project_id: string;
+  order_id: string | null;
   collection_stage: string;
   collection_note: string | null;
   reminder_1_sent_at: string | null;
@@ -81,6 +83,7 @@ type InvoiceVersionRow = {
 };
 
 type InvoiceSourceRow = {
+  allocated_total?: number | null;
   company_id: string;
   invoice_id: string;
   order_id: string;
@@ -90,6 +93,31 @@ type InvoiceSourceRow = {
   project_title: string;
   source_position: number;
 };
+
+type InvoiceSourceLineRow = {
+  order_id: string;
+  order_line_id: string;
+  allocated_total: number;
+};
+
+type OrderLineLookupRow = {
+  id: string;
+  title: string;
+  order_id: string;
+};
+
+type OrderLookupRow = {
+  id: string;
+  order_no: string | null;
+};
+
+type RelatedCreditInvoiceRow = {
+  id: string;
+  invoice_no: string;
+  status: string;
+  lines_snapshot: Json;
+};
+
 type SnapshotRecord = Record<string, string | number | null | undefined>;
 
 type InvoiceLine = {
@@ -99,6 +127,8 @@ type InvoiceLine = {
   unit_price: number;
   vat_rate: number;
   total: number;
+  order_id: string | null;
+  project_id: string | null;
 };
 
 function formatMoney(value: number, currency: string) {
@@ -117,6 +147,23 @@ function fakturaStatusEtikett(status: string) {
 
 function fakturaTypEtikett(kind: string) {
   return kind === 'credit_note' ? 'Kreditfaktura' : 'Faktura';
+}
+
+function orderKindLabel(kind?: string | null) {
+  if (kind === 'change') return 'Ändringsorder';
+  if (kind === 'supplement') return 'Tilläggsorder';
+  if (kind === 'primary') return 'Huvudorder';
+  return 'Order';
+}
+
+function orderKindBadgeClass(kind?: string | null) {
+  if (kind === 'change') {
+    return 'border-violet-200/80 bg-violet-100/80 text-violet-900 hover:bg-violet-100/80 dark:border-violet-900/70 dark:bg-violet-950/60 dark:text-violet-200';
+  }
+  if (kind === 'supplement') {
+    return 'border-cyan-200/80 bg-cyan-100/80 text-cyan-900 hover:bg-cyan-100/80 dark:border-cyan-900/70 dark:bg-cyan-950/60 dark:text-cyan-200';
+  }
+  return 'border-slate-200/80 bg-slate-100/80 text-slate-800 hover:bg-slate-100/80 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-200';
 }
 
 function asRecord(value: Json): SnapshotRecord {
@@ -140,10 +187,24 @@ function parseInvoiceLines(value: Json): InvoiceLine[] {
         qty: Number(item.qty ?? 0),
         unit_price: Number(item.unit_price ?? 0),
         vat_rate: Number(item.vat_rate ?? 0),
-        total: Number(item.total ?? 0)
+        total: Number(item.total ?? 0),
+        order_id: typeof item.order_id === 'string' ? item.order_id : null,
+        project_id: typeof item.project_id === 'string' ? item.project_id : null
       };
     })
     .filter((item): item is InvoiceLine => item !== null);
+}
+
+function parseInvoiceRpcMeta(value: Json) {
+  const rec = asRecord(value);
+  return {
+    isPartial: String(rec.partial ?? '') === 'true',
+    isLineSelection: rec.selection_mode === 'lines'
+  };
+}
+
+function isUuidLike(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
 function rpcBookingVerificationId(value: Json): string | null {
@@ -195,6 +256,9 @@ export default function InvoiceDetailsPage() {
   const [sendRecipient, setSendRecipient] = useState('');
   const [sendSubject, setSendSubject] = useState('');
   const [sendMessage, setSendMessage] = useState('');
+  const [creditLinesSheetOpen, setCreditLinesSheetOpen] = useState(false);
+  const [selectedCreditLineIds, setSelectedCreditLineIds] = useState<string[]>([]);
+  const [creditReason, setCreditReason] = useState('');
 
   const query = useQuery<InvoiceDetailRow | null>({
     queryKey: ['invoice', companyId, id],
@@ -202,7 +266,7 @@ export default function InvoiceDetailsPage() {
       const { data, error } = await supabase
         .from('invoices')
         .select(
-          'id,invoice_no,status,kind,credit_for_invoice_id,credited_at,currency,issue_date,supply_date,due_date,payment_terms_text,seller_vat_no,buyer_reference,subtotal,vat_total,total,company_snapshot,customer_snapshot,lines_snapshot,rpc_result,created_at,project_id,collection_stage,collection_note,reminder_1_sent_at,reminder_2_sent_at,inkasso_sent_at,attachment_path'
+          'id,invoice_no,status,kind,credit_for_invoice_id,credited_at,currency,issue_date,supply_date,due_date,payment_terms_text,seller_vat_no,buyer_reference,subtotal,vat_total,total,company_snapshot,customer_snapshot,lines_snapshot,rpc_result,created_at,project_id,order_id,collection_stage,collection_note,reminder_1_sent_at,reminder_2_sent_at,inkasso_sent_at,attachment_path'
         )
         .eq('company_id', companyId)
         .eq('id', id)
@@ -279,6 +343,38 @@ export default function InvoiceDetailsPage() {
     },
     enabled: role !== 'member'
   });
+
+  const sourceLineLinksQuery = useQuery<InvoiceSourceLineRow[]>({
+    queryKey: ['invoice-source-line-links', companyId, id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('invoice_source_lines')
+        .select('order_id,order_line_id,allocated_total')
+        .eq('company_id', companyId)
+        .eq('invoice_id', id)
+        .returns<InvoiceSourceLineRow[]>();
+
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: role !== 'member'
+  });
+  const relatedCreditsQuery = useQuery<RelatedCreditInvoiceRow[]>({
+    queryKey: ['related-credit-invoices', companyId, id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('invoices')
+        .select('id,invoice_no,status,lines_snapshot')
+        .eq('company_id', companyId)
+        .eq('credit_for_invoice_id', id)
+        .eq('kind', 'credit_note')
+        .returns<RelatedCreditInvoiceRow[]>();
+
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: role !== 'member'
+  });
   const creditMutation = useMutation({
     mutationFn: async () => {
       if (!query.data) throw new Error('Ingen faktura vald');
@@ -295,6 +391,29 @@ export default function InvoiceDetailsPage() {
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : 'Kunde inte skapa kreditfaktura');
+    }
+  });
+  const creditLinesMutation = useMutation({
+    mutationFn: async () => {
+      if (!query.data) throw new Error('Ingen faktura vald');
+      if (selectedCreditLineIds.length === 0) throw new Error('Välj minst en fakturarad');
+      return createCreditInvoiceFromLines(query.data.id, selectedCreditLineIds, creditReason.trim() || undefined);
+    },
+    onSuccess: async (result) => {
+      setCreditLinesSheetOpen(false);
+      setSelectedCreditLineIds([]);
+      setCreditReason('');
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['invoice', companyId, id] }),
+        queryClient.invalidateQueries({ queryKey: ['invoices', companyId] }),
+        queryClient.invalidateQueries({ queryKey: ['related-credit-invoices', companyId, id] })
+      ]);
+
+      const invoiceNo = (result as { invoice_no?: string } | null)?.invoice_no;
+      toast.success(invoiceNo ? `Kreditfaktura skapad: ${invoiceNo}` : 'Kreditfaktura skapad');
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : 'Kunde inte skapa radkredit');
     }
   });
 
@@ -575,6 +694,23 @@ export default function InvoiceDetailsPage() {
 
   const invoice = query.data;
   const invoiceSources = sourcesQuery.data ?? [];
+  const orderTypeQuery = useQuery({
+    queryKey: ['invoice-order-type', companyId, invoice?.order_id ?? sourcesQuery.data?.[0]?.order_id ?? 'none'],
+    queryFn: async () => {
+      const sourceOrderId = invoice?.order_id ?? (sourcesQuery.data?.length === 1 ? sourcesQuery.data[0]?.order_id : null);
+      if (!sourceOrderId) return null;
+      const { data, error } = await supabase
+        .from('orders')
+        .select('id,order_kind,order_no')
+        .eq('company_id', companyId)
+        .eq('id', sourceOrderId)
+        .maybeSingle();
+
+      if (error) throw error;
+      return data;
+    },
+    enabled: Boolean(invoice?.order_id || (sourcesQuery.data?.length === 1 && sourcesQuery.data?.[0]?.order_id)) && role !== 'member'
+  });
   const invoiceSourcesByProject = Array.from(
     invoiceSources.reduce((map, source) => {
       const current = map.get(source.project_id) ?? {
@@ -591,7 +727,139 @@ export default function InvoiceDetailsPage() {
   const company = asRecord((invoice?.company_snapshot ?? {}) as Json);
   const customer = asRecord((invoice?.customer_snapshot ?? {}) as Json);
   const lines = parseInvoiceLines((invoice?.lines_snapshot ?? []) as Json);
+  const invoiceRpcMeta = parseInvoiceRpcMeta((invoice?.rpc_result ?? {}) as Json);
   const bookingVerificationId = rpcBookingVerificationId((invoice?.rpc_result ?? {}) as Json);
+  const invoiceCurrency = invoice?.currency ?? 'SEK';
+  const invoiceOrderIds = useMemo(
+    () => Array.from(new Set(lines.map((line) => line.order_id).filter((value): value is string => Boolean(value)))),
+    [lines]
+  );
+  const invoiceLineIds = useMemo(
+    () => lines.map((line) => line.id).filter((value) => isUuidLike(value)),
+    [lines]
+  );
+
+  const orderLinesLookupQuery = useQuery<OrderLineLookupRow[]>({
+    queryKey: ['invoice-order-lines-lookup', companyId, id, invoiceLineIds.join(',')],
+    queryFn: async () => {
+      if (invoiceLineIds.length === 0) return [];
+
+      const { data, error } = await supabase
+        .from('order_lines')
+        .select('id,title,order_id')
+        .eq('company_id', companyId)
+        .in('id', invoiceLineIds)
+        .returns<OrderLineLookupRow[]>();
+
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: role !== 'member' && invoiceLineIds.length > 0
+  });
+
+  const ordersLookupQuery = useQuery<OrderLookupRow[]>({
+    queryKey: ['invoice-orders-lookup', companyId, id, invoiceOrderIds.join(',')],
+    queryFn: async () => {
+      if (invoiceOrderIds.length === 0) return [];
+
+      const { data, error } = await supabase
+        .from('orders')
+        .select('id,order_no')
+        .eq('company_id', companyId)
+        .in('id', invoiceOrderIds)
+        .returns<OrderLookupRow[]>();
+
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: role !== 'member' && invoiceOrderIds.length > 0
+  });
+
+  const orderLineLookupById = useMemo(
+    () => new Map((orderLinesLookupQuery.data ?? []).map((row) => [row.id, row])),
+    [orderLinesLookupQuery.data]
+  );
+  const orderLookupById = useMemo(
+    () => new Map((ordersLookupQuery.data ?? []).map((row) => [row.id, row])),
+    [ordersLookupQuery.data]
+  );
+  const sourceLineLinksByOrderLineId = useMemo(() => {
+    const map = new Map<string, InvoiceSourceLineRow[]>();
+    for (const row of sourceLineLinksQuery.data ?? []) {
+      const current = map.get(row.order_line_id) ?? [];
+      current.push(row);
+      map.set(row.order_line_id, current);
+    }
+    return map;
+  }, [sourceLineLinksQuery.data]);
+
+  const lineTraceRows = useMemo(
+    () =>
+      lines.map((line) => {
+        const exactLinks = isUuidLike(line.id) ? sourceLineLinksByOrderLineId.get(line.id) ?? [] : [];
+        const primaryLink = exactLinks[0] ?? null;
+        const resolvedOrderId = primaryLink?.order_id ?? line.order_id ?? null;
+        const orderMeta = resolvedOrderId ? orderLookupById.get(resolvedOrderId) : null;
+        const orderLineMeta = isUuidLike(line.id) ? orderLineLookupById.get(line.id) ?? null : null;
+
+        return {
+          line,
+          exactLinks,
+          resolvedOrderId,
+          orderNo: orderMeta?.order_no ?? null,
+          orderLineTitle: orderLineMeta?.title ?? line.title,
+          isExactOrderLine: isUuidLike(line.id),
+          allocatedGrossTotal: exactLinks.reduce((sum, row) => sum + Number(row.allocated_total ?? 0), 0)
+        };
+      }),
+    [lines, orderLineLookupById, orderLookupById, sourceLineLinksByOrderLineId]
+  );
+  const creditedLineIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const creditInvoice of relatedCreditsQuery.data ?? []) {
+      for (const line of parseInvoiceLines((creditInvoice.lines_snapshot ?? []) as Json)) {
+        ids.add(line.id);
+      }
+    }
+    return ids;
+  }, [relatedCreditsQuery.data]);
+  const selectableCreditLines = useMemo(
+    () =>
+      lineTraceRows.map((trace) => ({
+        ...trace,
+        isAlreadyCredited: creditedLineIds.has(trace.line.id)
+      })),
+    [creditedLineIds, lineTraceRows]
+  );
+  const creditedInvoicesByLineId = useMemo(() => {
+    const map = new Map<string, Array<{ invoiceId: string; invoiceNo: string; status: string }>>();
+    for (const creditInvoice of relatedCreditsQuery.data ?? []) {
+      for (const line of parseInvoiceLines((creditInvoice.lines_snapshot ?? []) as Json)) {
+        const current = map.get(line.id) ?? [];
+        current.push({
+          invoiceId: creditInvoice.id,
+          invoiceNo: creditInvoice.invoice_no,
+          status: creditInvoice.status
+        });
+        map.set(line.id, current);
+      }
+    }
+    return map;
+  }, [relatedCreditsQuery.data]);
+  const availableCreditLines = useMemo(
+    () => selectableCreditLines.filter((line) => !line.isAlreadyCredited),
+    [selectableCreditLines]
+  );
+  const selectedCreditTotal = useMemo(
+    () =>
+      selectableCreditLines.reduce((sum, item) => {
+        if (!selectedCreditLineIds.includes(item.line.id)) return sum;
+        const gross = Number(item.line.total) * (1 + Number(item.line.vat_rate) / 100);
+        return sum + gross;
+      }, 0),
+    [selectableCreditLines, selectedCreditLineIds]
+  );
+
   useEffect(() => {
     if (!invoice) return;
 
@@ -623,9 +891,14 @@ export default function InvoiceDetailsPage() {
             <Button asChild>
               <Link href={`/projects/${invoice.project_id}`}>Öppna projekt</Link>
             </Button>
-            {invoice.kind !== 'credit_note' && !invoice.credited_at && role !== 'auditor' ? (
+            {invoice.kind !== 'credit_note' && !invoice.credited_at && role !== 'auditor' && (relatedCreditsQuery.data?.length ?? 0) === 0 ? (
               <Button onClick={() => creditMutation.mutate()} disabled={creditMutation.isPending}>
                 {creditMutation.isPending ? 'Skapar...' : 'Skapa kreditfaktura'}
+              </Button>
+            ) : null}
+            {invoice.kind !== 'credit_note' && role !== 'auditor' && availableCreditLines.length > 0 ? (
+              <Button variant="outline" onClick={() => setCreditLinesSheetOpen(true)}>
+                Kreditera valda rader
               </Button>
             ) : null}
             {!bookingVerificationId && role !== 'auditor' ? (
@@ -643,6 +916,14 @@ export default function InvoiceDetailsPage() {
               <div className="flex flex-wrap items-center gap-2">
                 <Badge>{fakturaTypEtikett(invoice.kind)}</Badge>
                 <Badge>{fakturaStatusEtikett(invoice.status)}</Badge>
+                {invoiceRpcMeta.isPartial ? <Badge>Delfaktura</Badge> : null}
+                {invoiceRpcMeta.isLineSelection ? <Badge>Radval</Badge> : null}
+                {orderTypeQuery.data?.order_kind ? (
+                  <Badge className={orderKindBadgeClass(orderTypeQuery.data.order_kind)}>
+                    {orderKindLabel(orderTypeQuery.data.order_kind)}
+                  </Badge>
+                ) : null}
+                {orderTypeQuery.data?.order_no ? <Badge>Order: {orderTypeQuery.data.order_no}</Badge> : null}
                 {invoiceSources.length > 1 ? <Badge>Samlingsfaktura</Badge> : null}
                 <Badge>Inkassosteg: {invoice.collection_stage}</Badge>
                 <Badge>Fakturadatum: {new Date(invoice.issue_date).toLocaleDateString('sv-SE')}</Badge>
@@ -676,6 +957,9 @@ export default function InvoiceDetailsPage() {
                               <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                                 <span>{source.order_no}</span>
                                 <span>{source.order_status}</span>
+                                {typeof source.allocated_total === 'number' ? (
+                                  <span>Allokerat: {formatMoney(Number(source.allocated_total), invoice.currency)}</span>
+                                ) : null}
                               </div>
                               <Button asChild size="sm" variant="outline">
                                 <Link href={`/orders/${source.order_id}`}>Order</Link>
@@ -1023,11 +1307,19 @@ export default function InvoiceDetailsPage() {
             <CardHeader>
               <CardTitle>Fakturarader</CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-3">
+              {invoiceRpcMeta.isPartial || invoiceRpcMeta.isLineSelection ? (
+                <div className="rounded-lg border p-3 text-sm text-foreground/75">
+                  {invoiceRpcMeta.isLineSelection
+                    ? 'Den här fakturan skapades från specifikt valda orderrader.'
+                    : 'Den här fakturan är en delfaktura och omfattar bara en del av orderunderlaget.'}
+                </div>
+              ) : null}
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Titel</TableHead>
+                    <TableHead>Källa</TableHead>
                     <TableHead className="text-right">Antal</TableHead>
                     <TableHead className="text-right">A-pris</TableHead>
                     <TableHead className="text-right">Moms %</TableHead>
@@ -1037,20 +1329,72 @@ export default function InvoiceDetailsPage() {
                 <TableBody>
                   {lines.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={8} className="text-foreground/70">
+                      <TableCell colSpan={6} className="text-foreground/70">
                         Inga fakturarader.
                       </TableCell>
                     </TableRow>
                   ) : (
-                    lines.map((line) => (
+                    lineTraceRows.map(({ line, resolvedOrderId, orderNo, orderLineTitle, isExactOrderLine, allocatedGrossTotal }) => {
+                      const creditedBy = creditedInvoicesByLineId.get(line.id) ?? [];
+                      return (
                       <TableRow key={line.id}>
                         <TableCell>{line.title}</TableCell>
+                        <TableCell>
+                          <div className="space-y-1 text-sm">
+                            <div className="flex flex-wrap gap-2">
+                              {resolvedOrderId ? (
+                                <Link href={`/orders/${resolvedOrderId}`} className="underline underline-offset-2">
+                                  {orderNo ? `Order ${orderNo}` : 'Öppna order'}
+                                </Link>
+                              ) : null}
+                              {isExactOrderLine ? (
+                                <Badge className="border-border/70 bg-muted/40 text-foreground/75 hover:bg-muted/40">Orderrad</Badge>
+                              ) : null}
+                              {invoiceRpcMeta.isLineSelection && isExactOrderLine ? <Badge>Radvald</Badge> : null}
+                              {!isExactOrderLine && invoiceRpcMeta.isPartial ? <Badge>Beloppsrad</Badge> : null}
+                              {invoice.kind === 'credit_note' && invoice.credit_for_invoice_id ? <Badge>Kreditrad</Badge> : null}
+                              {creditedBy.length > 0 ? <Badge>Krediterad</Badge> : null}
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              {invoice.kind === 'credit_note' && invoice.credit_for_invoice_id
+                                ? `Krediterar originalrad: ${orderLineTitle}`
+                                : isExactOrderLine
+                                  ? `Orderrad: ${orderLineTitle}`
+                                  : 'Skapad som beloppsbaserad delrad'}
+                            </p>
+                            {allocatedGrossTotal > 0 ? (
+                              <p className="text-xs text-muted-foreground">Allokerat brutto: {formatMoney(allocatedGrossTotal, invoice.currency)}</p>
+                            ) : null}
+                            {invoice.kind === 'credit_note' && invoice.credit_for_invoice_id ? (
+                              <p className="text-xs text-muted-foreground">
+                                Originalfaktura:{' '}
+                                <Link href={`/invoices/${invoice.credit_for_invoice_id}`} className="underline underline-offset-2">
+                                  Öppna
+                                </Link>
+                              </p>
+                            ) : null}
+                            {creditedBy.length > 0 ? (
+                              <div className="text-xs text-muted-foreground">
+                                {creditedBy.map((credit) => (
+                                  <p key={credit.invoiceId}>
+                                    Krediterad av{' '}
+                                    <Link href={`/invoices/${credit.invoiceId}`} className="underline underline-offset-2">
+                                      {credit.invoiceNo}
+                                    </Link>{' '}
+                                    ({fakturaStatusEtikett(credit.status)})
+                                  </p>
+                                ))}
+                              </div>
+                            ) : null}
+                          </div>
+                        </TableCell>
                         <TableCell className="text-right">{line.qty.toFixed(2)}</TableCell>
                         <TableCell className="text-right">{line.unit_price.toFixed(2)}</TableCell>
                         <TableCell className="text-right">{line.vat_rate.toFixed(2)}</TableCell>
                         <TableCell className="text-right">{line.total.toFixed(2)}</TableCell>
                       </TableRow>
-                    ))
+                    );
+                    })
                   )}
                 </TableBody>
               </Table>
@@ -1067,6 +1411,79 @@ export default function InvoiceDetailsPage() {
           </Card>
         </section>
       )}
+      <ActionSheet
+        open={creditLinesSheetOpen}
+        onClose={() => {
+          setCreditLinesSheetOpen(false);
+          setSelectedCreditLineIds([]);
+          setCreditReason('');
+        }}
+        title="Kreditera fakturarader"
+        description="Välj vilka fakturarader som ska krediteras. Varje rad kan bara krediteras en gång i det här flödet."
+      >
+        <div className="space-y-4">
+          <label className="space-y-1 text-sm">
+            <span>Orsak (valfritt)</span>
+            <Input value={creditReason} onChange={(event) => setCreditReason(event.target.value)} placeholder="Anledning till krediten" />
+          </label>
+          <div className="rounded-lg border">
+            {selectableCreditLines.map(({ line, orderNo, isAlreadyCredited }) => {
+              const checked = selectedCreditLineIds.includes(line.id);
+              const gross = Number(line.total) * (1 + Number(line.vat_rate) / 100);
+              return (
+                <label key={line.id} className="flex items-start gap-3 border-b px-3 py-3 last:border-b-0">
+                  <input
+                    type="checkbox"
+                    className="mt-1"
+                    checked={checked}
+                    disabled={isAlreadyCredited}
+                    onChange={(event) => {
+                      if (event.target.checked) {
+                        setSelectedCreditLineIds((current) => Array.from(new Set([...current, line.id])));
+                      } else {
+                        setSelectedCreditLineIds((current) => current.filter((item) => item !== line.id));
+                      }
+                    }}
+                  />
+                  <div className="min-w-0 flex-1 text-sm">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-medium">{line.title}</span>
+                      {orderNo ? <Badge className="border-border/70 bg-muted/40 text-foreground/75 hover:bg-muted/40">{orderNo}</Badge> : null}
+                      {isAlreadyCredited ? <Badge>Krediterad</Badge> : null}
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Netto {formatMoney(Number(line.total), invoiceCurrency)} • Brutto {formatMoney(gross, invoiceCurrency)} • Moms {line.vat_rate.toFixed(2)}%
+                    </p>
+                  </div>
+                </label>
+              );
+            })}
+          </div>
+          <div className="flex items-center justify-between gap-3 rounded-lg border px-3 py-3 text-sm">
+            <span>Valt kreditbelopp</span>
+            <span className="font-medium">{formatMoney(selectedCreditTotal * -1, invoiceCurrency)}</span>
+          </div>
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setSelectedCreditLineIds(availableCreditLines.map((item) => item.line.id))}
+            >
+              Markera alla tillgängliga
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setSelectedCreditLineIds([])}
+            >
+              Rensa val
+            </Button>
+            <Button onClick={() => creditLinesMutation.mutate()} disabled={creditLinesMutation.isPending || selectedCreditLineIds.length === 0}>
+              {creditLinesMutation.isPending ? 'Skapar...' : 'Skapa radkredit'}
+            </Button>
+          </div>
+        </div>
+      </ActionSheet>
     </RoleGate>
   );
 }

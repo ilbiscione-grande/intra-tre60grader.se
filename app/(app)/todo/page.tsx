@@ -15,7 +15,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { canViewFinance } from '@/lib/auth/capabilities';
-import { getInvoiceReadinessLabel } from '@/lib/finance/invoiceReadiness';
 import { getPrimaryMobileQuickActions, getSecondaryMobileQuickActions } from '@/lib/mobile/quickActions';
 import { createClient } from '@/lib/supabase/client';
 import { useBreakpointMode } from '@/lib/ui/useBreakpointMode';
@@ -94,6 +93,7 @@ type FinancePipelineOrderRow = {
   order_no: string | null;
   total: number;
   status: string | null;
+  order_kind: string | null;
   invoice_readiness_status: string | null;
 };
 
@@ -136,6 +136,12 @@ function formatMoney(value: number, currency = 'SEK') {
 function verificationNumberLabel(fiscalYear: number | null, verificationNo: number | null) {
   if (!fiscalYear || !verificationNo) return 'Verifikation';
   return `${fiscalYear}-${String(verificationNo).padStart(5, '0')}`;
+}
+
+function orderKindLabel(orderKind: string | null) {
+  if (orderKind === 'change') return 'Ändringsorder';
+  if (orderKind === 'supplement') return 'Tilläggsorder';
+  return 'Huvudorder';
 }
 
 export default function TodoPage() {
@@ -242,7 +248,7 @@ export default function TodoPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('orders')
-        .select('id,project_id,order_no,total,status,invoice_readiness_status')
+        .select('id,project_id,order_no,total,status,order_kind,invoice_readiness_status')
         .eq('company_id', companyId)
         .order('created_at', { ascending: false })
         .limit(150)
@@ -250,6 +256,21 @@ export default function TodoPage() {
 
       if (error) throw error;
       return data ?? [];
+    },
+    enabled: canReadFinance
+  });
+
+  const companyPriorityThresholdQuery = useQuery<number>({
+    queryKey: ['todo-company-invoice-priority-threshold', companyId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('companies')
+        .select('invoice_priority_threshold')
+        .eq('id', companyId)
+        .maybeSingle<{ invoice_priority_threshold: number | null }>();
+
+      if (error) throw error;
+      return Number(data?.invoice_priority_threshold ?? 10000);
     },
     enabled: canReadFinance
   });
@@ -616,21 +637,48 @@ export default function TodoPage() {
       .map((order) => {
         const project = financePipelineProjectById.get(order.project_id);
         const customerName = project?.customer_id ? customerNameById.get(project.customer_id) ?? 'Ingen kund' : 'Ingen kund';
-        const nextStep = order.invoice_readiness_status === 'approved_for_invoicing' ? 'Färdig att fakturera' : 'Väntar på fastställelse';
+        const typeLabel = orderKindLabel(order.order_kind);
+        const invoicePriorityThreshold = Number(companyPriorityThresholdQuery.data ?? 10000);
+        const isLargeVariantValue =
+          (order.order_kind === 'change' || order.order_kind === 'supplement') &&
+          Number(order.total ?? 0) >= invoicePriorityThreshold;
+        const nextStep = order.invoice_readiness_status === 'approved_for_invoicing'
+          ? (order.order_kind === 'change'
+              ? 'Skapa ändringsfaktura'
+              : order.order_kind === 'supplement'
+                ? 'Skapa faktura för tillägg'
+                : 'Färdig att fakturera')
+          : (order.order_kind === 'change'
+              ? 'Granska ändringen och fastställ'
+              : order.order_kind === 'supplement'
+                ? 'Granska tillägget och fastställ'
+                : 'Väntar på fastställelse');
 
         return {
           id: `approval-${order.id}`,
-          title: order.order_no ?? 'Order',
-          detail: `${project?.title ?? 'Projekt'} • ${customerName} • ${getInvoiceReadinessLabel(order.invoice_readiness_status)}`,
-          badge: nextStep,
+          title: order.order_no ?? typeLabel,
+          detail: `${typeLabel} • ${project?.title ?? 'Projekt'} • ${customerName}`,
+          badge: isLargeVariantValue ? 'Hög prioritet' : nextStep,
           ownerLabel: order.invoice_readiness_status === 'approved_for_invoicing' ? 'Ekonomi / admin' : 'Ekonomi',
           waitingOnCurrentUser: role === 'admin' || role === 'finance',
           href: `/orders/${order.id}` as Route,
-          tone: order.invoice_readiness_status === 'approved_for_invoicing' ? ('emerald' as const) : ('blue' as const)
+          tone: isLargeVariantValue
+            ? ('amber' as const)
+            : order.invoice_readiness_status === 'approved_for_invoicing'
+              ? ('emerald' as const)
+              : ('blue' as const)
         };
       })
+      .sort((a, b) => {
+        const aHighPriority = a.badge === 'Hög prioritet' ? 1 : 0;
+        const bHighPriority = b.badge === 'Hög prioritet' ? 1 : 0;
+        if (aHighPriority !== bHighPriority) return bHighPriority - aHighPriority;
+        const sourceA = financePipelineOrdersQuery.data?.find((order) => `approval-${order.id}` === a.id);
+        const sourceB = financePipelineOrdersQuery.data?.find((order) => `approval-${order.id}` === b.id);
+        return Number(sourceB?.total ?? 0) - Number(sourceA?.total ?? 0);
+      })
       ;
-  }, [canReadFinance, customerNameById, financePipelineOrdersQuery.data, financePipelineProjectById, role]);
+  }, [canReadFinance, companyPriorityThresholdQuery.data, customerNameById, financePipelineOrdersQuery.data, financePipelineProjectById, role]);
 
   const pipelinePaymentItems = useMemo<PipelineItem[]>(() => {
     if (!canReadFinance) return [];
@@ -736,6 +784,7 @@ export default function TodoPage() {
       }),
     [pipelineFilter, pipelineStages]
   );
+  const invoicePriorityThreshold = Number(companyPriorityThresholdQuery.data ?? 10000);
 
   const urgentCount =
     projectAlerts.length +
@@ -1200,6 +1249,11 @@ export default function TodoPage() {
               <p className="mt-1 text-sm text-foreground/65">
                 En sammanhållen pipeline från arbete till fakturering och betalningsuppföljning.
               </p>
+              {canReadFinance ? (
+                <p className="mt-1 text-xs text-foreground/55">
+                  Hög prioritet för ändrings- och tilläggsordrar markeras från {formatMoney(invoicePriorityThreshold)}.
+                </p>
+              ) : null}
             </div>
             <div className="flex flex-wrap gap-2">
               <Button

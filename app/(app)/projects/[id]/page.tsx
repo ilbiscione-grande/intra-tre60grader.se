@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import type { Route } from 'next';
-import { useParams, useSearchParams } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, ArrowLeft, ArrowUpRight, CalendarDays, CircleDollarSign, FolderKanban, ReceiptText, Users } from 'lucide-react';
 import { toast } from 'sonner';
@@ -23,7 +23,8 @@ import {
 import { Input } from '@/components/ui/input';
 import SimpleSelect from '@/components/ui/simple-select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { createInvoiceFromOrder } from '@/lib/rpc';
+import { createInvoiceFromOrder, createPartialInvoiceFromOrder, createPartialInvoiceFromOrderLines } from '@/lib/rpc';
+import { getOrderInvoiceProgressLabel, resolveOrderInvoiceProgress } from '@/lib/finance/orderInvoiceProgress';
 import {
   buildProjectInvoiceReadinessChecklist,
   buildProjectOrderInvoiceReadinessChecklist,
@@ -62,7 +63,8 @@ type OrderRow = Pick<
   'id' | 'order_no' | 'project_id' | 'status' | 'order_kind' | 'parent_order_id' | 'sort_index' | 'invoice_readiness_status' | 'total' | 'created_at'
 >;
 type OrderLineRow = Pick<DbRow<'order_lines'>, 'id' | 'title' | 'qty' | 'unit_price' | 'vat_rate' | 'total' | 'created_at'>;
-type InvoiceSourceLinkRow = Pick<DbRow<'invoice_sources'>, 'invoice_id' | 'project_id' | 'order_id' | 'position'>;
+type InvoiceSourceLinkRow = Pick<DbRow<'invoice_sources'>, 'invoice_id' | 'project_id' | 'order_id' | 'position' | 'allocated_total'>;
+type InvoiceSourceLineLinkRow = Pick<DbRow<'invoice_source_lines'>, 'invoice_id' | 'order_id' | 'order_line_id' | 'allocated_total'>;
 type InvoiceSourceCountRow = Pick<DbRow<'invoice_sources'>, 'invoice_id'>;
 type ProjectUpdateActivityRow = Pick<DbRow<'project_updates'>, 'id' | 'project_id' | 'created_by' | 'created_at' | 'parent_id'>;
 type ProjectTaskActivityRow = Pick<DbRow<'project_tasks'>, 'id' | 'project_id' | 'title' | 'created_by' | 'assignee_user_id' | 'created_at' | 'updated_at'>;
@@ -71,7 +73,7 @@ type ProjectFileActivityRow = Pick<DbRow<'project_files'>, 'id' | 'project_id' |
 type ProjectMemberAssignmentRow = Pick<DbRow<'project_members'>, 'id' | 'company_id' | 'project_id' | 'user_id' | 'created_by' | 'created_at'>;
 type InvoiceRow = Pick<
   DbRow<'invoices'>,
-  'id' | 'invoice_no' | 'status' | 'currency' | 'issue_date' | 'due_date' | 'subtotal' | 'vat_total' | 'total' | 'created_at' | 'attachment_path' | 'order_id' | 'project_id'
+  'id' | 'invoice_no' | 'status' | 'currency' | 'issue_date' | 'due_date' | 'subtotal' | 'vat_total' | 'total' | 'created_at' | 'attachment_path' | 'order_id' | 'project_id' | 'kind'
 >;
 type ActivityItem = {
   actorUserId?: string | null;
@@ -92,6 +94,11 @@ type ProjectMemberOperation = {
   action: 'add' | 'remove';
   userId: string;
 };
+type SecondaryOrderKind = 'change' | 'supplement';
+type OrderStructureFilter = 'all' | 'primary' | 'change' | 'supplement';
+type PartialInvoiceMode = 'quarter' | 'half' | 'remaining' | 'custom';
+type PartialInvoiceMethod = 'amount' | 'lines';
+type OrderLineFilter = 'all' | 'not_invoiced' | 'partially_invoiced' | 'fully_invoiced';
 
 const orderStatuses = ['draft', 'sent', 'paid', 'cancelled', 'invoiced'] as const;
 type OrderStatus = (typeof orderStatuses)[number];
@@ -133,6 +140,11 @@ function getMobileProjectTab(activeTab: ProjectTab): MobileProjectTab {
 function toNumber(value: string, fallback = 0) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function percentShare(value: number, total: number) {
+  if (total <= 0) return 0;
+  return Math.max(0, Math.min(100, Math.round((value / total) * 100)));
 }
 
 function computeLineTotal(qty: number, unitPrice: number) {
@@ -180,6 +192,18 @@ function orderKindLabel(kind: string) {
   return map[kind] ?? kind;
 }
 
+function orderKindPurposeText(kind: string) {
+  if (kind === 'change') return 'Används när tidigare beställning ändras, justeras eller omförhandlas.';
+  if (kind === 'supplement') return 'Används när ny omfattning eller extra arbete läggs till utöver huvudordern.';
+  return 'Bär projektets huvudsakliga beställning och är standardflödet för ekonomi och fakturering.';
+}
+
+function orderKindSuggestedLineTitle(kind: string) {
+  if (kind === 'change') return 'Ändringsarbete enligt överenskommelse';
+  if (kind === 'supplement') return 'Tilläggsarbete enligt överenskommelse';
+  return 'Arbete enligt huvudorder';
+}
+
 function fakturaStatusEtikett(status: string) {
   const map: Record<string, string> = {
     issued: 'Utfärdad',
@@ -202,6 +226,13 @@ function roleLabel(role: Role) {
     auditor: 'Revisor'
   };
   return map[role];
+}
+
+function getOrderLineInvoiceStatusLabel(invoicedTotal: number, grossTotal: number) {
+  if (grossTotal <= 0) return 'Ej fakturerad';
+  if (invoicedTotal <= 0) return 'Ej fakturerad';
+  if (invoicedTotal + 0.01 >= grossTotal) return 'Slutfakturerad';
+  return 'Delfakturerad';
 }
 
 function projectColumnTitle(status: string, columns: Array<{ key: string; title: string }>) {
@@ -335,6 +366,7 @@ function ProjectSummaryCard({
 
 export default function ProjectDetailsPage() {
   const params = useParams<{ id: string }>();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const projectId = params.id;
   const { companyId, role } = useAppContext();
@@ -350,6 +382,16 @@ export default function ProjectDetailsPage() {
   const [draftEndDate, setDraftEndDate] = useState('');
   const [draftMilestones, setDraftMilestones] = useState<ProjectMilestone[]>([]);
   const [draftInvoiceReadinessStatus, setDraftInvoiceReadinessStatus] = useState<InvoiceReadinessStatus>('not_ready');
+  const [selectedEconomyOrderId, setSelectedEconomyOrderId] = useState<string | null>(null);
+  const [orderStructureFilter, setOrderStructureFilter] = useState<OrderStructureFilter>('all');
+  const [createSecondaryOrderDialogOpen, setCreateSecondaryOrderDialogOpen] = useState(false);
+  const [secondaryOrderKindDraft, setSecondaryOrderKindDraft] = useState<SecondaryOrderKind>('supplement');
+  const [partialInvoiceDialogOpen, setPartialInvoiceDialogOpen] = useState(false);
+  const [partialInvoiceMethod, setPartialInvoiceMethod] = useState<PartialInvoiceMethod>('amount');
+  const [partialInvoiceMode, setPartialInvoiceMode] = useState<PartialInvoiceMode>('remaining');
+  const [partialInvoiceAmount, setPartialInvoiceAmount] = useState('');
+  const [selectedPartialLineIds, setSelectedPartialLineIds] = useState<string[]>([]);
+  const [orderLineFilter, setOrderLineFilter] = useState<OrderLineFilter>('all');
 
   const [lineTitle, setLineTitle] = useState('');
   const [lineQty, setLineQty] = useState('1');
@@ -497,15 +539,15 @@ export default function ProjectDetailsPage() {
   });
 
   const linesQuery = useQuery<OrderLineRow[]>({
-    queryKey: ['project-order-lines', companyId, projectId, orderId ?? 'none'],
-    enabled: Boolean(orderId),
+    queryKey: ['project-order-lines', companyId, projectId, selectedEconomyOrderId ?? 'none'],
+    enabled: Boolean(selectedEconomyOrderId),
     queryFn: async () => {
-      if (!orderId) return [];
+      if (!selectedEconomyOrderId) return [];
       const { data, error } = await supabase
         .from('order_lines')
         .select('id,title,qty,unit_price,vat_rate,total,created_at')
         .eq('company_id', companyId)
-        .eq('order_id', orderId)
+        .eq('order_id', selectedEconomyOrderId)
         .order('created_at', { ascending: true })
         .returns<OrderLineRow[]>();
 
@@ -519,12 +561,28 @@ export default function ProjectDetailsPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('invoice_sources')
-        .select('invoice_id,project_id,order_id,position')
+        .select('invoice_id,project_id,order_id,position,allocated_total')
         .eq('company_id', companyId)
         .eq('project_id', projectId)
         .order('position', { ascending: true })
         .returns<InvoiceSourceLinkRow[]>();
 
+      if (error) throw error;
+      return data ?? [];
+    }
+  });
+
+  const invoiceSourceLineLinksQuery = useQuery<InvoiceSourceLineLinkRow[]>({
+    queryKey: ['project-invoice-source-line-links', companyId, selectedEconomyOrderId ?? 'none'],
+    enabled: Boolean(selectedEconomyOrderId),
+    queryFn: async () => {
+      if (!selectedEconomyOrderId) return [];
+      const { data, error } = await supabase
+        .from('invoice_source_lines')
+        .select('invoice_id,order_id,order_line_id,allocated_total')
+        .eq('company_id', companyId)
+        .eq('order_id', selectedEconomyOrderId)
+        .returns<InvoiceSourceLineLinkRow[]>();
       if (error) throw error;
       return data ?? [];
     }
@@ -536,7 +594,7 @@ export default function ProjectDetailsPage() {
       const invoiceIds = (invoiceSourceLinksQuery.data ?? []).map((row) => row.invoice_id);
       let query = supabase
         .from('invoices')
-        .select('id,invoice_no,status,currency,issue_date,due_date,subtotal,vat_total,total,created_at,attachment_path,order_id,project_id')
+        .select('id,invoice_no,status,currency,issue_date,due_date,subtotal,vat_total,total,created_at,attachment_path,order_id,project_id,kind')
         .eq('company_id', companyId)
         .order('created_at', { ascending: false })
         .limit(25);
@@ -719,6 +777,19 @@ export default function ProjectDetailsPage() {
     }
   }, [draftStatus, statusColumns]);
 
+  useEffect(() => {
+    if ((projectOrdersQuery.data?.length ?? 0) === 0) {
+      setSelectedEconomyOrderId(null);
+      return;
+    }
+
+    if (selectedEconomyOrderId && projectOrdersQuery.data?.some((item) => item.id === selectedEconomyOrderId)) {
+      return;
+    }
+
+    setSelectedEconomyOrderId(orderQuery.data?.id ?? projectOrdersQuery.data?.[0]?.id ?? null);
+  }, [orderQuery.data?.id, projectOrdersQuery.data, selectedEconomyOrderId]);
+
   async function ensureOrderId() {
     if (orderQuery.data?.id) return orderQuery.data.id;
 
@@ -835,7 +906,7 @@ export default function ProjectDetailsPage() {
 
   const updateOrderStatusMutation = useMutation({
     mutationFn: async (status: OrderStatus) => {
-      const nextOrderId = await ensureOrderId();
+      const nextOrderId = selectedOrderId ?? (await ensureOrderId());
       const { error } = await supabase
         .from('orders')
         .update({ status })
@@ -857,7 +928,7 @@ export default function ProjectDetailsPage() {
 
   const updateOrderInvoiceReadinessMutation = useMutation({
     mutationFn: async (status: InvoiceReadinessStatus) => {
-      const nextOrderId = await ensureOrderId();
+      const nextOrderId = selectedOrderId ?? (await ensureOrderId());
       const { error } = await supabase
         .from('orders')
         .update({ invoice_readiness_status: status })
@@ -879,13 +950,55 @@ export default function ProjectDetailsPage() {
 
   const createOrderMutation = useMutation({
     mutationFn: async () => ensureOrderId(),
-    onSuccess: async () => {
+    onSuccess: async (createdOrderId) => {
+      setSelectedEconomyOrderId(createdOrderId);
       await queryClient.invalidateQueries({ queryKey: ['project-order', companyId, projectId] });
       await queryClient.invalidateQueries({ queryKey: ['project-orders', companyId, projectId] });
+      await queryClient.invalidateQueries({ queryKey: ['orders', companyId] });
       toast.success('Order skapad');
     },
     onError: (error) => {
       toast.error(getErrorMessage(error, 'Kunde inte skapa order'));
+    }
+  });
+
+  const createSupplementOrderMutation = useMutation({
+    mutationFn: async (kind: SecondaryOrderKind) => {
+      if (!primaryOrder?.id) throw new Error('Skapa huvudorder först');
+
+      const nextSortIndex =
+        projectOrders.reduce((maxValue, item) => Math.max(maxValue, Number(item.sort_index ?? 0)), 0) + 1;
+
+      const { data, error } = await supabase
+        .from('orders')
+        .insert({
+          company_id: companyId,
+          project_id: projectId,
+          status: 'draft',
+          total: 0,
+          order_kind: kind,
+          parent_order_id: primaryOrder.id,
+          sort_index: nextSortIndex
+        })
+        .select('id,order_no,project_id,status,order_kind,parent_order_id,sort_index,invoice_readiness_status,total,created_at')
+        .single<OrderRow>();
+
+      if (error) throw error;
+      if (!data?.id) throw new Error(`Kunde inte skapa ${orderKindLabel(kind).toLowerCase()}`);
+      return data;
+    },
+    onSuccess: async (createdOrder) => {
+      await queryClient.invalidateQueries({ queryKey: ['project-order', companyId, projectId] });
+      await queryClient.invalidateQueries({ queryKey: ['project-orders', companyId, projectId] });
+      await queryClient.invalidateQueries({ queryKey: ['orders', companyId] });
+      addLocalActivity(`${orderKindLabel(createdOrder.order_kind)} skapad (${createdOrder.order_no ?? createdOrder.id})`);
+      setCreateSecondaryOrderDialogOpen(false);
+      setSecondaryOrderKindDraft('supplement');
+      toast.success(`${orderKindLabel(createdOrder.order_kind)} skapad`);
+      router.push(`/orders/${createdOrder.id}`);
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error, 'Kunde inte skapa underordnad order'));
     }
   });
 
@@ -898,7 +1011,7 @@ export default function ProjectDetailsPage() {
       const unitPrice = Math.max(0, toNumber(lineUnitPrice, 0));
       const vatRate = Math.max(0, toNumber(lineVatRate, 0));
       const total = computeLineTotal(qty, unitPrice);
-      const nextOrderId = await ensureOrderId();
+      const nextOrderId = selectedOrderId ?? (await ensureOrderId());
 
       const { error } = await supabase.from('order_lines').insert({
         company_id: companyId,
@@ -920,6 +1033,7 @@ export default function ProjectDetailsPage() {
       setLineUnitPrice('0');
       setLineVatRate('25');
       await queryClient.invalidateQueries({ queryKey: ['project-order', companyId, projectId] });
+      await queryClient.invalidateQueries({ queryKey: ['project-orders', companyId, projectId] });
       await queryClient.invalidateQueries({ queryKey: ['project-order-lines', companyId, projectId] });
       addLocalActivity(`Orderrad tillagd: ${result.title} (${result.total.toFixed(2)} kr)`);
       toast.success('Orderrad tillagd');
@@ -943,11 +1057,12 @@ export default function ProjectDetailsPage() {
         .eq('id', line.id);
       if (error) throw error;
 
-      if (orderId) await recalcOrderTotal(orderId);
+      if (selectedOrderId) await recalcOrderTotal(selectedOrderId);
       return { title: line.title, total };
     },
     onSuccess: async (result) => {
       await queryClient.invalidateQueries({ queryKey: ['project-order', companyId, projectId] });
+      await queryClient.invalidateQueries({ queryKey: ['project-orders', companyId, projectId] });
       await queryClient.invalidateQueries({ queryKey: ['project-order-lines', companyId, projectId] });
       addLocalActivity(`Orderrad uppdaterad: ${result.title} (${result.total.toFixed(2)} kr)`);
       toast.success('Orderrad uppdaterad');
@@ -966,11 +1081,12 @@ export default function ProjectDetailsPage() {
         .eq('id', line.id);
       if (error) throw error;
 
-      if (orderId) await recalcOrderTotal(orderId);
+      if (selectedOrderId) await recalcOrderTotal(selectedOrderId);
       return line;
     },
     onSuccess: async (line) => {
       await queryClient.invalidateQueries({ queryKey: ['project-order', companyId, projectId] });
+      await queryClient.invalidateQueries({ queryKey: ['project-orders', companyId, projectId] });
       await queryClient.invalidateQueries({ queryKey: ['project-order-lines', companyId, projectId] });
       addLocalActivity(`Orderrad borttagen: ${line.title}`);
       toast.success('Orderrad borttagen');
@@ -982,8 +1098,8 @@ export default function ProjectDetailsPage() {
 
   const invoiceMutation = useMutation({
     mutationFn: async () => {
-      if (!orderId) throw new Error('Order saknas');
-      return createInvoiceFromOrder(orderId);
+      if (!selectedOrderId) throw new Error('Order saknas');
+      return createInvoiceFromOrder(selectedOrderId);
     },
     onSuccess: async (result) => {
       const payload = (result ?? null) as Json | null;
@@ -992,10 +1108,63 @@ export default function ProjectDetailsPage() {
       addLocalActivity(summary);
       toast.success(summary);
       await queryClient.invalidateQueries({ queryKey: ['project-order', companyId, projectId] });
+      await queryClient.invalidateQueries({ queryKey: ['project-orders', companyId, projectId] });
+      await queryClient.invalidateQueries({ queryKey: ['project-invoice-source-line-links', companyId, selectedEconomyOrderId ?? 'none'] });
       await queryClient.invalidateQueries({ queryKey: ['invoices', companyId, projectId] });
     },
     onError: (error) => {
       toast.error(getErrorMessage(error, 'Kunde inte skapa faktura'));
+    }
+  });
+  const partialInvoiceMutation = useMutation({
+    mutationFn: async (invoiceTotal: number) => {
+      if (!selectedOrderId) throw new Error('Order saknas');
+      return createPartialInvoiceFromOrder(selectedOrderId, invoiceTotal);
+    },
+    onSuccess: async (result) => {
+      const payload = (result ?? null) as Json | null;
+      const summary = extractInvoiceSummary(result);
+      setLatestInvoiceResult(payload);
+      addLocalActivity(summary);
+      toast.success(summary);
+      setPartialInvoiceDialogOpen(false);
+      setPartialInvoiceAmount('');
+      await queryClient.invalidateQueries({ queryKey: ['project-order', companyId, projectId] });
+      await queryClient.invalidateQueries({ queryKey: ['project-orders', companyId, projectId] });
+      await queryClient.invalidateQueries({ queryKey: ['project-order-lines', companyId, projectId] });
+      await queryClient.invalidateQueries({ queryKey: ['project-invoice-source-links', companyId, projectId] });
+      await queryClient.invalidateQueries({ queryKey: ['project-invoice-source-line-links', companyId, selectedEconomyOrderId ?? 'none'] });
+      await queryClient.invalidateQueries({ queryKey: ['invoices', companyId, projectId] });
+      await queryClient.invalidateQueries({ queryKey: ['invoices', companyId] });
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error, 'Kunde inte skapa delfaktura'));
+    }
+  });
+  const partialInvoiceLinesMutation = useMutation({
+    mutationFn: async (orderLineIds: string[]) => {
+      if (!selectedOrderId) throw new Error('Order saknas');
+      return createPartialInvoiceFromOrderLines(selectedOrderId, orderLineIds);
+    },
+    onSuccess: async (result) => {
+      const payload = (result ?? null) as Json | null;
+      const summary = extractInvoiceSummary(result);
+      setLatestInvoiceResult(payload);
+      addLocalActivity(summary);
+      toast.success(summary);
+      setPartialInvoiceDialogOpen(false);
+      setSelectedPartialLineIds([]);
+      setPartialInvoiceAmount('');
+      await queryClient.invalidateQueries({ queryKey: ['project-order', companyId, projectId] });
+      await queryClient.invalidateQueries({ queryKey: ['project-orders', companyId, projectId] });
+      await queryClient.invalidateQueries({ queryKey: ['project-order-lines', companyId, projectId] });
+      await queryClient.invalidateQueries({ queryKey: ['project-invoice-source-links', companyId, projectId] });
+      await queryClient.invalidateQueries({ queryKey: ['project-invoice-source-line-links', companyId, selectedOrderId] });
+      await queryClient.invalidateQueries({ queryKey: ['invoices', companyId, projectId] });
+      await queryClient.invalidateQueries({ queryKey: ['invoices', companyId] });
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error, 'Kunde inte skapa delfaktura från orderrader'));
     }
   });
 
@@ -1400,24 +1569,224 @@ export default function ProjectDetailsPage() {
   if (!projectQuery.data) return <p>Projekt saknas.</p>;
 
   const project = projectQuery.data;
+  const projectOrders = projectOrdersQuery.data ?? [];
+  const primaryOrder = orderQuery.data ?? null;
+  const selectedOrder = projectOrders.find((item) => item.id === selectedEconomyOrderId) ?? primaryOrder;
+  const selectedOrderId = selectedOrder?.id ?? null;
+  const selectedOrderParent = selectedOrder?.parent_order_id
+    ? projectOrders.find((item) => item.id === selectedOrder.parent_order_id) ?? null
+    : null;
+  const secondaryOrders = projectOrders.filter((item) => item.id !== primaryOrder?.id);
+  const filteredStructureOrders = projectOrders.filter((item) =>
+    orderStructureFilter === 'all' ? true : item.order_kind === orderStructureFilter
+  );
+  const filteredSecondaryOrders = secondaryOrders.filter((item) =>
+    orderStructureFilter === 'all' || orderStructureFilter === 'primary' ? true : item.order_kind === orderStructureFilter
+  );
   const lines = linesQuery.data ?? [];
   const currentCustomer = (customersQuery.data ?? []).find((customer) => customer.id === draftCustomerId) ?? null;
-  const statusValue = orderStatuses.includes((orderQuery.data?.status ?? 'draft') as OrderStatus)
-    ? (orderQuery.data?.status as OrderStatus)
+  const statusValue = orderStatuses.includes((selectedOrder?.status ?? 'draft') as OrderStatus)
+    ? (selectedOrder?.status as OrderStatus)
     : 'draft';
   const isEconomyLocked =
     economyLockQuery.data ?? (invoicesQuery.data ?? []).some((invoice) => invoice.status !== 'void');
   const isEconomyBusy = economyLockQuery.isPending;
   const isProjectMetaBusy = saveProjectMutation.isPending;
   const latestInvoice = invoicesQuery.data?.[0] ?? null;
+  const selectedOrderInvoices = selectedOrderId
+    ? (() => {
+        const invoiceIds = new Set(
+          (invoiceSourceLinksQuery.data ?? [])
+            .filter((link) => link.order_id === selectedOrderId)
+            .map((link) => link.invoice_id)
+        );
+        return (invoicesQuery.data ?? []).filter((invoice) => invoiceIds.has(invoice.id) || invoice.order_id === selectedOrderId);
+      })()
+    : [];
+  const selectedOrderLatestInvoice = selectedOrderInvoices[0] ?? null;
+  const allocatedInvoiceAmountByOrderId = useMemo(() => {
+    const totals = new Map<string, number>();
+
+    for (const link of invoiceSourceLinksQuery.data ?? []) {
+      const invoice = (invoicesQuery.data ?? []).find((item) => item.id === link.invoice_id);
+      if (invoice?.status === 'void') continue;
+      totals.set(link.order_id, (totals.get(link.order_id) ?? 0) + Number(link.allocated_total ?? 0));
+    }
+
+    if ((invoiceSourceLinksQuery.data?.length ?? 0) === 0) {
+      for (const invoice of invoicesQuery.data ?? []) {
+        if (invoice.status === 'void') continue;
+        if (!invoice.order_id) continue;
+        totals.set(invoice.order_id, (totals.get(invoice.order_id) ?? 0) + Number(invoice.total ?? 0));
+      }
+    }
+
+    return totals;
+  }, [invoiceSourceLinksQuery.data, invoicesQuery.data]);
+  const selectedOrderGrossTotal = (linesQuery.data ?? []).reduce(
+    (sum, line) => sum + Number(line.total ?? 0) * (1 + Number(line.vat_rate ?? 0) / 100),
+    0
+  );
+  const selectedOrderInvoiceProgress = resolveOrderInvoiceProgress(
+    selectedOrderGrossTotal > 0 ? selectedOrderGrossTotal : Number(selectedOrder?.total ?? 0),
+    selectedOrderId ? Number(allocatedInvoiceAmountByOrderId.get(selectedOrderId) ?? 0) : 0
+  );
+  const allocatedInvoiceLineTotalByLineId = (invoiceSourceLineLinksQuery.data ?? []).reduce((map, row) => {
+    const invoice = (invoicesQuery.data ?? []).find((item) => item.id === row.invoice_id);
+    if (invoice?.status === 'void') return map;
+    map.set(row.order_line_id, (map.get(row.order_line_id) ?? 0) + Number(row.allocated_total ?? 0));
+    return map;
+  }, new Map<string, number>());
+  const partialInvoiceLineOptions = lines.map((line) => {
+    const grossTotal = Number(line.total ?? 0) * (1 + Number(line.vat_rate ?? 0) / 100);
+    const allocatedTotal = Number(allocatedInvoiceLineTotalByLineId.get(line.id) ?? 0);
+    const remainingTotal = Math.max(grossTotal - allocatedTotal, 0);
+    return {
+      ...line,
+      grossTotal,
+      allocatedTotal,
+      remainingTotal
+    };
+  });
+  const filteredOrderLineOptions = partialInvoiceLineOptions.filter((line) => {
+    if (orderLineFilter === 'not_invoiced') return line.allocatedTotal <= 0;
+    if (orderLineFilter === 'partially_invoiced') return line.allocatedTotal > 0 && line.remainingTotal > 0;
+    if (orderLineFilter === 'fully_invoiced') return line.remainingTotal <= 0;
+    return true;
+  });
+  const resolvedPartialInvoiceAmount =
+    partialInvoiceMode === 'quarter'
+      ? selectedOrderInvoiceProgress.remaining * 0.25
+      : partialInvoiceMode === 'half'
+        ? selectedOrderInvoiceProgress.remaining * 0.5
+        : partialInvoiceMode === 'remaining'
+          ? selectedOrderInvoiceProgress.remaining
+          : Number(partialInvoiceAmount);
+  const normalizedPartialInvoiceAmount = Number.isFinite(resolvedPartialInvoiceAmount)
+    ? Math.round(resolvedPartialInvoiceAmount * 100) / 100
+    : Number.NaN;
+  const selectedPartialLinesTotal = partialInvoiceLineOptions
+    .filter((line) => selectedPartialLineIds.includes(line.id))
+    .reduce((sum, line) => sum + line.remainingTotal, 0);
+  const projectOrderSummary = useMemo(() => {
+    const summary = {
+      primary: 0,
+      change: 0,
+      supplement: 0,
+      total: 0
+    };
+
+    for (const order of projectOrders) {
+      const amount = Number(order.total ?? 0);
+      summary.total += amount;
+
+      if (order.order_kind === 'change') summary.change += amount;
+      else if (order.order_kind === 'supplement') summary.supplement += amount;
+      else summary.primary += amount;
+    }
+
+    return summary;
+  }, [projectOrders]);
+  const projectInvoiceSummary = useMemo(() => {
+    const grossIssued = (invoicesQuery.data ?? [])
+      .filter((invoice) => invoice.kind !== 'credit_note')
+      .reduce((sum, invoice) => sum + Number(invoice.total ?? 0), 0);
+    const credited = Math.abs(
+      (invoicesQuery.data ?? [])
+        .filter((invoice) => invoice.kind === 'credit_note')
+        .reduce((sum, invoice) => sum + Number(invoice.total ?? 0), 0)
+    );
+    const total = grossIssued - credited;
+    return {
+      grossIssued,
+      credited,
+      total,
+      remaining: Math.max(projectOrderSummary.total - total, 0)
+    };
+  }, [invoicesQuery.data, projectOrderSummary.total]);
+  const projectInvoicedByKind = useMemo(() => {
+    const orderKindById = new Map(projectOrders.map((order) => [order.id, order.order_kind]));
+    const summary = {
+      primary: 0,
+      change: 0,
+      supplement: 0
+    };
+
+    for (const invoice of invoicesQuery.data ?? []) {
+      const sourceLinks = (invoiceSourceLinksQuery.data ?? []).filter((link) => link.invoice_id === invoice.id);
+
+      if (sourceLinks.length > 0) {
+        for (const link of sourceLinks) {
+          const amount = Number(link.allocated_total ?? 0);
+          const kind = orderKindById.get(link.order_id) ?? 'primary';
+
+          if (kind === 'change') summary.change += amount;
+          else if (kind === 'supplement') summary.supplement += amount;
+          else summary.primary += amount;
+        }
+        continue;
+      }
+
+      const amount = Number(invoice.total ?? 0);
+      const kind = invoice.order_id ? orderKindById.get(invoice.order_id) : 'primary';
+
+      if (kind === 'change') summary.change += amount;
+      else if (kind === 'supplement') summary.supplement += amount;
+      else summary.primary += amount;
+    }
+
+    return {
+      primary: {
+        invoiced: summary.primary,
+        remaining: Math.max(projectOrderSummary.primary - summary.primary, 0)
+      },
+      change: {
+        invoiced: summary.change,
+        remaining: Math.max(projectOrderSummary.change - summary.change, 0)
+      },
+      supplement: {
+        invoiced: summary.supplement,
+        remaining: Math.max(projectOrderSummary.supplement - summary.supplement, 0)
+      }
+    };
+  }, [invoiceSourceLinksQuery.data, invoicesQuery.data, projectOrderSummary.change, projectOrderSummary.primary, projectOrderSummary.supplement, projectOrders]);
+  const projectOrderMixSegments = useMemo(
+    () => [
+      {
+        key: 'primary',
+        label: 'Huvudorder',
+        value: projectOrderSummary.primary,
+        percent: percentShare(projectOrderSummary.primary, projectOrderSummary.total),
+        tone: 'bg-sky-500/85'
+      },
+      {
+        key: 'change',
+        label: 'Ändringar',
+        value: projectOrderSummary.change,
+        percent: percentShare(projectOrderSummary.change, projectOrderSummary.total),
+        tone: 'bg-amber-500/85'
+      },
+      {
+        key: 'supplement',
+        label: 'Tillägg',
+        value: projectOrderSummary.supplement,
+        percent: percentShare(projectOrderSummary.supplement, projectOrderSummary.total),
+        tone: 'bg-emerald-500/85'
+      }
+    ],
+    [projectOrderSummary]
+  );
+  const orderStructureFilterOptions: Array<{ value: OrderStructureFilter; label: string }> = [
+    { value: 'all', label: 'Alla' },
+    { value: 'primary', label: 'Huvudorder' },
+    { value: 'change', label: 'Ändringsordrar' },
+    { value: 'supplement', label: 'Tilläggsordrar' }
+  ];
   const latestActivityItem = activity[0] ?? null;
   const latestActivityActorLabel = latestActivityItem?.actorUserId ? memberLabelByUserId.get(latestActivityItem.actorUserId) ?? 'Intern användare' : null;
   const projectStatusLabel = projectColumnTitle(draftWorkflowStatus || project.workflow_status || project.status, statusColumns);
   const projectInvoiceReadiness = draftInvoiceReadinessStatus;
-  const orderInvoiceReadiness = resolveInvoiceReadinessStatus(orderQuery.data?.invoice_readiness_status, orderQuery.data?.status);
-  const projectOrders = projectOrdersQuery.data ?? [];
-  const primaryOrder = orderQuery.data ?? null;
-  const secondaryOrders = projectOrders.filter((item) => item.id !== primaryOrder?.id);
+  const orderInvoiceReadiness = resolveInvoiceReadinessStatus(selectedOrder?.invoice_readiness_status, selectedOrder?.status);
   const projectInvoiceReadinessOptions = getInvoiceReadinessOptions(role, projectInvoiceReadiness);
   const orderInvoiceReadinessOptions = getInvoiceReadinessOptions(role, orderInvoiceReadiness);
   const canEditInvoiceReadiness = role !== 'auditor';
@@ -1428,7 +1797,7 @@ export default function ProjectDetailsPage() {
     customerName: currentCustomer?.name,
     responsibleLabel,
     assignedMemberCount: assignedMembers.length,
-    orderTotal: Number(orderQuery.data?.total ?? 0)
+    orderTotal: Number(primaryOrder?.total ?? 0)
   });
   const orderReadinessChecklist = buildProjectOrderInvoiceReadinessChecklist({
     customerName: currentCustomer?.name,
@@ -1900,7 +2269,7 @@ export default function ProjectDetailsPage() {
               <p className="text-sm text-foreground/65">Här ser du vad som är klart inför fakturering, vad som saknas och vilket nästa steg som bör tas.</p>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
                 <div className="rounded-xl border border-border/70 bg-muted/15 p-3">
                   <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Projektläge</p>
                   <p className="mt-1 font-medium">{getInvoiceReadinessLabel(projectInvoiceReadiness)}</p>
@@ -1908,21 +2277,61 @@ export default function ProjectDetailsPage() {
                 </div>
                 <div className="rounded-xl border border-border/70 bg-muted/15 p-3">
                   <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Orderläge</p>
-                  <p className="mt-1 font-medium">{orderId ? getInvoiceReadinessLabel(orderInvoiceReadiness) : 'Ingen order ännu'}</p>
+                  <p className="mt-1 font-medium">{selectedOrderId ? getInvoiceReadinessLabel(orderInvoiceReadiness) : 'Ingen order ännu'}</p>
                   <p className="mt-1 text-sm text-foreground/65">
-                    {orderId ? `Ägare: ${getInvoiceReadinessOwner(orderInvoiceReadiness)}` : 'Nästa steg: skapa orderunderlag'}
+                    {selectedOrderId ? `Ägare: ${getInvoiceReadinessOwner(orderInvoiceReadiness)}` : 'Nästa steg: skapa orderunderlag'}
                   </p>
                 </div>
                 <div className="rounded-xl border border-border/70 bg-muted/15 p-3">
                   <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Ordervärde</p>
-                  <p className="mt-1 font-medium">{Number(orderQuery.data?.total ?? 0).toFixed(2)} kr</p>
-                  <p className="mt-1 text-sm text-foreground/65">{lines.length} orderrader</p>
+                  <p className="mt-1 font-medium">{Number(selectedOrder?.total ?? 0).toFixed(2)} kr</p>
+                  <p className="mt-1 text-sm text-foreground/65">{lines.length} orderrader{selectedOrder ? ` • ${selectedOrder.order_no ?? orderKindLabel(selectedOrder.order_kind)}` : ''}</p>
                 </div>
                 <div className="rounded-xl border border-border/70 bg-muted/15 p-3">
-                  <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Fakturor</p>
-                  <p className="mt-1 font-medium">{invoicesQuery.data?.length ?? 0} kopplade</p>
+                  <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Faktureringsstatus</p>
+                  <p className="mt-1 font-medium">{getOrderInvoiceProgressLabel(selectedOrderInvoiceProgress.status)}</p>
                   <p className="mt-1 text-sm text-foreground/65">
-                    {latestInvoice ? `Senast ${latestInvoice.invoice_no}` : 'Ingen faktura skapad ännu'}
+                    Fakturerat {selectedOrderInvoiceProgress.invoicedTotal.toFixed(2)} kr • Kvar {selectedOrderInvoiceProgress.remaining.toFixed(2)} kr
+                  </p>
+                  <p className="mt-1 text-xs text-foreground/55">
+                    {selectedOrderLatestInvoice ? `Senast ${selectedOrderLatestInvoice.invoice_no}` : 'Ingen faktura skapad ännu'}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-border/70 bg-primary/5 p-3 md:col-span-2 xl:col-span-1">
+                  <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Projektets ordermix</p>
+                  <p className="mt-1 font-medium">{projectOrderSummary.total.toFixed(2)} kr totalt</p>
+                  <p className="mt-1 text-sm text-foreground/65">
+                    Huvud {projectOrderSummary.primary.toFixed(2)} • Ändringar {projectOrderSummary.change.toFixed(2)} • Tillägg {projectOrderSummary.supplement.toFixed(2)}
+                  </p>
+                  <p className="mt-1 text-xs text-foreground/55">
+                    Bruttofakturerat {projectInvoiceSummary.grossIssued.toFixed(2)} kr • Krediterat {projectInvoiceSummary.credited.toFixed(2)} kr
+                  </p>
+                  <p className="mt-1 text-xs text-foreground/55">
+                    Netto {projectInvoiceSummary.total.toFixed(2)} kr • Kvar {projectInvoiceSummary.remaining.toFixed(2)} kr
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-3">
+                <div className="rounded-xl border border-sky-200/70 bg-sky-50/60 p-3 dark:border-sky-900/30 dark:bg-sky-950/10">
+                  <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-sky-900/70 dark:text-sky-100/75">Huvudorder över tid</p>
+                  <p className="mt-1 font-medium">{projectInvoicedByKind.primary.invoiced.toFixed(2)} kr fakturerat</p>
+                  <p className="mt-1 text-sm text-foreground/65">
+                    Kvar {projectInvoicedByKind.primary.remaining.toFixed(2)} kr av {projectOrderSummary.primary.toFixed(2)} kr
+                  </p>
+                </div>
+                <div className="rounded-xl border border-amber-200/70 bg-amber-50/60 p-3 dark:border-amber-900/30 dark:bg-amber-950/10">
+                  <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-amber-900/70 dark:text-amber-100/75">Ändringar över tid</p>
+                  <p className="mt-1 font-medium">{projectInvoicedByKind.change.invoiced.toFixed(2)} kr fakturerat</p>
+                  <p className="mt-1 text-sm text-foreground/65">
+                    Kvar {projectInvoicedByKind.change.remaining.toFixed(2)} kr av {projectOrderSummary.change.toFixed(2)} kr
+                  </p>
+                </div>
+                <div className="rounded-xl border border-emerald-200/70 bg-emerald-50/60 p-3 dark:border-emerald-900/30 dark:bg-emerald-950/10">
+                  <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-emerald-900/70 dark:text-emerald-100/75">Tillägg över tid</p>
+                  <p className="mt-1 font-medium">{projectInvoicedByKind.supplement.invoiced.toFixed(2)} kr fakturerat</p>
+                  <p className="mt-1 text-sm text-foreground/65">
+                    Kvar {projectInvoicedByKind.supplement.remaining.toFixed(2)} kr av {projectOrderSummary.supplement.toFixed(2)} kr
                   </p>
                 </div>
               </div>
@@ -1944,15 +2353,103 @@ export default function ProjectDetailsPage() {
                     <p className="text-xs font-medium uppercase tracking-[0.16em] text-foreground/45">Orderstruktur</p>
                     <p className="mt-1 text-sm text-foreground/65">Nuvarande ekonomi- och fakturaflöde använder huvudordern. Eventuella tilläggsordrar visas här som referens.</p>
                   </div>
-                  <Badge>
-                    {projectOrders.length} {projectOrders.length === 1 ? 'order' : 'ordrar'}
-                  </Badge>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge>
+                      {projectOrders.length} {projectOrders.length === 1 ? 'order' : 'ordrar'}
+                    </Badge>
+                    <div className="w-44">
+                      <SimpleSelect
+                        value={orderStructureFilter}
+                        onValueChange={(value) => setOrderStructureFilter(value as OrderStructureFilter)}
+                        options={orderStructureFilterOptions}
+                      />
+                    </div>
+                    {canManageOrder(role) && primaryOrder ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setCreateSecondaryOrderDialogOpen(true)}
+                        disabled={createSupplementOrderMutation.isPending || isEconomyLocked || isEconomyBusy}
+                      >
+                        {createSupplementOrderMutation.isPending ? 'Skapar underordnad order...' : 'Ny underordnad order'}
+                      </Button>
+                    ) : null}
+                  </div>
+                </div>
+
+                <div className="mt-4 rounded-xl border border-border/70 bg-card/70 p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Visuell fördelning</p>
+                      <p className="mt-1 text-sm text-foreground/65">Så mycket av projektets ordervärde som ligger i huvudorder, ändringar och tillägg.</p>
+                    </div>
+                    <Badge className="border-border/70 bg-muted/40 text-foreground/80 hover:bg-muted/40">
+                      {projectOrderSummary.total.toFixed(2)} kr totalt
+                    </Badge>
+                  </div>
+
+                  <div className="mt-3 h-3 overflow-hidden rounded-full bg-muted/70">
+                    <div className="flex h-full w-full">
+                      {projectOrderMixSegments.map((segment) => (
+                        <button
+                          key={segment.key}
+                          type="button"
+                          className={segment.tone}
+                          style={{ width: `${segment.percent}%` }}
+                          title={`${segment.label}: ${segment.percent}%`}
+                          onClick={() => {
+                            setOrderStructureFilter(segment.key as OrderStructureFilter);
+                            const targetOrder =
+                              segment.key === 'primary'
+                                ? primaryOrder
+                                : projectOrders.find((item) => item.order_kind === segment.key);
+                            if (targetOrder) {
+                              setSelectedEconomyOrderId(targetOrder.id);
+                            }
+                          }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                    {projectOrderMixSegments.map((segment) => (
+                      <button
+                        key={segment.key}
+                        type="button"
+                        className={`rounded-lg border border-border/70 bg-muted/15 px-3 py-2 text-left transition hover:bg-muted/25 ${
+                          orderStructureFilter === segment.key ? 'ring-2 ring-primary/35' : ''
+                        }`}
+                        onClick={() => {
+                          setOrderStructureFilter(segment.key as OrderStructureFilter);
+                          const targetOrder =
+                            segment.key === 'primary'
+                              ? primaryOrder
+                              : projectOrders.find((item) => item.order_kind === segment.key);
+                          if (targetOrder) {
+                            setSelectedEconomyOrderId(targetOrder.id);
+                          }
+                        }}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className={`inline-flex h-2.5 w-2.5 rounded-full ${segment.tone}`} />
+                          <p className="text-xs font-medium uppercase tracking-[0.16em] text-foreground/55">{segment.label}</p>
+                        </div>
+                        <p className="mt-1 text-sm font-semibold">{segment.value.toFixed(2)} kr</p>
+                        <p className="text-xs text-foreground/60">{segment.percent}% av projektets ordervärde</p>
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 <div className="mt-4 grid gap-3 xl:grid-cols-2">
-                  <div className="rounded-xl border border-emerald-200/70 bg-emerald-50/60 p-3 dark:border-emerald-500/20 dark:bg-emerald-500/10">
+                  <div className={`rounded-xl border p-3 ${
+                    orderStructureFilter === 'all' || orderStructureFilter === 'primary'
+                      ? 'border-emerald-200/70 bg-emerald-50/60 dark:border-emerald-500/20 dark:bg-emerald-500/10'
+                      : 'border-border/70 bg-muted/5'
+                  }`}>
                     <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-emerald-900/70 dark:text-emerald-100/75">Huvudorder</p>
-                    {primaryOrder ? (
+                    {primaryOrder && (orderStructureFilter === 'all' || orderStructureFilter === 'primary') ? (
                       <div className="mt-2 space-y-2">
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <p className="font-medium text-emerald-950 dark:text-emerald-50">{primaryOrder.order_no ?? primaryOrder.id}</p>
@@ -1965,26 +2462,49 @@ export default function ProjectDetailsPage() {
                           <Link href={`/orders/${primaryOrder.id}`}>Öppna huvudorder</Link>
                         </Button>
                       </div>
+                    ) : primaryOrder ? (
+                      <p className="mt-2 text-sm text-foreground/70">Dold av aktuellt filter.</p>
                     ) : (
                       <p className="mt-2 text-sm text-foreground/70">Ingen huvudorder skapad ännu.</p>
                     )}
                   </div>
 
                   <div className="rounded-xl border border-border/70 bg-card/70 p-3">
-                    <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Tilläggsordrar</p>
-                    {secondaryOrders.length === 0 ? (
-                      <p className="mt-2 text-sm text-foreground/70">Inga tilläggsordrar ännu.</p>
+                    <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">
+                      {orderStructureFilter === 'change'
+                        ? 'Ändringsordrar'
+                        : orderStructureFilter === 'supplement'
+                          ? 'Tilläggsordrar'
+                          : 'Underordnade ordrar'}
+                    </p>
+                    {filteredSecondaryOrders.length === 0 ? (
+                      <p className="mt-2 text-sm text-foreground/70">
+                        {orderStructureFilter === 'change'
+                          ? 'Inga ändringsordrar ännu.'
+                          : orderStructureFilter === 'supplement'
+                            ? 'Inga tilläggsordrar ännu.'
+                            : 'Inga underordnade ordrar ännu.'}
+                      </p>
                     ) : (
                       <div className="mt-2 space-y-2">
-                        {secondaryOrders.map((item) => (
+                        {filteredSecondaryOrders.map((item) => (
                           <div key={item.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/70 bg-muted/20 px-3 py-2">
                             <div className="min-w-0">
                               <p className="truncate text-sm font-medium">{item.order_no ?? item.id}</p>
                               <p className="text-xs text-foreground/60">{orderKindLabel(item.order_kind)} • {Number(item.total ?? 0).toFixed(2)} kr</p>
                             </div>
-                            <Button asChild size="sm" variant="ghost">
-                              <Link href={`/orders/${item.id}`}>Öppna</Link>
-                            </Button>
+                            <div className="flex items-center gap-1">
+                              <Button
+                                size="sm"
+                                variant={selectedEconomyOrderId === item.id ? 'secondary' : 'ghost'}
+                                onClick={() => setSelectedEconomyOrderId(item.id)}
+                              >
+                                Visa här
+                              </Button>
+                              <Button asChild size="sm" variant="ghost">
+                                <Link href={`/orders/${item.id}`}>Öppna</Link>
+                              </Button>
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -2013,7 +2533,7 @@ export default function ProjectDetailsPage() {
                   </Button>
                 ) : null}
 
-                {canManageOrder(role) && orderId && orderInvoiceReadiness !== 'approved_for_invoicing' ? (
+                {canManageOrder(role) && selectedOrderId && orderInvoiceReadiness !== 'approved_for_invoicing' ? (
                   <Button
                     variant="outline"
                     onClick={() => updateOrderInvoiceReadinessMutation.mutate('approved_for_invoicing')}
@@ -2023,13 +2543,33 @@ export default function ProjectDetailsPage() {
                   </Button>
                 ) : null}
 
-                {canManageOrder(role) && orderId ? (
+                {canManageOrder(role) && selectedOrderId ? (
                   <Button
                     variant="secondary"
                     onClick={() => invoiceMutation.mutate()}
                     disabled={invoiceMutation.isPending || isEconomyLocked || isEconomyBusy}
                   >
                     {invoiceMutation.isPending ? 'Skapar faktura...' : isEconomyLocked ? 'Faktura finns redan' : 'Skapa faktura'}
+                  </Button>
+                ) : null}
+
+                {canManageOrder(role) && selectedOrderId ? (
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setPartialInvoiceMethod('amount');
+                      setPartialInvoiceMode('remaining');
+                      setPartialInvoiceAmount(selectedOrderInvoiceProgress.remaining.toFixed(2));
+                      setSelectedPartialLineIds([]);
+                      setPartialInvoiceDialogOpen(true);
+                    }}
+                    disabled={
+                      partialInvoiceMutation.isPending ||
+                      partialInvoiceLinesMutation.isPending ||
+                      selectedOrderInvoiceProgress.remaining <= 0
+                    }
+                  >
+                    {partialInvoiceMutation.isPending || partialInvoiceLinesMutation.isPending ? 'Skapar delfaktura...' : 'Skapa delfaktura'}
                   </Button>
                 ) : null}
 
@@ -2044,9 +2584,51 @@ export default function ProjectDetailsPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Order</CardTitle>
+              <CardTitle>Orderunderlag</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" size="sm" variant={orderLineFilter === 'all' ? 'default' : 'outline'} onClick={() => setOrderLineFilter('all')}>
+                  Alla
+                </Button>
+                <Button type="button" size="sm" variant={orderLineFilter === 'not_invoiced' ? 'default' : 'outline'} onClick={() => setOrderLineFilter('not_invoiced')}>
+                  Ej fakturerade
+                </Button>
+                <Button type="button" size="sm" variant={orderLineFilter === 'partially_invoiced' ? 'default' : 'outline'} onClick={() => setOrderLineFilter('partially_invoiced')}>
+                  Delfakturerade
+                </Button>
+                <Button type="button" size="sm" variant={orderLineFilter === 'fully_invoiced' ? 'default' : 'outline'} onClick={() => setOrderLineFilter('fully_invoiced')}>
+                  Slutfakturerade
+                </Button>
+              </div>
+              <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_260px]">
+                <div className="rounded-xl border border-border/70 bg-muted/10 p-3">
+                  <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Aktiv order för underlag</p>
+                  <p className="mt-1 font-medium">{selectedOrder ? `${selectedOrder.order_no ?? selectedOrder.id} • ${orderKindLabel(selectedOrder.order_kind)}` : 'Ingen order vald'}</p>
+                  <p className="mt-1 text-sm text-foreground/65">
+                    {selectedOrder && selectedOrderParent
+                      ? `${orderKindPurposeText(selectedOrder.order_kind)} Kopplad under ${selectedOrderParent.order_no ?? selectedOrderParent.id}.`
+                      : orderKindPurposeText(selectedOrder?.order_kind ?? 'primary')}
+                  </p>
+                </div>
+                <div className="space-y-1">
+                  <span className="text-sm">Välj order</span>
+                  <SimpleSelect
+                    value={selectedOrderId ?? 'none'}
+                    onValueChange={(value) => setSelectedEconomyOrderId(value === 'none' ? null : value)}
+                    disabled={filteredStructureOrders.length === 0}
+                    options={
+                      filteredStructureOrders.length === 0
+                        ? [{ value: 'none', label: 'Ingen order ännu' }]
+                        : filteredStructureOrders.map((item) => ({
+                            value: item.id,
+                            label: `${item.order_no ?? item.id} • ${orderKindLabel(item.order_kind)}`
+                          }))
+                    }
+                  />
+                </div>
+              </div>
+
               <div className="rounded-xl border border-border/70 bg-muted/10 p-3">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="space-y-1">
@@ -2060,7 +2642,7 @@ export default function ProjectDetailsPage() {
                       <SimpleSelect
                         value={orderInvoiceReadiness}
                         onValueChange={(value) => updateOrderInvoiceReadinessMutation.mutate(value as InvoiceReadinessStatus)}
-                        disabled={updateOrderInvoiceReadinessMutation.isPending || isEconomyLocked || isEconomyBusy}
+                        disabled={updateOrderInvoiceReadinessMutation.isPending || isEconomyLocked || isEconomyBusy || !selectedOrderId}
                         options={orderInvoiceReadinessOptions}
                       />
                     </div>
@@ -2072,7 +2654,9 @@ export default function ProjectDetailsPage() {
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <Badge>Total: {Number(orderQuery.data?.total ?? 0).toFixed(2)} kr</Badge>{(isEconomyLocked || isEconomyBusy) && <Badge>Låst efter fakturering</Badge>}
+                <Badge>Total: {Number(selectedOrder?.total ?? 0).toFixed(2)} kr</Badge>
+                {selectedOrder ? <Badge>{orderKindLabel(selectedOrder.order_kind)}</Badge> : null}
+                {(isEconomyLocked || isEconomyBusy) && <Badge>Låst efter fakturering</Badge>}
 
                 <RoleGate
                   role={role}
@@ -2091,7 +2675,7 @@ export default function ProjectDetailsPage() {
                         }
                         updateOrderStatusMutation.mutate(next);
                       }}
-                      disabled={isEconomyLocked || isEconomyBusy}
+                      disabled={isEconomyLocked || isEconomyBusy || !selectedOrderId}
                       options={orderStatuses.map((status) => ({ value: status, label: orderStatusEtikett(status) }))}
                     />
                   </div>
@@ -2099,9 +2683,28 @@ export default function ProjectDetailsPage() {
                   <Button
                     variant="secondary"
                     onClick={() => invoiceMutation.mutate()}
-                    disabled={invoiceMutation.isPending || !orderId || !canManageOrder(role) || isEconomyLocked || isEconomyBusy}
+                    disabled={invoiceMutation.isPending || !selectedOrderId || !canManageOrder(role) || isEconomyLocked || isEconomyBusy}
                   >
                     {invoiceMutation.isPending ? 'Skapar...' : isEconomyLocked ? 'Faktura finns redan' : 'Skapa faktura'}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setPartialInvoiceMethod('amount');
+                      setPartialInvoiceMode('remaining');
+                      setPartialInvoiceAmount(selectedOrderInvoiceProgress.remaining.toFixed(2));
+                      setSelectedPartialLineIds([]);
+                      setPartialInvoiceDialogOpen(true);
+                    }}
+                    disabled={
+                      partialInvoiceMutation.isPending ||
+                      partialInvoiceLinesMutation.isPending ||
+                      !selectedOrderId ||
+                      !canManageOrder(role) ||
+                      selectedOrderInvoiceProgress.remaining <= 0
+                    }
+                  >
+                    {partialInvoiceMutation.isPending || partialInvoiceLinesMutation.isPending ? 'Skapar delfaktura...' : 'Skapa delfaktura'}
                   </Button>
                 </RoleGate>
               </div>
@@ -2120,10 +2723,34 @@ export default function ProjectDetailsPage() {
 
               <div className="rounded-lg border p-3">
                 <p className="mb-2 text-sm font-medium">Lägg till orderrad</p>
+                {selectedOrder ? (
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/70 bg-muted/20 px-3 py-2 text-sm">
+                    <p className="text-foreground/70">
+                      Förslag för {orderKindLabel(selectedOrder.order_kind).toLowerCase()}:
+                      <span className="font-medium text-foreground"> {orderKindSuggestedLineTitle(selectedOrder.order_kind)}</span>
+                    </p>
+                    {!lineTitle.trim() ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setLineTitle(orderKindSuggestedLineTitle(selectedOrder.order_kind))}
+                        disabled={isEconomyLocked || isEconomyBusy}
+                      >
+                        Använd standardtitel
+                      </Button>
+                    ) : null}
+                  </div>
+                ) : null}
                 <div className="grid gap-2 md:grid-cols-5">
                   <label className="space-y-1 md:col-span-2">
                     <span className="text-xs font-medium uppercase tracking-[0.16em] text-foreground/55">Titel</span>
-                    <Input value={lineTitle} onChange={(e) => setLineTitle(e.target.value)} placeholder="T.ex. Designarbete" disabled={isEconomyLocked || isEconomyBusy} />
+                    <Input
+                      value={lineTitle}
+                      onChange={(e) => setLineTitle(e.target.value)}
+                      placeholder={selectedOrder ? orderKindSuggestedLineTitle(selectedOrder.order_kind) : 'T.ex. Designarbete'}
+                      disabled={isEconomyLocked || isEconomyBusy}
+                    />
                   </label>
                   <label className="space-y-1">
                     <span className="text-xs font-medium uppercase tracking-[0.16em] text-foreground/55">Antal</span>
@@ -2146,7 +2773,7 @@ export default function ProjectDetailsPage() {
                     <Input value={lineVatRate} onChange={(e) => setLineVatRate(e.target.value)} type="number" min="0" step="0.01" placeholder="25" disabled={isEconomyLocked || isEconomyBusy} />
                   </label>
                 </div>
-                <Button className="mt-2" onClick={() => addLineMutation.mutate()} disabled={addLineMutation.isPending || isEconomyLocked || isEconomyBusy}>
+                <Button className="mt-2" onClick={() => addLineMutation.mutate()} disabled={addLineMutation.isPending || isEconomyLocked || isEconomyBusy || !selectedOrderId}>
                   {addLineMutation.isPending ? 'Lägger till...' : 'Lägg till rad'}
                 </Button>
               </div>
@@ -2163,7 +2790,7 @@ export default function ProjectDetailsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {lines.length === 0 && (
+                  {filteredOrderLineOptions.length === 0 && (
                     <TableRow>
                       <TableCell colSpan={6} className="text-foreground/70">
                         Inga orderrader ännu.
@@ -2171,10 +2798,11 @@ export default function ProjectDetailsPage() {
                     </TableRow>
                   )}
 
-                  {lines.map((line) => (
+                  {filteredOrderLineOptions.map((line) => (
                     <EditableLineRow
                       key={line.id}
                       line={line}
+                      invoicedTotal={Number(allocatedInvoiceLineTotalByLineId.get(line.id) ?? 0)}
                       saving={updateLineMutation.isPending || deleteLineMutation.isPending}
                       canEdit={!isEconomyLocked && !isEconomyBusy}
                       onSave={(nextLine) => updateLineMutation.mutate(nextLine)}
@@ -2188,16 +2816,16 @@ export default function ProjectDetailsPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Fakturor</CardTitle>
+              <CardTitle>Fakturor för vald order</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-2">
                 {invoicesQuery.isLoading && <p className="text-sm text-foreground/70">Laddar fakturor...</p>}
-                {!invoicesQuery.isLoading && (invoicesQuery.data?.length ?? 0) === 0 && (
+                {!invoicesQuery.isLoading && selectedOrderInvoices.length === 0 && (
                   <p className="text-sm text-foreground/70">Inga fakturor ännu.</p>
                 )}
 
-                {(invoicesQuery.data ?? []).map((item) => (
+                {selectedOrderInvoices.map((item) => (
                   <div key={item.id} className="rounded-lg border p-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="flex flex-wrap items-center gap-2">
@@ -2486,6 +3114,211 @@ export default function ProjectDetailsPage() {
         openComposerSignal={openUpdatesComposerSignal}
       />
 
+      <Dialog
+        open={createSecondaryOrderDialogOpen}
+        onOpenChange={(open) => {
+          setCreateSecondaryOrderDialogOpen(open);
+          if (!open) setSecondaryOrderKindDraft('supplement');
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Ny underordnad order</DialogTitle>
+            <DialogDescription>
+              Välj om nästa order ska vara en ändringsorder eller en tilläggsorder under projektets huvudorder.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <span className="text-sm">Ordertyp</span>
+              <SimpleSelect
+                value={secondaryOrderKindDraft}
+                onValueChange={(value) => setSecondaryOrderKindDraft(value as SecondaryOrderKind)}
+                options={[
+                  { value: 'supplement', label: 'Tilläggsorder' },
+                  { value: 'change', label: 'Ändringsorder' }
+                ]}
+              />
+            </div>
+            <div className="rounded-lg border border-border/70 bg-muted/20 p-3 text-sm text-foreground/70">
+              {secondaryOrderKindDraft === 'change'
+                ? 'Ändringsorder passar när något i tidigare beställning justeras eller omförhandlas.'
+                : 'Tilläggsorder passar när nytt arbete eller extra omfattning läggs till utöver huvudordern.'}
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setCreateSecondaryOrderDialogOpen(false);
+                  setSecondaryOrderKindDraft('supplement');
+                }}
+              >
+                Avbryt
+              </Button>
+              <Button
+                onClick={() => createSupplementOrderMutation.mutate(secondaryOrderKindDraft)}
+                disabled={createSupplementOrderMutation.isPending}
+              >
+                {createSupplementOrderMutation.isPending ? 'Skapar...' : `Skapa ${orderKindLabel(secondaryOrderKindDraft).toLowerCase()}`}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={partialInvoiceDialogOpen} onOpenChange={setPartialInvoiceDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Skapa delfaktura</DialogTitle>
+            <DialogDescription>
+              Välj om delfakturan för vald order ska baseras på belopp eller specifika orderrader. Kvar att fakturera: {selectedOrderInvoiceProgress.remaining.toFixed(2)} kr.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <p className="text-sm">Metod</p>
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" variant={partialInvoiceMethod === 'amount' ? 'default' : 'outline'} onClick={() => setPartialInvoiceMethod('amount')}>
+                  Belopp
+                </Button>
+                <Button type="button" variant={partialInvoiceMethod === 'lines' ? 'default' : 'outline'} onClick={() => setPartialInvoiceMethod('lines')}>
+                  Orderrader
+                </Button>
+              </div>
+            </div>
+            {partialInvoiceMethod === 'amount' ? (
+              <>
+            <div className="space-y-2">
+              <p className="text-sm">Snabbval</p>
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" variant={partialInvoiceMode === 'quarter' ? 'default' : 'outline'} onClick={() => setPartialInvoiceMode('quarter')}>
+                  25% av kvar
+                </Button>
+                <Button type="button" variant={partialInvoiceMode === 'half' ? 'default' : 'outline'} onClick={() => setPartialInvoiceMode('half')}>
+                  50% av kvar
+                </Button>
+                <Button type="button" variant={partialInvoiceMode === 'remaining' ? 'default' : 'outline'} onClick={() => setPartialInvoiceMode('remaining')}>
+                  Restbelopp
+                </Button>
+                <Button type="button" variant={partialInvoiceMode === 'custom' ? 'default' : 'outline'} onClick={() => setPartialInvoiceMode('custom')}>
+                  Egen summa
+                </Button>
+              </div>
+            </div>
+            <label className="space-y-1">
+              <span className="text-sm">Belopp inkl moms</span>
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                value={partialInvoiceAmount}
+                onChange={(event) => {
+                  setPartialInvoiceMode('custom');
+                  setPartialInvoiceAmount(event.target.value);
+                }}
+                disabled={partialInvoiceMode !== 'custom'}
+              />
+            </label>
+            <div className="rounded-lg border border-border/70 bg-muted/20 px-3 py-2 text-sm text-foreground/70">
+              Faktureras nu: {Number.isFinite(normalizedPartialInvoiceAmount) ? normalizedPartialInvoiceAmount.toFixed(2) : '0.00'} kr inkl moms
+            </div>
+              </>
+            ) : (
+              <div className="space-y-3">
+                <div className="rounded-lg border border-border/70 bg-muted/20 px-3 py-2 text-sm text-foreground/70">
+                  Välj en eller flera orderrader. Varje vald rad faktureras med sitt återstående belopp.
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setSelectedPartialLineIds(partialInvoiceLineOptions.filter((line) => line.allocatedTotal <= 0 && line.remainingTotal > 0).map((line) => line.id))}
+                  >
+                    Markera alla ej fakturerade
+                  </Button>
+                  <Button type="button" variant="outline" onClick={() => setSelectedPartialLineIds([])}>
+                    Rensa val
+                  </Button>
+                </div>
+                <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+                  {partialInvoiceLineOptions.map((line) => {
+                    const isSelected = selectedPartialLineIds.includes(line.id);
+                    const isDisabled = line.remainingTotal <= 0;
+                    return (
+                      <button
+                        key={line.id}
+                        type="button"
+                        disabled={isDisabled}
+                        onClick={() =>
+                          setSelectedPartialLineIds((current) =>
+                            current.includes(line.id) ? current.filter((id) => id !== line.id) : [...current, line.id]
+                          )
+                        }
+                        className={`w-full rounded-lg border px-3 py-3 text-left transition ${
+                          isDisabled
+                            ? 'cursor-not-allowed border-border/60 bg-muted/10 text-foreground/40'
+                            : isSelected
+                              ? 'border-primary bg-primary/10'
+                              : 'border-border/70 bg-card hover:bg-muted/20'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium">{line.title}</p>
+                            <p className="mt-1 text-xs text-foreground/60">
+                              {Number(line.qty).toFixed(2)} st • {Number(line.unit_price).toFixed(2)} kr • Moms {Number(line.vat_rate).toFixed(2)}%
+                            </p>
+                          </div>
+                          <div className="text-right text-xs">
+                            <p>Totalt: {line.grossTotal.toFixed(2)} kr</p>
+                            <p>Fakturerat: {line.allocatedTotal.toFixed(2)} kr</p>
+                            <p className="font-medium">Kvar: {line.remainingTotal.toFixed(2)} kr</p>
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="rounded-lg border border-border/70 bg-muted/20 px-3 py-2 text-sm text-foreground/70">
+                  Valda rader: {selectedPartialLineIds.length} • Faktureras nu: {selectedPartialLinesTotal.toFixed(2)} kr inkl moms
+                </div>
+              </div>
+            )}
+            <div className="flex gap-2">
+              <Button variant="secondary" onClick={() => setPartialInvoiceDialogOpen(false)}>
+                Avbryt
+              </Button>
+              {partialInvoiceMethod === 'amount' ? (
+                <Button
+                  onClick={() => partialInvoiceMutation.mutate(normalizedPartialInvoiceAmount)}
+                  disabled={
+                    partialInvoiceMutation.isPending ||
+                    partialInvoiceLinesMutation.isPending ||
+                    !Number.isFinite(normalizedPartialInvoiceAmount) ||
+                    normalizedPartialInvoiceAmount <= 0 ||
+                    normalizedPartialInvoiceAmount > selectedOrderInvoiceProgress.remaining
+                  }
+                >
+                  {partialInvoiceMutation.isPending ? 'Skapar...' : 'Skapa delfaktura'}
+                </Button>
+              ) : (
+                <Button
+                  onClick={() => partialInvoiceLinesMutation.mutate(selectedPartialLineIds)}
+                  disabled={
+                    partialInvoiceLinesMutation.isPending ||
+                    partialInvoiceMutation.isPending ||
+                    selectedPartialLineIds.length === 0 ||
+                    selectedPartialLinesTotal <= 0
+                  }
+                >
+                  {partialInvoiceLinesMutation.isPending ? 'Skapar...' : 'Skapa delfaktura från rader'}
+                </Button>
+              )}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={cancelConfirmOpen} onOpenChange={setCancelConfirmOpen}>
         <DialogContent>
           <DialogHeader>
@@ -2544,12 +3377,14 @@ export default function ProjectDetailsPage() {
 
 function EditableLineRow({
   line,
+  invoicedTotal,
   saving,
   canEdit,
   onSave,
   onDelete
 }: {
   line: OrderLineRow;
+  invoicedTotal: number;
   saving: boolean;
   canEdit: boolean;
   onSave: (line: OrderLineRow) => void;
@@ -2564,7 +3399,24 @@ function EditableLineRow({
   return (
     <TableRow>
       <TableCell>
-        <Input value={draft.title} onChange={(e) => setDraft((prev) => ({ ...prev, title: e.target.value }))} disabled={!canEdit} />
+        <div className="space-y-2">
+          <Input value={draft.title} onChange={(e) => setDraft((prev) => ({ ...prev, title: e.target.value }))} disabled={!canEdit} />
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge>
+              {getOrderLineInvoiceStatusLabel(
+                invoicedTotal,
+                computeLineTotal(Number(draft.qty), Number(draft.unit_price)) * (1 + Number(draft.vat_rate) / 100)
+              )}
+            </Badge>
+            <span className="text-xs text-foreground/60">
+              Fakturerat {invoicedTotal.toFixed(2)} kr • Kvar{' '}
+              {Math.max(
+                computeLineTotal(Number(draft.qty), Number(draft.unit_price)) * (1 + Number(draft.vat_rate) / 100) - invoicedTotal,
+                0
+              ).toFixed(2)} kr
+            </span>
+          </div>
+        </div>
       </TableCell>
       <TableCell>
         <Input
@@ -2596,7 +3448,7 @@ function EditableLineRow({
           disabled={!canEdit}
         />
       </TableCell>
-      <TableCell>{computeLineTotal(Number(draft.qty), Number(draft.unit_price)).toFixed(2)}</TableCell>
+      <TableCell>{(computeLineTotal(Number(draft.qty), Number(draft.unit_price)) * (1 + Number(draft.vat_rate) / 100)).toFixed(2)}</TableCell>
       <TableCell className="text-right">
         <div className="flex justify-end gap-2">
           <Button size="sm" variant="secondary" onClick={() => onSave(draft)} disabled={saving || !canEdit}>

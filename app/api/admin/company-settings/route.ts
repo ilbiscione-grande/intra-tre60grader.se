@@ -19,6 +19,7 @@ type CompanySettingsBody = {
   iban?: string | null;
   bic?: string | null;
   invoice_prefix?: string | null;
+  invoice_priority_threshold?: number;
   default_payment_terms_days?: number;
   late_payment_interest_rate?: number | null;
   invoice_terms_note?: string | null;
@@ -91,6 +92,7 @@ export async function POST(request: NextRequest) {
     iban: nullIfEmpty(body?.iban),
     bic: nullIfEmpty(body?.bic),
     invoice_prefix: nullIfEmpty(body?.invoice_prefix),
+    invoice_priority_threshold: Math.max(0, Number(body?.invoice_priority_threshold ?? 10000)),
     default_payment_terms_days: Math.max(0, Math.min(365, Math.round(Number(body?.default_payment_terms_days ?? 30)))),
     late_payment_interest_rate: body?.late_payment_interest_rate == null || Number.isNaN(Number(body.late_payment_interest_rate))
       ? null

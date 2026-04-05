@@ -26,11 +26,11 @@ import {
 } from '@/lib/finance/invoiceReadiness';
 import { createInvoiceFromOrder } from '@/lib/rpc';
 import { createClient } from '@/lib/supabase/client';
-import type { TableRow as DbRow } from '@/lib/supabase/database.types';
+import type { Json, TableRow as DbRow } from '@/lib/supabase/database.types';
 
 type InvoiceListRow = Pick<
   DbRow<'invoices'>,
-  'id' | 'invoice_no' | 'kind' | 'status' | 'currency' | 'issue_date' | 'due_date' | 'total' | 'created_at' | 'project_id'
+  'id' | 'invoice_no' | 'kind' | 'status' | 'currency' | 'issue_date' | 'due_date' | 'total' | 'created_at' | 'project_id' | 'order_id' | 'rpc_result' | 'credit_for_invoice_id' | 'credited_at'
 >;
 
 type InvoiceTodoRow = {
@@ -51,7 +51,16 @@ type InvoicingQueueStage =
   | 'overdue';
 
 type TimeGroupingMode = 'all' | 'person' | 'task';
-type QueueFilter = 'all' | 'waiting_for_me' | 'overdue' | 'time_without_order' | 'completed_without_invoice';
+type QueueFilter =
+  | 'all'
+  | 'waiting_for_me'
+  | 'overdue'
+  | 'time_without_order'
+  | 'completed_without_invoice'
+  | 'change_orders'
+  | 'supplement_orders'
+  | 'large_change_values'
+  | 'large_supplement_values';
 
 type InvoicingQueueItem = {
   id: string;
@@ -70,9 +79,13 @@ type InvoicingQueueItem = {
   entityId: string;
   projectId?: string;
   reasons: string[];
+  orderKind?: string;
   hasUnorderedBillableTime?: boolean;
   completedWithoutInvoice?: boolean;
+  isLargeOpenValue?: boolean;
 };
+
+const DEFAULT_LARGE_OPEN_ORDER_VALUE_THRESHOLD = 10000;
 
 type TimePreviewLine = {
   key: string;
@@ -81,6 +94,23 @@ type TimePreviewLine = {
   unitPrice: number;
   total: number;
 };
+
+type OrderKind = 'primary' | 'change' | 'supplement';
+
+function asRecord(value: Json): Record<string, unknown> {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  return {};
+}
+
+function parseInvoiceRpcMeta(value: Json) {
+  const rec = asRecord(value);
+  return {
+    isPartial: rec.partial === true || rec.partial === 'true',
+    isLineSelection: rec.selection_mode === 'lines'
+  };
+}
 
 function fakturaStatusEtikett(status: string) {
   const map: Record<string, string> = {
@@ -122,9 +152,60 @@ function queueFilterLabel(value: QueueFilter) {
     waiting_for_me: 'Väntar på mig',
     overdue: 'Förfallna',
     time_without_order: 'Tid utan order',
-    completed_without_invoice: 'Klara utan faktura'
+    completed_without_invoice: 'Klara utan faktura',
+    change_orders: 'Ändringsordrar',
+    supplement_orders: 'Tilläggsordrar',
+    large_change_values: 'Stora ändringsvärden',
+    large_supplement_values: 'Stora tilläggsvärden'
   };
   return map[value];
+}
+
+function orderKindLabel(kind?: string | null) {
+  if (kind === 'change') return 'Ändringsorder';
+  if (kind === 'supplement') return 'Tilläggsorder';
+  if (kind === 'primary') return 'Huvudorder';
+  return 'Order';
+}
+
+function orderKindBadgeClass(kind?: string | null) {
+  if (kind === 'change') {
+    return 'border-violet-200/80 bg-violet-100/80 text-violet-900 hover:bg-violet-100/80 dark:border-violet-900/70 dark:bg-violet-950/60 dark:text-violet-200';
+  }
+  if (kind === 'supplement') {
+    return 'border-cyan-200/80 bg-cyan-100/80 text-cyan-900 hover:bg-cyan-100/80 dark:border-cyan-900/70 dark:bg-cyan-950/60 dark:text-cyan-200';
+  }
+  return 'border-slate-200/80 bg-slate-100/80 text-slate-800 hover:bg-slate-100/80 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-200';
+}
+
+function orderKindQueueReason(kind?: string | null, stage?: InvoicingQueueStage) {
+  if (kind === 'change') {
+    return stage === 'approved_today'
+      ? 'Ändringsorder fastställd och redo att faktureras'
+      : 'Ändringsorder väntar på granskning och fastställelse';
+  }
+  if (kind === 'supplement') {
+    return stage === 'approved_today'
+      ? 'Tilläggsorder fastställd och redo att faktureras'
+      : 'Tilläggsorder väntar på granskning och fastställelse';
+  }
+  return null;
+}
+
+function orderKindQueueNextStep(kind?: string | null, stage?: InvoicingQueueStage) {
+  if (stage === 'approved_today') {
+    if (kind === 'change') return 'Skapa ändringsfaktura';
+    if (kind === 'supplement') return 'Skapa faktura för tillägg';
+    return 'Skapa faktura';
+  }
+
+  if (kind === 'change') return 'Granska ändringen och fastställ';
+  if (kind === 'supplement') return 'Granska tillägget och fastställ';
+  return 'Granska och fastställ';
+}
+
+function orderKindQueueMeta(kind?: string | null, projectTitle?: string) {
+  return `${orderKindLabel(kind)} • ${projectTitle ?? 'Projekt'}`;
 }
 
 function buildTimePreviewLines({
@@ -214,6 +295,20 @@ export default function InvoicesPage() {
     },
     staleTime: 1000 * 60 * 10
   });
+  const companyPriorityThresholdQuery = useQuery({
+    queryKey: ['company-invoice-priority-threshold', companyId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('companies')
+        .select('invoice_priority_threshold')
+        .eq('id', companyId)
+        .maybeSingle();
+
+      if (error) throw error;
+      return Number(data?.invoice_priority_threshold ?? DEFAULT_LARGE_OPEN_ORDER_VALUE_THRESHOLD);
+    },
+    enabled: canReadFinance
+  });
   const [timeDialogProjectId, setTimeDialogProjectId] = useState<string | null>(null);
   const [timeGroupingMode, setTimeGroupingMode] = useState<TimeGroupingMode>('all');
   const [timeUnitPrice, setTimeUnitPrice] = useState('');
@@ -227,7 +322,11 @@ export default function InvoicesPage() {
       nextQueue === 'waiting_for_me' ||
       nextQueue === 'overdue' ||
       nextQueue === 'time_without_order' ||
-      nextQueue === 'completed_without_invoice'
+      nextQueue === 'completed_without_invoice' ||
+      nextQueue === 'change_orders' ||
+      nextQueue === 'supplement_orders' ||
+      nextQueue === 'large_change_values' ||
+      nextQueue === 'large_supplement_values'
     ) {
       setQueueFilter(nextQueue);
     }
@@ -238,7 +337,7 @@ export default function InvoicesPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('invoices')
-        .select('id,invoice_no,kind,status,currency,issue_date,due_date,total,created_at,project_id')
+        .select('id,invoice_no,kind,status,currency,issue_date,due_date,total,created_at,project_id,order_id,rpc_result,credit_for_invoice_id,credited_at')
         .eq('company_id', companyId)
         .order('created_at', { ascending: false })
         .limit(200)
@@ -333,7 +432,7 @@ export default function InvoicesPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('invoice_sources')
-        .select('project_id')
+        .select('invoice_id,project_id,order_id')
         .eq('company_id', companyId);
 
       if (error) throw error;
@@ -389,7 +488,7 @@ export default function InvoicesPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('orders')
-        .select('id,project_id,order_no,status,invoice_readiness_status,total,created_at')
+        .select('id,project_id,order_no,status,order_kind,invoice_readiness_status,total,created_at')
         .eq('company_id', companyId)
         .in('invoice_readiness_status', ['ready_for_invoicing', 'approved_for_invoicing'])
         .order('created_at', { ascending: false });
@@ -410,6 +509,20 @@ export default function InvoicesPage() {
 
       if (error) throw error;
       return data ?? [];
+    },
+    enabled: canReadFinance
+  });
+
+  const invoiceOrderTypesQuery = useQuery({
+    queryKey: ['invoice-order-types', companyId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('orders')
+        .select('id,order_kind,order_no')
+        .eq('company_id', companyId);
+
+      if (error) throw error;
+      return (data ?? []) as Array<{ id: string; order_kind: OrderKind; order_no: string | null }>;
     },
     enabled: canReadFinance
   });
@@ -549,9 +662,81 @@ export default function InvoicesPage() {
   }
 
   const rows = query.data ?? [];
+  const primaryOrderIdByInvoiceId = useMemo(() => {
+    const grouped = new Map<string, string[]>();
+
+    for (const row of (invoiceSourcesQuery.data ?? []) as Array<{ invoice_id: string; order_id: string; project_id: string }>) {
+      const current = grouped.get(row.invoice_id) ?? [];
+      current.push(row.order_id);
+      grouped.set(row.invoice_id, current);
+    }
+
+    const resolved = new Map<string, string>();
+    for (const [invoiceId, orderIds] of grouped.entries()) {
+      const unique = Array.from(new Set(orderIds));
+      if (unique.length === 1) {
+        resolved.set(invoiceId, unique[0]);
+      }
+    }
+
+    return resolved;
+  }, [invoiceSourcesQuery.data]);
+  const orderTypeByOrderId = useMemo(
+    () => new Map((invoiceOrderTypesQuery.data ?? []).map((order) => [order.id, { kind: order.order_kind, orderNo: order.order_no }])),
+    [invoiceOrderTypesQuery.data]
+  );
+  const relatedCreditsByInvoiceId = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const row of rows) {
+      if (!row.credit_for_invoice_id) continue;
+      map.set(row.credit_for_invoice_id, (map.get(row.credit_for_invoice_id) ?? 0) + 1);
+    }
+    return map;
+  }, [rows]);
+  const annotatedRows = useMemo(
+    () =>
+      rows.map((row) => {
+        const resolvedOrderId = row.order_id ?? primaryOrderIdByInvoiceId.get(row.id) ?? null;
+        const orderMeta = resolvedOrderId ? orderTypeByOrderId.get(resolvedOrderId) : null;
+        const relatedCreditCount = relatedCreditsByInvoiceId.get(row.id) ?? 0;
+        return {
+          ...row,
+          resolvedOrderId,
+          orderKind: orderMeta?.kind ?? null,
+          orderNo: orderMeta?.orderNo ?? null,
+          invoiceMeta: parseInvoiceRpcMeta((row.rpc_result ?? {}) as Json),
+          relatedCreditCount,
+          creditState:
+            row.kind === 'credit_note'
+              ? 'credit_note'
+              : row.credited_at
+                ? 'fully_credited'
+                : relatedCreditCount > 0
+                  ? 'partially_credited'
+                  : 'not_credited'
+        };
+      }),
+    [orderTypeByOrderId, primaryOrderIdByInvoiceId, relatedCreditsByInvoiceId, rows]
+  );
   const issuedCount = rows.filter((row) => row.status === 'issued' || row.status === 'sent').length;
   const paidCount = rows.filter((row) => row.status === 'paid').length;
   const totalValue = rows.reduce((sum, row) => sum + Number(row.total), 0);
+  const invoiceValueByOrderKind = useMemo(() => {
+    const summary = {
+      primary: 0,
+      change: 0,
+      supplement: 0
+    };
+
+    for (const row of annotatedRows) {
+      const amount = Number(row.total ?? 0);
+      if (row.orderKind === 'change') summary.change += amount;
+      else if (row.orderKind === 'supplement') summary.supplement += amount;
+      else summary.primary += amount;
+    }
+
+    return summary;
+  }, [annotatedRows]);
   const memberLabelByUserId = useMemo(
     () => new Map((memberOptionsQuery.data ?? []).map((member) => [member.user_id, member.display_name ?? member.email ?? member.user_id])),
     [memberOptionsQuery.data]
@@ -624,6 +809,8 @@ export default function InvoicesPage() {
     timeGroupingMode,
     timeLineUnitPriceOverrides
   ]);
+  const largeOpenOrderValueThreshold =
+    companyPriorityThresholdQuery.data ?? DEFAULT_LARGE_OPEN_ORDER_VALUE_THRESHOLD;
 
   const invoicingQueue = useMemo<InvoicingQueueItem[]>(() => {
     const customersById = new Map((invoicingCustomersQuery.data ?? []).map((customer) => [customer.id, customer.name]));
@@ -677,7 +864,8 @@ export default function InvoicesPage() {
           projectId: project.id,
           reasons,
           hasUnorderedBillableTime: unorderedBillableHours > 0,
-          completedWithoutInvoice: false
+          completedWithoutInvoice: false,
+          isLargeOpenValue: false
         };
       });
 
@@ -713,7 +901,8 @@ export default function InvoicesPage() {
           projectId: project.id,
           reasons,
           hasUnorderedBillableTime: unorderedBillableHours > 0,
-          completedWithoutInvoice: true
+          completedWithoutInvoice: true,
+          isLargeOpenValue: false
         };
       });
 
@@ -724,12 +913,16 @@ export default function InvoicesPage() {
       const stage: InvoicingQueueStage =
         order.invoice_readiness_status === 'approved_for_invoicing' ? 'approved_today' : 'waiting_for_approval';
       const lineStats = orderLineStats.get(order.id) ?? { count: 0, total: 0 };
+      const isLargeOpenValue =
+        (order.order_kind === 'change' || order.order_kind === 'supplement') &&
+        Number(order.total ?? 0) >= largeOpenOrderValueThreshold;
       const reasons = buildOrderInvoicingQueueReasons({
         customerName,
         lineCount: lineStats.count,
         orderTotal: Number(order.total ?? 0),
         waitingForApproval: stage === 'waiting_for_approval'
       });
+      const orderKindReason = orderKindQueueReason(order.order_kind, stage);
 
       return {
         id: `order-${order.id}`,
@@ -740,15 +933,25 @@ export default function InvoicesPage() {
         projectTitle,
         amount: Number(order.total ?? 0),
         statusLabel: getInvoiceReadinessLabel(order.invoice_readiness_status),
-        nextStep: stage === 'approved_today' ? 'Skapa faktura' : 'Granska och fastställ',
+        nextStep: orderKindQueueNextStep(order.order_kind, stage),
         ownerLabel: getInvoiceReadinessOwner(order.invoice_readiness_status),
         href: `/orders/${order.id}` as Route,
         secondaryHref: `/projects/${order.project_id}` as Route,
-        meta: `Order • ${projectTitle}`,
+        meta: orderKindQueueMeta(order.order_kind, projectTitle),
         entityId: order.id,
         projectId: order.project_id,
-        reasons,
-        completedWithoutInvoice: false
+        reasons: isLargeOpenValue
+          ? [
+              order.order_kind === 'change' ? 'Stort öppet ändringsvärde' : 'Stort öppet tilläggsvärde',
+              ...(orderKindReason ? [orderKindReason] : []),
+              ...reasons
+            ]
+          : orderKindReason
+            ? [orderKindReason, ...reasons]
+            : reasons,
+        orderKind: order.order_kind,
+        completedWithoutInvoice: false,
+        isLargeOpenValue
       };
     });
 
@@ -777,11 +980,16 @@ export default function InvoicesPage() {
         meta: `Faktura • Förfallo ${formatDate(invoice.due_date)}`,
         entityId: invoice.id,
         reasons,
-        completedWithoutInvoice: false
+        completedWithoutInvoice: false,
+        isLargeOpenValue: false
       };
     });
 
-    return [...projectItems, ...completedNotReadyItems, ...orderItems, ...invoiceItems].sort((a, b) => b.amount - a.amount);
+    return [...projectItems, ...completedNotReadyItems, ...orderItems, ...invoiceItems].sort((a, b) => {
+      const priorityDiff = Number(Boolean(b.isLargeOpenValue)) - Number(Boolean(a.isLargeOpenValue));
+      if (priorityDiff !== 0) return priorityDiff;
+      return b.amount - a.amount;
+    });
   }, [
     billableTimeQuery.data,
     completedProjectsQuery.data,
@@ -791,6 +999,7 @@ export default function InvoicesPage() {
     invoicingOrderLinesQuery.data,
     invoicingOrdersQuery.data,
     invoicingProjectsQuery.data,
+    largeOpenOrderValueThreshold,
     todayIso
   ]);
 
@@ -809,6 +1018,14 @@ export default function InvoicesPage() {
       if (queueFilter === 'overdue') return item.stage === 'overdue';
       if (queueFilter === 'time_without_order') return item.type === 'project' && Boolean(item.hasUnorderedBillableTime);
       if (queueFilter === 'completed_without_invoice') return item.type === 'project' && Boolean(item.completedWithoutInvoice);
+      if (queueFilter === 'change_orders') return item.type === 'order' && item.orderKind === 'change';
+      if (queueFilter === 'supplement_orders') return item.type === 'order' && item.orderKind === 'supplement';
+      if (queueFilter === 'large_change_values') {
+        return item.type === 'order' && item.orderKind === 'change' && Boolean(item.isLargeOpenValue);
+      }
+      if (queueFilter === 'large_supplement_values') {
+        return item.type === 'order' && item.orderKind === 'supplement' && Boolean(item.isLargeOpenValue);
+      }
       if (queueFilter === 'waiting_for_me') {
         if (item.type === 'project') {
           if (!currentUserId) return item.stage === 'ready_to_review';
@@ -835,7 +1052,11 @@ export default function InvoicesPage() {
     { value: 'waiting_for_me', label: 'Väntar på mig' },
     { value: 'overdue', label: 'Förfallna' },
     { value: 'time_without_order', label: 'Tid utan order' },
-    { value: 'completed_without_invoice', label: 'Klara utan faktura' }
+    { value: 'completed_without_invoice', label: 'Klara utan faktura' },
+    { value: 'change_orders', label: 'Ändringsordrar' },
+    { value: 'supplement_orders', label: 'Tilläggsordrar' },
+    { value: 'large_change_values', label: 'Stora ändringsvärden' },
+    { value: 'large_supplement_values', label: 'Stora tilläggsvärden' }
   ];
 
   return (
@@ -866,10 +1087,13 @@ export default function InvoicesPage() {
             </div>
           </div>
 
-          <div className="grid gap-2 md:grid-cols-3">
+          <div className="grid gap-2 md:grid-cols-3 xl:grid-cols-6">
             <InvoiceMetricCard icon={Wallet} label="Totalt fakturavärde" value={`${totalValue.toFixed(2)} SEK`} />
             <InvoiceMetricCard icon={FileText} label="Öppna/utfärdade" value={String(issuedCount)} />
             <InvoiceMetricCard icon={Receipt} label="Betalda" value={String(paidCount)} />
+            <InvoiceMetricCard icon={Receipt} label="Huvudorder" value={`${invoiceValueByOrderKind.primary.toFixed(2)} SEK`} />
+            <InvoiceMetricCard icon={Receipt} label="Ändringar" value={`${invoiceValueByOrderKind.change.toFixed(2)} SEK`} />
+            <InvoiceMetricCard icon={Receipt} label="Tillägg" value={`${invoiceValueByOrderKind.supplement.toFixed(2)} SEK`} />
           </div>
         </CardContent>
       </Card>
@@ -905,6 +1129,9 @@ export default function InvoicesPage() {
               </Button>
             </div>
           ) : null}
+          <p className="text-xs text-foreground/55">
+            Ändrings- och tilläggsordrar med öppet värde från {largeOpenOrderValueThreshold.toLocaleString('sv-SE')} kr prioriteras överst i sina kolumner.
+          </p>
           <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
           {(['ready_to_review', 'waiting_for_approval', 'approved_today', 'sent', 'awaiting_payment', 'overdue'] as InvoicingQueueStage[]).map((stage) => (
             <InvoiceMetricCard
@@ -935,7 +1162,19 @@ export default function InvoicesPage() {
                         <p className="text-sm font-medium">{item.title}</p>
                         <p className="mt-1 text-xs text-foreground/55">{item.meta}</p>
                       </div>
-                      <Badge>{item.statusLabel}</Badge>
+                      <div className="flex flex-wrap justify-end gap-2">
+                        {item.type === 'order' ? (
+                          <Badge className={orderKindBadgeClass(item.orderKind)}>
+                            {orderKindLabel(item.orderKind)}
+                          </Badge>
+                        ) : null}
+                        {item.type === 'order' && item.isLargeOpenValue ? (
+                          <Badge className="border-amber-300/80 bg-amber-100/80 text-amber-900 hover:bg-amber-100/80 dark:border-amber-900/60 dark:bg-amber-950/60 dark:text-amber-200">
+                            Hög prioritet
+                          </Badge>
+                        ) : null}
+                        <Badge>{item.statusLabel}</Badge>
+                      </div>
                     </div>
                     <div className="mt-3 space-y-1 text-sm">
                       <p><span className="text-foreground/55">Kund:</span> {item.customerName}</p>
@@ -1040,6 +1279,7 @@ export default function InvoicesPage() {
                 <TableHead>Fakturanr</TableHead>
                 <TableHead>Typ</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead>Ordertyp</TableHead>
                 <TableHead>Fakturadatum</TableHead>
                 <TableHead>Förfallodatum</TableHead>
                 <TableHead>Total</TableHead>
@@ -1050,24 +1290,45 @@ export default function InvoicesPage() {
             <TableBody>
               {rows.length === 0 && !query.isLoading && (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-foreground/70">
+                  <TableCell colSpan={9} className="text-foreground/70">
                     Inga fakturor hittades.
                   </TableCell>
                 </TableRow>
               )}
 
-              {rows.map((row) => (
+              {annotatedRows.map((row) => (
                 <TableRow key={row.id} className="transition-colors hover:bg-muted/20">
                   <TableCell className="font-medium">{row.invoice_no}</TableCell>
                   <TableCell>
-                    <Badge className="border-border/70 bg-muted/40 text-foreground/80 hover:bg-muted/40">
-                      {fakturaTypEtikett(row.kind)}
-                    </Badge>
+                    <div className="flex flex-wrap gap-2">
+                      <Badge className="border-border/70 bg-muted/40 text-foreground/80 hover:bg-muted/40">
+                        {fakturaTypEtikett(row.kind)}
+                      </Badge>
+                      {row.invoiceMeta.isPartial ? <Badge>Delfaktura</Badge> : null}
+                      {row.invoiceMeta.isLineSelection ? <Badge>Radval</Badge> : null}
+                    </div>
                   </TableCell>
                   <TableCell>
-                    <Badge className="border-border/70 bg-muted/40 text-foreground/80 hover:bg-muted/40">
-                      {fakturaStatusEtikett(row.status)}
-                    </Badge>
+                    <div className="flex flex-wrap gap-2">
+                      <Badge className="border-border/70 bg-muted/40 text-foreground/80 hover:bg-muted/40">
+                        {fakturaStatusEtikett(row.status)}
+                      </Badge>
+                      {row.creditState === 'partially_credited' ? <Badge>Delkrediterad</Badge> : null}
+                      {row.creditState === 'fully_credited' ? <Badge>Fullkrediterad</Badge> : null}
+                      {row.creditState === 'credit_note' ? <Badge>Kredit</Badge> : null}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex flex-wrap gap-2">
+                      <Badge className={orderKindBadgeClass(row.orderKind)}>
+                        {orderKindLabel(row.orderKind)}
+                      </Badge>
+                      {row.orderNo ? (
+                        <Badge className="border-border/70 bg-muted/40 text-foreground/70 hover:bg-muted/40">
+                          {row.orderNo}
+                        </Badge>
+                      ) : null}
+                    </div>
                   </TableCell>
                   <TableCell>{new Date(row.issue_date).toLocaleDateString('sv-SE')}</TableCell>
                   <TableCell>{new Date(row.due_date).toLocaleDateString('sv-SE')}</TableCell>

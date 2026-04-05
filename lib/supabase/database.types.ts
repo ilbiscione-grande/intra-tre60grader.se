@@ -27,6 +27,7 @@ export type Database = {
           iban: string | null
           id: string
           invoice_prefix: string | null
+          invoice_priority_threshold: number
           name: string
           org_no: string | null
           phone: string | null
@@ -46,6 +47,7 @@ export type Database = {
           iban?: string | null
           id?: string
           invoice_prefix?: string | null
+          invoice_priority_threshold?: number
           name: string
           org_no?: string | null
           phone?: string | null
@@ -65,6 +67,7 @@ export type Database = {
           iban?: string | null
           id?: string
           invoice_prefix?: string | null
+          invoice_priority_threshold?: number
           name?: string
           org_no?: string | null
           phone?: string | null
@@ -374,6 +377,7 @@ export type Database = {
         }
         invoice_sources: {
           Row: {
+            allocated_total: number
             company_id: string
             created_at: string
             id: string
@@ -384,6 +388,7 @@ export type Database = {
             source_kind: string
           }
           Insert: {
+            allocated_total?: number
             company_id: string
             created_at?: string
             id?: string
@@ -394,6 +399,7 @@ export type Database = {
             source_kind?: string
           }
           Update: {
+            allocated_total?: number
             company_id?: string
             created_at?: string
             id?: string
@@ -456,6 +462,75 @@ export type Database = {
               columns: ["company_id"]
               isOneToOne: true
               referencedRelation: "companies"
+              referencedColumns: ["id"]
+            },
+          ]
+        }
+        invoice_source_lines: {
+          Row: {
+            allocated_total: number
+            company_id: string
+            created_at: string
+            id: string
+            invoice_id: string
+            invoice_source_id: string
+            order_id: string
+            order_line_id: string
+          }
+          Insert: {
+            allocated_total?: number
+            company_id: string
+            created_at?: string
+            id?: string
+            invoice_id: string
+            invoice_source_id: string
+            order_id: string
+            order_line_id: string
+          }
+          Update: {
+            allocated_total?: number
+            company_id?: string
+            created_at?: string
+            id?: string
+            invoice_id?: string
+            invoice_source_id?: string
+            order_id?: string
+            order_line_id?: string
+          }
+          Relationships: [
+            {
+              foreignKeyName: "invoice_source_lines_company_id_fkey"
+              columns: ["company_id"]
+              isOneToOne: false
+              referencedRelation: "companies"
+              referencedColumns: ["id"]
+            },
+            {
+              foreignKeyName: "invoice_source_lines_invoice_id_fkey"
+              columns: ["invoice_id"]
+              isOneToOne: false
+              referencedRelation: "invoices"
+              referencedColumns: ["id"]
+            },
+            {
+              foreignKeyName: "invoice_source_lines_invoice_source_id_fkey"
+              columns: ["invoice_source_id"]
+              isOneToOne: false
+              referencedRelation: "invoice_sources"
+              referencedColumns: ["id"]
+            },
+            {
+              foreignKeyName: "invoice_source_lines_order_id_fkey"
+              columns: ["order_id"]
+              isOneToOne: false
+              referencedRelation: "orders"
+              referencedColumns: ["id"]
+            },
+            {
+              foreignKeyName: "invoice_source_lines_order_line_id_fkey"
+              columns: ["order_line_id"]
+              isOneToOne: false
+              referencedRelation: "order_lines"
               referencedColumns: ["id"]
             },
           ]
@@ -1852,8 +1927,14 @@ export type Database = {
       }
       book_invoice_issue: { Args: { p_invoice_id: string }; Returns: Json }
       create_credit_invoice: { Args: { p_original_invoice_id: string; p_reason?: string | null }; Returns: Json }
+      create_credit_invoice_from_lines: {
+        Args: { p_line_ids: string[]; p_original_invoice_id: string; p_reason?: string | null }
+        Returns: Json
+      }
       create_invoice_from_order: { Args: { p_order_id: string }; Returns: Json }
       create_invoice_from_orders: { Args: { order_ids: string[] }; Returns: Json }
+      create_partial_invoice_from_order: { Args: { p_order_id: string; p_invoice_total: number }; Returns: Json }
+      create_partial_invoice_from_order_lines: { Args: { p_order_id: string; p_order_line_ids: string[] }; Returns: Json }
       create_order_lines_from_billable_time: {
         Args: {
           p_grouping_mode?: string

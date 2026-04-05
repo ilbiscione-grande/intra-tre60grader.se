@@ -51,6 +51,7 @@ type InvoicingQueueItem = {
   entityId: string;
   projectId?: string;
 };
+type OrderKind = 'primary' | 'change' | 'supplement';
 
 type InvoiceTodoRow = {
   id: string;
@@ -146,6 +147,12 @@ function stageLabel(stage: InvoicingQueueStage) {
     overdue: 'Förfallen'
   };
   return map[stage];
+}
+
+function orderKindLabel(kind: OrderKind) {
+  if (kind === 'change') return 'Ändringsordrar';
+  if (kind === 'supplement') return 'Tilläggsordrar';
+  return 'Huvudorder';
 }
 
 function share(value: number, total: number) {
@@ -280,13 +287,28 @@ export default function FinancePage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('orders')
-        .select('id,project_id,order_no,status,invoice_readiness_status,total,created_at')
+        .select('id,project_id,order_no,order_kind,status,invoice_readiness_status,total,created_at')
         .eq('company_id', companyId)
         .in('invoice_readiness_status', ['ready_for_invoicing', 'approved_for_invoicing'])
         .order('created_at', { ascending: false });
 
       if (error) throw error;
       return data ?? [];
+    },
+    enabled: canReadFinance
+  });
+
+  const financeOrderMixOrdersQuery = useQuery({
+    queryKey: ['finance-order-mix-orders', companyId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('orders')
+        .select('id,project_id,order_kind,total')
+        .eq('company_id', companyId)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      return (data ?? []) as Array<{ id: string; project_id: string | null; order_kind: OrderKind; total: number | null }>;
     },
     enabled: canReadFinance
   });
@@ -512,6 +534,33 @@ export default function FinancePage() {
       sourceCounts
     };
   }, [filteredRows]);
+
+  const orderMix = useMemo(() => {
+    const totals = {
+      primary: 0,
+      change: 0,
+      supplement: 0
+    };
+
+    for (const order of financeOrderMixOrdersQuery.data ?? []) {
+      const amount = Number(order.total ?? 0);
+      if (order.order_kind === 'change') totals.change += amount;
+      else if (order.order_kind === 'supplement') totals.supplement += amount;
+      else totals.primary += amount;
+    }
+
+    const total = totals.primary + totals.change + totals.supplement;
+    const changeAndSupplement = totals.change + totals.supplement;
+
+    return {
+      totals: { ...totals, total, changeAndSupplement },
+      shares: {
+        primary: share(totals.primary, total),
+        change: share(totals.change, total),
+        supplement: share(totals.supplement, total)
+      }
+    };
+  }, [financeOrderMixOrdersQuery.data]);
 
   const todo = useMemo(() => {
     const invoices = invoiceTodoQuery.data ?? [];
@@ -1061,6 +1110,33 @@ export default function FinancePage() {
                     percent={100}
                     tone="amber"
                   />
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle>Ordermix</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <MetricBar
+                    label="Kommersiellt totalvärde"
+                    value={money(orderMix.totals.total)}
+                    detail={orderMix.totals.total > 0 ? `${money(orderMix.totals.changeAndSupplement)} ligger i ändringar och tillägg` : 'Inga ordervärden ännu'}
+                    stacked
+                    segments={[
+                      { label: orderKindLabel('primary'), percent: orderMix.shares.primary, tone: 'blue' },
+                      { label: orderKindLabel('change'), percent: orderMix.shares.change, tone: 'amber' },
+                      { label: orderKindLabel('supplement'), percent: orderMix.shares.supplement, tone: 'emerald' }
+                    ]}
+                  />
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    <ReviewFact label="Huvudorder" value={money(orderMix.totals.primary)} />
+                    <ReviewFact label="Ändringar" value={money(orderMix.totals.change)} />
+                    <ReviewFact label="Tillägg" value={money(orderMix.totals.supplement)} />
+                  </div>
+                  <Button variant="outline" size="sm" asChild>
+                    <Link href={'/reports' as Route}>Öppna orderfördelning i rapporter</Link>
+                  </Button>
                 </CardContent>
               </Card>
 
