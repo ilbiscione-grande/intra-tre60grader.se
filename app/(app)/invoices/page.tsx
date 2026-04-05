@@ -1315,7 +1315,7 @@ export default function InvoicesPage() {
                       </Badge>
                       {row.creditState === 'partially_credited' ? <Badge>Delkrediterad</Badge> : null}
                       {row.creditState === 'fully_credited' ? <Badge>Fullkrediterad</Badge> : null}
-                      {row.creditState === 'credit_note' ? <Badge>Kredit</Badge> : null}
+                      {row.creditState === 'credit_note' ? <Badge>Kreditfaktura</Badge> : null}
                     </div>
                   </TableCell>
                   <TableCell>

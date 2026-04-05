@@ -116,7 +116,7 @@ function parseReconciliationReport(value: unknown): ReconciliationReport {
 
 function receivableCreditStateLabel(meta?: InvoiceMetaRow | null) {
   if (!meta) return null;
-  if (meta.kind === 'credit_note') return 'Kredit';
+  if (meta.kind === 'credit_note') return 'Kreditfaktura';
   if (meta.credited_at) return 'Fullkrediterad';
   return null;
 }
