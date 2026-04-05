@@ -1070,14 +1070,17 @@ export default function InvoicesPage() {
                 <span>Fakturor</span>
               </div>
               <div>
-                <h1 className="text-xl font-semibold tracking-tight">Fakturaöversikt och faktureringskö</h1>
+                <h1 className="text-xl font-semibold tracking-tight">Fakturaöversikt</h1>
                 <p className="text-sm text-foreground/65">
-                  Här samlas både färdiga fakturor och sådant som väntar på fastställelse, fakturering eller betalningsuppföljning.
+                  Här följer du färdiga fakturor, krediter och historik. Själva arbetsytan för fastställelse och nästa steg finns under Fakturering.
                 </p>
               </div>
             </div>
 
             <div className="flex flex-wrap gap-2">
+              <Button asChild>
+                <Link href={'/billing' as Route}>Fakturering</Link>
+              </Button>
               <Button variant="secondary" asChild>
                 <Link href="/reports">Rapporter</Link>
               </Button>

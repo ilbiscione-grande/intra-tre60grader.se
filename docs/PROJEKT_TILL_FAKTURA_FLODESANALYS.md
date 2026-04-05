@@ -1695,6 +1695,108 @@ Konkreta delar:
 
 Detta är en senare etapp och ska inte prioriteras före de tidigare processförbättringarna.
 
+## Nuläge mot roadmapen
+
+Nedan är en uppdaterad checklista baserad på appens faktiska nuläge i kodbasen per 2026-04-05.
+
+Statusnyckel:
+
+- `[x]` klart
+- `[-]` delvis klart
+- `[ ]` ej gjort ännu
+
+### Etapp 1: Tydliggör status och ansvar i befintligt flöde
+
+Övergripande bedömning: `klar`
+
+- [x] `invoice_readiness_status` finns på projekt och order
+- [x] statusstegen `Inte redo`, `Under kontroll`, `Redo för fakturering`, `Fastställd för fakturering` finns i datamodell och hjälplogik
+- [x] projektvy visar `Ägare nu`, `Nästa steg` och `Det här saknas`
+- [x] ordervy visar `Ägare nu`, `Nästa steg` och `Det här saknas`
+- [x] enkel checklista före fakturering finns i projekt/order
+- [x] statushjälp finns i projektekonomi och orderdetalj
+- [x] överlämningen är nu genomdriven som backendregel för kundfaktura, delfaktura och samlingsfaktura
+
+### Etapp 2: Bygg faktureringskö som ny arbetsyta
+
+Övergripande bedömning: `klar`
+
+- [x] faktureringskö finns funktionellt i appen
+- [x] kösteg finns: `Redo att granska`, `Väntar på fastställelse`, `Fastställd`, `Skickad`, `Väntar på betalning`, `Förfallen`
+- [x] snabbåtgärder för fastställelse och fakturering finns i befintliga vyer
+- [x] koppling till projekt, order och faktura finns
+- [x] arbetsytan har nu en tydlig canonical plats i ny sida `Fakturering`
+- [x] navigation och stödvyer pekar nu mot `Fakturering` som huvudarbetsyta
+- [-] vissa äldre stödvyer visar fortfarande delar av samma kö för kontext, men inte längre som primär plats
+
+### Etapp 3: Smarta genvägar för scenario 1
+
+Övergripande bedömning: `klar`
+
+- [x] stöd finns för att skapa orderrader från fakturerbar tid
+- [x] stöd finns för prisvarianter och line config vid omvandling från tid
+- [x] snabb fakturering från order/projekt finns
+- [x] orderdetaljen är nu en full ekonomiyta för att lägga till/ändra/ta bort orderrader
+- [x] scenario-1-resan är nu tydligare paketerad som `tid -> orderunderlag -> faktura` i `Fakturering`
+- [x] UX för valen `samlad rad`, `rad per person`, `rad per uppgift` finns nu i det huvudsakliga arbetsflödet
+
+### Etapp 4: Samlad uppföljningspipeline
+
+Övergripande bedömning: `klar`
+
+- [x] `Att göra` använder ekonomiska signaler och `invoice_readiness_status`
+- [x] projekt, order, fakturor och reskontra visar idag flera delar av kedjan
+- [x] kredit, delfakturering och nettoeffekt syns i flera ekonomivyer
+- [x] signalerna är nu samlade bättre mellan `Att göra` och `Fakturering`
+- [x] pipelinen visar `vem äger nästa steg`, `vad blockerar`, `vad ska göras nu`
+- [x] `Att göra` fungerar nu som handlingsnära ingång med djupare länkar till rätt läge i `Fakturering`
+- [x] personlig vy `Väntar på mig nu` finns med prioritet, ansvarstyp och direktväg till rätt kö/filter
+
+### Etapp 5: Förbered datamodellen för huvudorder + tilläggsordrar
+
+Övergripande bedömning: `klar`
+
+- [x] `order_kind` används
+- [x] `parent_order_id` finns i modeller och vyer
+- [x] huvudorder/ändringsorder/tilläggsorder kan visualiseras
+- [x] explicit rotbegrepp för orderhierarki finns nu via `root_order_id`
+- [x] backendmodellen begränsar sekundära order till huvudorder som parent
+- [x] återanvändbar projektsummering finns nu i databaslager för ordermix och faktureringsutfall
+- [x] definierad faktureringsmodell för flera order finns nu i databaslager via orderallokeringar och rollup-vyer
+
+### Etapp 6: Inför huvudorder + tilläggsordrar i UI
+
+Övergripande bedömning: `klar`
+
+- [x] användaren kan skapa och arbeta med huvudorder samt underordnade ändrings-/tilläggsordrar i projektvyn
+- [x] orderlistan visar nu hierarkirelation och gör strukturen synlig även i översikten
+- [x] orderdetaljen visar orderfamilj, relation och familjesummering för netto/kvar
+- [x] projektnivån summerar nu den kommersiella strukturen tydligare med orderfamilj, nettofakturerat och kvar att fakturera
+- [x] UI:t använder nu huvudorder + underordnade ordrar som faktisk arbetsmodell ovanpå den stabiliserade processen
+
+## Rekommenderad nästa punkt
+
+Implementationsroadmapens Etapp 1-6 är nu genomförda i huvudsak.
+
+Bästa nästa punkt att gå vidare med är därför inte en ny roadmap-etapp, utan ett konsolideringspass:
+
+- förenkla äldre stödvyer som fortfarande duplicerar logik från `Fakturering`
+- flytta fler summeringar från handberäknad UI-logik till de nya databasvyerna
+- lägga till tester eller verifieringsskript för orderhierarki, allokering och kreditflöden
+- därefter ta ställning till om nästa initiativ ska vara rapportering, automation eller extern integration
+
+- [ ] gör `Att göra` mer processnära och mindre signalbaserad för flödet projekt -> underlag -> fakturering -> betalning
+- [ ] låt pipelinekort och steg tydligt peka in i `Fakturering` som canonical arbetsyta
+- [ ] visa ansvarig, blockerare och nästa handling ännu tydligare per steg
+- [ ] skilj bättre mellan arbetsproblem, kommersiell förberedelse, ekonomisk fastställelse och betalningsuppföljning
+- [ ] minska dubbellogik mellan `Att göra` och andra finansvyer så att rollerna blir tydligare
+
+Efter detta bör nästa steg vara:
+
+1. fortsätta förfina den samlade uppföljningspipelinen
+2. därefter scenario 1-genvägar där de fortfarande känns splittrade
+3. först därefter flerorderstöd som huvudflöde
+
 ## Typ av arbete per område
 
 För att göra planeringen tydligare:

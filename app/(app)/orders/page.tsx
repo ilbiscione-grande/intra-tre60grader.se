@@ -13,11 +13,11 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { createClient } from '@/lib/supabase/client';
-import type { TableRow as DbRow } from '@/lib/supabase/database.types';
+import type { Database, TableRow as DbRow } from '@/lib/supabase/database.types';
 
 type OrderKindFilter = 'all' | 'primary' | 'change' | 'supplement';
 
-type OrderRow = Pick<DbRow<'orders'>, 'id' | 'order_no' | 'project_id' | 'status' | 'order_kind' | 'total' | 'created_at'>;
+type OrderHierarchyNodeRow = Database['public']['Views']['order_hierarchy_nodes']['Row'];
 type ProjectRow = Pick<DbRow<'projects'>, 'id' | 'title' | 'customer_id'>;
 type CustomerRow = Pick<DbRow<'customers'>, 'id' | 'name'>;
 
@@ -85,6 +85,7 @@ type OrderListItem = {
   orderKind: string;
   total: number;
   createdAt: string;
+  relationLabel: string;
 };
 
 export default function OrdersPage() {
@@ -94,15 +95,15 @@ export default function OrdersPage() {
   const [search, setSearch] = useState('');
   const [orderKindFilter, setOrderKindFilter] = useState<OrderKindFilter>('all');
 
-  const ordersQuery = useQuery<OrderRow[]>({
+  const ordersQuery = useQuery<OrderHierarchyNodeRow[]>({
     queryKey: ['orders', companyId],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('orders')
-        .select('id,order_no,project_id,status,order_kind,total,created_at')
+        .from('order_hierarchy_nodes')
+        .select('order_id,order_no,project_id,status,order_kind,total,created_at,parent_order_id,root_order_id,root_order_no,child_order_count')
         .eq('company_id', companyId)
         .order('created_at', { ascending: false })
-        .returns<OrderRow[]>();
+        .returns<OrderHierarchyNodeRow[]>();
 
       if (error) throw error;
       return data ?? [];
@@ -143,19 +144,25 @@ export default function OrdersPage() {
     const customerById = new Map((customersQuery.data ?? []).map((customer) => [customer.id, customer.name]));
 
     return orders.map((order) => {
-      const project = projectById.get(order.project_id);
+      const project = order.project_id ? projectById.get(order.project_id) : undefined;
       const customerName = project?.customer_id ? customerById.get(project.customer_id) ?? '-' : '-';
 
       return {
-        id: order.id,
+        id: order.order_id ?? '',
         orderNo: order.order_no,
-        projectId: order.project_id,
-        projectTitle: project?.title ?? order.project_id,
+        projectId: order.project_id ?? '',
+        projectTitle: project?.title ?? order.project_id ?? '-',
         customerName,
-        status: order.status,
-        orderKind: order.order_kind,
+        status: order.status ?? 'draft',
+        orderKind: order.order_kind ?? 'primary',
         total: Number(order.total ?? 0),
-        createdAt: order.created_at
+        createdAt: order.created_at ?? new Date(0).toISOString(),
+        relationLabel:
+          order.parent_order_id
+            ? `Under ${order.root_order_no ?? 'huvudorder'}`
+            : Number(order.child_order_count ?? 0) > 0
+              ? `${Number(order.child_order_count ?? 0)} underordnade`
+              : 'Huvudorder'
       };
     });
   }, [customersQuery.data, ordersQuery.data, projectsQuery.data]);
@@ -296,6 +303,10 @@ export default function OrdersPage() {
                     <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-foreground/45">Skapad</p>
                     <p className="mt-1 text-sm font-medium">{new Date(row.createdAt).toLocaleDateString('sv-SE')}</p>
                   </div>
+                  <div className="rounded-xl border border-black/5 bg-white/60 px-3 py-2.5 dark:border-white/10 dark:bg-black/15 sm:col-span-2">
+                    <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-foreground/45">Struktur</p>
+                    <p className="mt-1 text-sm font-medium">{row.relationLabel}</p>
+                  </div>
                 </div>
               </div>
             </Card>
@@ -336,7 +347,12 @@ export default function OrdersPage() {
                 className={`${orderStatusSurfaceClass(row.status)} cursor-pointer`}
                 onClick={() => router.push(`/orders/${row.id}`)}
               >
-                <TableCell className="font-mono text-xs">{row.orderNo ?? row.id}</TableCell>
+                <TableCell>
+                  <div className="space-y-1">
+                    <p className="font-mono text-xs">{row.orderNo ?? row.id}</p>
+                    <p className="text-xs text-foreground/60">{row.relationLabel}</p>
+                  </div>
+                </TableCell>
                 <TableCell>{row.projectTitle}</TableCell>
                 <TableCell>{row.customerName}</TableCell>
                 <TableCell>

@@ -113,10 +113,25 @@ type PipelineItem = {
   title: string;
   detail: string;
   badge: string;
+  priority: 'high' | 'medium' | 'low';
+  blockerLabel?: string;
   ownerLabel: string;
+  ownerScope: 'project' | 'finance' | 'admin' | 'team';
   waitingOnCurrentUser: boolean;
   href: Route;
   tone: 'blue' | 'amber' | 'rose' | 'emerald';
+};
+
+type PipelineStageSummary = {
+  id: string;
+  title: string;
+  description: string;
+  count: number;
+  items: PipelineItem[];
+  emptyText: string;
+  tone: 'blue' | 'amber' | 'rose' | 'emerald';
+  href: Route;
+  ctaLabel?: string;
 };
 
 function startOfToday() {
@@ -564,10 +579,13 @@ export default function TodoPage() {
         title: task.title,
         detail: `${task.projectTitle} • ${task.daysLate} dagar sen`,
         badge: `${task.daysLate} d`,
+        priority: 'high' as const,
+        blockerLabel: 'Försenad uppgift',
         ownerLabel:
           task.assignee_user_id && memberLabelByUserId.get(task.assignee_user_id)
             ? memberLabelByUserId.get(task.assignee_user_id) as string
             : 'Projektteam',
+        ownerScope: task.assignee_user_id ? ('project' as const) : ('team' as const),
         waitingOnCurrentUser: Boolean(
           currentUserId && (task.assignee_user_id === currentUserId || task.created_by === currentUserId)
         ),
@@ -579,10 +597,13 @@ export default function TodoPage() {
         title: project.title,
         detail: `Över slutdatum med ${project.daysLate} dagar`,
         badge: `${project.daysLate} d`,
+        priority: 'high' as const,
+        blockerLabel: 'Projekt över slutdatum',
         ownerLabel:
           project.responsible_user_id && memberLabelByUserId.get(project.responsible_user_id)
             ? memberLabelByUserId.get(project.responsible_user_id) as string
             : 'Projektansvarig',
+        ownerScope: 'project' as const,
         waitingOnCurrentUser: Boolean(currentUserId && project.responsible_user_id === currentUserId),
         href: `/projects/${project.id}` as Route,
         tone: 'rose' as const
@@ -592,7 +613,10 @@ export default function TodoPage() {
         title: timer.taskTitle ?? timer.projectTitle,
         detail: `${timer.projectTitle} • timer aktiv i ${timer.runningHours} timmar`,
         badge: `${timer.runningHours} h`,
+        priority: 'medium' as const,
+        blockerLabel: 'Lång aktiv timer',
         ownerLabel: 'Projektteam',
+        ownerScope: 'team' as const,
         waitingOnCurrentUser: false,
         href: `/projects/${timer.project_id}?tab=time` as Route,
         tone: 'amber' as const
@@ -618,12 +642,15 @@ export default function TodoPage() {
         title: project.title,
         detail: `${project.customer_id ? customerNameById.get(project.customer_id) ?? 'Kund saknas' : 'Kund saknas'} • klart men inte redo för fakturering`,
         badge: 'Förbered underlag',
+        priority: 'high' as const,
+        blockerLabel: 'Projektet är klart men inte markerat redo',
         ownerLabel:
           project.responsible_user_id && memberLabelByUserId.get(project.responsible_user_id)
             ? memberLabelByUserId.get(project.responsible_user_id) as string
             : 'Projektansvarig',
+        ownerScope: 'project' as const,
         waitingOnCurrentUser: Boolean(currentUserId && project.responsible_user_id === currentUserId),
-        href: `/projects/${project.id}?tab=economy` as Route,
+        href: `/billing?queue=completed_without_invoice&blocker=Projektet%20%C3%A4r%20klart%20men%20inte%20markerat%20redo` as Route,
         tone: 'amber' as const
       }))
       ;
@@ -659,9 +686,21 @@ export default function TodoPage() {
           title: order.order_no ?? typeLabel,
           detail: `${typeLabel} • ${project?.title ?? 'Projekt'} • ${customerName}`,
           badge: isLargeVariantValue ? 'Hög prioritet' : nextStep,
+          priority: isLargeVariantValue ? 'high' as const : order.invoice_readiness_status === 'approved_for_invoicing' ? 'medium' as const : 'high' as const,
+          blockerLabel:
+            order.invoice_readiness_status === 'approved_for_invoicing'
+              ? undefined
+              : 'Väntar på fastställelse',
           ownerLabel: order.invoice_readiness_status === 'approved_for_invoicing' ? 'Ekonomi / admin' : 'Ekonomi',
+          ownerScope:
+            order.invoice_readiness_status === 'approved_for_invoicing'
+              ? (role === 'admin' ? ('admin' as const) : ('finance' as const))
+              : ('finance' as const),
           waitingOnCurrentUser: role === 'admin' || role === 'finance',
-          href: `/orders/${order.id}` as Route,
+          href:
+            (order.invoice_readiness_status === 'approved_for_invoicing'
+              ? '/billing?queue=waiting_for_me'
+              : '/billing?queue=waiting_for_me&blocker=V%C3%A4ntar%20p%C3%A5%20fastst%C3%A4llelse') as Route,
           tone: isLargeVariantValue
             ? ('amber' as const)
             : order.invoice_readiness_status === 'approved_for_invoicing'
@@ -688,9 +727,12 @@ export default function TodoPage() {
       title: invoice.invoice_no || 'Faktura',
       detail: `${invoice.daysOverdue} dagar sen • ${formatMoney(invoice.total, invoice.currency)}`,
       badge: `${invoice.daysOverdue} d`,
+      priority: 'high' as const,
+      blockerLabel: 'Förfallen faktura',
       ownerLabel: 'Ekonomi / admin',
+      ownerScope: role === 'admin' ? ('admin' as const) : ('finance' as const),
       waitingOnCurrentUser: role === 'admin' || role === 'finance',
-      href: `/invoices/${invoice.id}` as Route,
+      href: '/billing?queue=overdue&blocker=F%C3%B6rfallen%20faktura' as Route,
       tone: 'rose' as const
     }));
 
@@ -703,16 +745,18 @@ export default function TodoPage() {
         title: invoice.invoice_no || 'Faktura',
         detail: `Förfaller ${invoice.due_date} • ${formatMoney(invoice.total, invoice.currency)}`,
         badge: 'Väntar på betalning',
+        priority: 'medium' as const,
         ownerLabel: 'Ekonomi',
+        ownerScope: 'finance' as const,
         waitingOnCurrentUser: role === 'admin' || role === 'finance',
-        href: `/invoices/${invoice.id}` as Route,
+        href: '/billing?queue=waiting_for_me' as Route,
         tone: 'blue' as const
       }));
 
     return [...overdueItems, ...awaitingItems];
   }, [canReadFinance, invoicesQuery.data, overdueCustomerInvoices, role, today]);
 
-  const pipelineStages = useMemo(
+  const pipelineStages = useMemo<PipelineStageSummary[]>(
     () => [
       {
         id: 'work',
@@ -722,7 +766,8 @@ export default function TodoPage() {
         items: pipelineWorkItems,
         emptyText: 'Inget arbete blockerar flödet just nu.',
         tone: 'amber' as const,
-        href: '/projects' as Route
+        href: '/projects' as Route,
+        ctaLabel: 'Öppna projekt'
       },
       {
         id: 'prep',
@@ -732,7 +777,8 @@ export default function TodoPage() {
         items: pipelinePreparationItems,
         emptyText: 'Inga klara projekt väntar på underlag just nu.',
         tone: 'blue' as const,
-        href: '/invoices?queue=completed_without_invoice' as Route
+        href: '/billing?queue=completed_without_invoice&blocker=Projektet%20%C3%A4r%20klart%20men%20inte%20markerat%20redo' as Route,
+        ctaLabel: 'Öppna i Fakturering'
       },
       {
         id: 'approval',
@@ -742,7 +788,8 @@ export default function TodoPage() {
         items: pipelineApprovalItems,
         emptyText: 'Ingen order väntar på fastställelse eller fakturering just nu.',
         tone: 'emerald' as const,
-        href: '/invoices?queue=waiting_for_me' as Route
+        href: '/billing?queue=waiting_for_me&blocker=V%C3%A4ntar%20p%C3%A5%20fastst%C3%A4llelse' as Route,
+        ctaLabel: 'Öppna i Fakturering'
       },
       {
         id: 'payment',
@@ -752,7 +799,8 @@ export default function TodoPage() {
         items: pipelinePaymentItems,
         emptyText: 'Inga fakturor väntar på uppföljning just nu.',
         tone: 'rose' as const,
-        href: '/invoices?queue=overdue' as Route
+        href: '/billing?queue=overdue&blocker=F%C3%B6rfallen%20faktura' as Route,
+        ctaLabel: 'Öppna i Fakturering'
       }
     ],
     [
@@ -784,6 +832,35 @@ export default function TodoPage() {
       }),
     [pipelineFilter, pipelineStages]
   );
+  const myPipelineFocusItems = useMemo(() => {
+    const priorityOrder = { high: 0, medium: 1, low: 2 } as const;
+
+    return pipelineStages
+      .flatMap((stage) =>
+        stage.items
+          .filter((item) => item.waitingOnCurrentUser)
+          .map((item) => ({
+            ...item,
+            stageTitle: stage.title,
+            stageHref: stage.href
+          }))
+      )
+      .sort((a, b) => {
+        const priorityDiff = priorityOrder[a.priority] - priorityOrder[b.priority];
+        if (priorityDiff !== 0) return priorityDiff;
+        return a.title.localeCompare(b.title, 'sv');
+      })
+      .slice(0, 6);
+  }, [pipelineStages]);
+  const myPipelineFocusSummary = useMemo(() => {
+    return {
+      project: myPipelineFocusItems.filter((item) => item.ownerScope === 'project').length,
+      finance: myPipelineFocusItems.filter((item) => item.ownerScope === 'finance').length,
+      admin: myPipelineFocusItems.filter((item) => item.ownerScope === 'admin').length,
+      team: myPipelineFocusItems.filter((item) => item.ownerScope === 'team').length,
+      high: myPipelineFocusItems.filter((item) => item.priority === 'high').length
+    };
+  }, [myPipelineFocusItems]);
   const invoicePriorityThreshold = Number(companyPriorityThresholdQuery.data ?? 10000);
 
   const urgentCount =
@@ -1195,6 +1272,7 @@ export default function TodoPage() {
 
             <div className="flex flex-wrap gap-2">
               <Button variant="outline" asChild><Link href="/projects">Projekt</Link></Button>
+              {canReadFinance ? <Button variant="outline" asChild><Link href={'/billing' as Route}>Fakturering</Link></Button> : null}
               {canReadFinance ? <Button variant="outline" asChild><Link href="/finance">Ekonomi</Link></Button> : null}
               {canReadFinance ? <Button variant="outline" asChild><Link href="/invoices">Fakturor</Link></Button> : null}
             </div>
@@ -1240,6 +1318,81 @@ export default function TodoPage() {
       </Card>
 
       {isLoading ? <p className="text-sm text-foreground/65">Laddar att-göra...</p> : null}
+
+      <Card className="border-border/70 bg-gradient-to-br from-card via-card to-muted/10">
+        <CardHeader className="pb-3">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <CardTitle>Väntar på mig nu</CardTitle>
+              <p className="mt-1 text-sm text-foreground/65">
+                Personlig sammanställning över det som just nu väntar på ditt nästa steg i arbete, underlag, fastställelse eller betalning.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Badge className="border-border/70 bg-muted/40 text-foreground/80 hover:bg-muted/40">
+                {myPipelineFocusItems.length} prioriterade ärenden
+              </Badge>
+              <Button variant="outline" size="sm" onClick={() => setPipelineFilter('waiting_for_me')}>
+                Filtrera pipeline på mig
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex flex-wrap gap-2">
+            <Badge className="border-border/70 bg-muted/40 text-foreground/80 hover:bg-muted/40">
+              {myPipelineFocusSummary.high} hög prioritet
+            </Badge>
+            {myPipelineFocusSummary.project > 0 ? (
+              <Badge className="border-sky-300/70 bg-sky-100/70 text-sky-900 hover:bg-sky-100/70 dark:border-sky-900/50 dark:bg-sky-500/15 dark:text-sky-200">
+                {myPipelineFocusSummary.project} projektansvar
+              </Badge>
+            ) : null}
+            {myPipelineFocusSummary.finance > 0 ? (
+              <Badge className="border-emerald-300/70 bg-emerald-100/70 text-emerald-900 hover:bg-emerald-100/70 dark:border-emerald-900/50 dark:bg-emerald-500/15 dark:text-emerald-200">
+                {myPipelineFocusSummary.finance} ekonomi
+              </Badge>
+            ) : null}
+            {myPipelineFocusSummary.admin > 0 ? (
+              <Badge className="border-violet-300/70 bg-violet-100/70 text-violet-900 hover:bg-violet-100/70 dark:border-violet-900/50 dark:bg-violet-500/15 dark:text-violet-200">
+                {myPipelineFocusSummary.admin} admin
+              </Badge>
+            ) : null}
+            {myPipelineFocusSummary.team > 0 ? (
+              <Badge className="border-amber-300/70 bg-amber-100/70 text-amber-900 hover:bg-amber-100/70 dark:border-amber-900/50 dark:bg-amber-500/15 dark:text-amber-200">
+                {myPipelineFocusSummary.team} team
+              </Badge>
+            ) : null}
+          </div>
+
+          {myPipelineFocusItems.length > 0 ? (
+            myPipelineFocusItems.map((item) => (
+              <TodoItem
+                key={item.id}
+                href={item.href}
+                title={item.title}
+                detail={`${item.stageTitle} • ${item.detail} • Ägare: ${item.ownerLabel}`}
+                badge={item.blockerLabel ?? item.badge}
+                tone={item.tone}
+                priority={item.priority}
+              />
+            ))
+          ) : (
+            <div className="rounded-xl border border-border/70 bg-muted/15 p-4">
+              <p className="text-sm text-foreground/70">Inget ligger explicit och väntar på dig just nu i pipelinen.</p>
+            </div>
+          )}
+
+          <div>
+            <Button asChild variant="ghost" className="w-full justify-between rounded-xl">
+              <Link href={'/billing?queue=waiting_for_me' as Route}>
+                Öppna min kö i Fakturering
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       <Card className="border-border/70 bg-gradient-to-br from-card via-card to-muted/10">
         <CardHeader className="pb-3">
@@ -1595,7 +1748,8 @@ function PipelineStageCard({
   items,
   emptyText,
   tone,
-  href
+  href,
+  ctaLabel
 }: {
   title: string;
   description: string;
@@ -1604,6 +1758,7 @@ function PipelineStageCard({
   emptyText: string;
   tone: 'blue' | 'amber' | 'rose' | 'emerald';
   href: Route;
+  ctaLabel?: string;
 }) {
   const toneClasses = {
     blue: 'border-sky-200/60 bg-sky-50/40 dark:border-sky-900/40 dark:bg-sky-950/15',
@@ -1630,8 +1785,9 @@ function PipelineStageCard({
               href={item.href}
               title={item.title}
               detail={`${item.detail} • Ägare: ${item.ownerLabel}`}
-              badge={item.badge}
+              badge={item.blockerLabel ?? item.badge}
               tone={item.tone}
+              priority={item.priority}
             />
           ))
         ) : (
@@ -1642,7 +1798,7 @@ function PipelineStageCard({
       <div className="mt-3">
         <Button asChild variant="ghost" className="w-full justify-between rounded-xl">
           <Link href={href}>
-            {href.startsWith('/invoices') ? 'Öppna i fakturakö' : 'Öppna steg'}
+            {ctaLabel ?? (href.startsWith('/invoices') ? 'Öppna i fakturakö' : href.startsWith('/billing') ? 'Öppna i Fakturering' : 'Öppna steg')}
             <ArrowRight className="h-4 w-4" />
           </Link>
         </Button>
@@ -1684,13 +1840,15 @@ function TodoItem({
   title,
   detail,
   badge,
-  tone = 'blue'
+  tone = 'blue',
+  priority = 'medium'
 }: {
   href: Route;
   title: string;
   detail: string;
   badge: string;
   tone?: 'blue' | 'amber' | 'rose' | 'emerald';
+  priority?: 'high' | 'medium' | 'low';
 }) {
   const badgeTone = {
     blue: 'border-sky-300/70 bg-sky-100/70 text-sky-900 dark:border-sky-900/50 dark:bg-sky-500/15 dark:text-sky-200',
@@ -1698,6 +1856,12 @@ function TodoItem({
     rose: 'border-rose-300/70 bg-rose-100/70 text-rose-900 dark:border-rose-900/50 dark:bg-rose-500/15 dark:text-rose-200',
     emerald: 'border-emerald-300/70 bg-emerald-100/70 text-emerald-900 dark:border-emerald-900/50 dark:bg-emerald-500/15 dark:text-emerald-200'
   } as const;
+  const priorityTone = {
+    high: 'border-rose-300/70 bg-rose-100/70 text-rose-900 dark:border-rose-900/50 dark:bg-rose-500/15 dark:text-rose-200',
+    medium: 'border-amber-300/70 bg-amber-100/70 text-amber-900 dark:border-amber-900/50 dark:bg-amber-500/15 dark:text-amber-200',
+    low: 'border-slate-300/70 bg-slate-100/70 text-slate-900 dark:border-slate-800 dark:bg-slate-900/50 dark:text-slate-200'
+  } as const;
+  const priorityLabel = priority === 'high' ? 'Hög prioritet' : priority === 'medium' ? 'Nästa steg' : 'Översikt';
 
   return (
     <Link href={href} className="block rounded-xl border border-border/70 bg-card/70 p-3 transition hover:border-primary/35 hover:bg-muted/15">
@@ -1707,6 +1871,7 @@ function TodoItem({
           <p className="mt-1 text-sm text-foreground/65">{detail}</p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
+          <Badge className={priorityTone[priority]}>{priorityLabel}</Badge>
           <Badge className={badgeTone[tone]}>{badge}</Badge>
           <ArrowRight className="h-4 w-4 text-foreground/45" />
         </div>

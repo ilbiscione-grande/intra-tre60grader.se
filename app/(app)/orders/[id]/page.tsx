@@ -32,15 +32,16 @@ import {
 import { getOrderInvoiceProgressLabel, resolveOrderInvoiceProgress } from '@/lib/finance/orderInvoiceProgress';
 import { createInvoiceFromOrder, createPartialInvoiceFromOrder, createPartialInvoiceFromOrderLines } from '@/lib/rpc';
 import { createClient } from '@/lib/supabase/client';
-import type { Json, TableRow as DbRow } from '@/lib/supabase/database.types';
+import type { Database, Json, TableRow as DbRow } from '@/lib/supabase/database.types';
 import type { Role } from '@/lib/types';
 import { useAutoScrollActiveTab } from '@/lib/ui/useAutoScrollActiveTab';
 import { useSwipeTabs } from '@/lib/ui/useSwipeTabs';
 
 type OrderRow = Pick<
   DbRow<'orders'>,
-  'id' | 'order_no' | 'project_id' | 'status' | 'order_kind' | 'parent_order_id' | 'sort_index' | 'invoice_readiness_status' | 'total' | 'created_at'
+  'id' | 'order_no' | 'project_id' | 'status' | 'order_kind' | 'parent_order_id' | 'root_order_id' | 'sort_index' | 'invoice_readiness_status' | 'total' | 'created_at'
 >;
+type ProjectOrderRollupRow = Database['public']['Views']['project_order_rollups']['Row'];
 type ProjectRow = Pick<DbRow<'projects'>, 'id' | 'title' | 'customer_id' | 'invoice_readiness_status'>;
 type CustomerRow = Pick<DbRow<'customers'>, 'id' | 'name'>;
 type OrderLineRow = Pick<DbRow<'order_lines'>, 'id' | 'title' | 'qty' | 'unit_price' | 'vat_rate' | 'total' | 'created_at'>;
@@ -64,6 +65,27 @@ type OrderTab = 'overview' | 'updates' | 'economy' | 'attachments' | 'members' |
 type PartialInvoiceMode = 'quarter' | 'half' | 'remaining' | 'custom';
 type PartialInvoiceMethod = 'amount' | 'lines';
 type OrderLineFilter = 'all' | 'not_invoiced' | 'partially_invoiced' | 'fully_invoiced';
+
+type OrderHierarchyNodeRow = Database['public']['Views']['order_hierarchy_nodes']['Row'];
+
+function hierarchyNodeToOrderRow(node: Pick<
+  OrderHierarchyNodeRow,
+  'order_id' | 'order_no' | 'project_id' | 'status' | 'order_kind' | 'parent_order_id' | 'root_order_id' | 'sort_index' | 'invoice_readiness_status' | 'total' | 'created_at'
+>): OrderRow {
+  return {
+    id: node.order_id ?? '',
+    order_no: node.order_no ?? null,
+    project_id: node.project_id ?? '',
+    status: node.status ?? 'draft',
+    order_kind: node.order_kind ?? 'primary',
+    parent_order_id: node.parent_order_id ?? null,
+    root_order_id: node.root_order_id ?? '',
+    sort_index: node.sort_index ?? 0,
+    invoice_readiness_status: node.invoice_readiness_status ?? 'not_ready',
+    total: node.total ?? 0,
+    created_at: node.created_at ?? new Date(0).toISOString()
+  };
+}
 
 const orderStatuses = ['draft', 'sent', 'paid', 'cancelled', 'invoiced'] as const;
 type OrderStatus = (typeof orderStatuses)[number];
@@ -250,7 +272,7 @@ export default function OrderDetailsPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('orders')
-        .select('id,order_no,project_id,status,order_kind,parent_order_id,sort_index,invoice_readiness_status,total,created_at')
+        .select('id,order_no,project_id,status,order_kind,parent_order_id,root_order_id,sort_index,invoice_readiness_status,total,created_at')
         .eq('company_id', companyId)
         .eq('id', orderId)
         .maybeSingle<OrderRow>();
@@ -283,13 +305,30 @@ export default function OrderDetailsPage() {
       const projectId = orderQuery.data?.project_id;
       if (!projectId) return [];
       const { data, error } = await supabase
-        .from('orders')
-        .select('id,order_no,project_id,status,order_kind,parent_order_id,sort_index,invoice_readiness_status,total,created_at')
+        .from('order_hierarchy_nodes')
+        .select('order_id,order_no,project_id,status,order_kind,parent_order_id,root_order_id,sort_index,invoice_readiness_status,total,created_at')
         .eq('company_id', companyId)
         .eq('project_id', projectId)
         .order('sort_index', { ascending: true })
         .order('created_at', { ascending: true })
-        .returns<OrderRow[]>();
+        .returns<OrderHierarchyNodeRow[]>();
+      if (error) throw error;
+      return (data ?? []).map(hierarchyNodeToOrderRow);
+    }
+  });
+
+  const orderFamilyRollupsQuery = useQuery<ProjectOrderRollupRow[]>({
+    queryKey: ['order-family-rollups', companyId, orderQuery.data?.project_id ?? 'none'],
+    enabled: Boolean(orderQuery.data?.project_id),
+    queryFn: async () => {
+      const projectId = orderQuery.data?.project_id;
+      if (!projectId) return [];
+      const { data, error } = await supabase
+        .from('project_order_rollups')
+        .select('*')
+        .eq('company_id', companyId)
+        .eq('project_id', projectId)
+        .returns<ProjectOrderRollupRow[]>();
       if (error) throw error;
       return data ?? [];
     }
@@ -697,12 +736,16 @@ export default function OrderDetailsPage() {
   const order = orderQuery.data;
   const statusValue = orderStatuses.includes(order.status as OrderStatus) ? (order.status as OrderStatus) : 'draft';
   const invoiceReadiness = resolveInvoiceReadinessStatus(order.invoice_readiness_status, order.status);
+  const orderIsApprovedForInvoicing = invoiceReadiness === 'approved_for_invoicing';
   const invoiceReadinessOptions = getInvoiceReadinessOptions(role, invoiceReadiness);
   const invoiceAttachments = (invoicesQuery.data ?? []).filter((invoice) => Boolean(invoice.attachment_path));
   const members = membersQuery.data ?? [];
   const projectOrders = projectOrdersQuery.data ?? [];
   const parentOrder = projectOrders.find((item) => item.id === order.parent_order_id) ?? null;
   const childOrders = projectOrders.filter((item) => item.parent_order_id === order.id);
+  const familyOrders = projectOrders.filter((item) => item.root_order_id === order.root_order_id);
+  const orderFamilyRollup =
+    (orderFamilyRollupsQuery.data ?? []).find((item) => item.root_order_id === order.root_order_id) ?? null;
   const creditedGrossTotalByInvoiceId = useMemo(() => {
     const totals = new Map<string, number>();
 
@@ -961,7 +1004,7 @@ export default function OrderDetailsPage() {
             <CardHeader>
               <CardTitle>Orderstruktur</CardTitle>
             </CardHeader>
-            <CardContent className="grid gap-3 md:grid-cols-2">
+            <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               <div className="rounded-xl border border-border/70 bg-muted/15 p-3">
                 <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Nuvarande order</p>
                 <p className="mt-1 font-medium">{orderKindLabel(order.order_kind)}</p>
@@ -991,8 +1034,48 @@ export default function OrderDetailsPage() {
                   <p className="mt-1 text-sm text-foreground/65">Ingen hierarkikoppling ännu.</p>
                 )}
               </div>
+              <div className="rounded-xl border border-border/70 bg-muted/15 p-3">
+                <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Orderfamilj</p>
+                {orderFamilyRollup ? (
+                  <div className="mt-1 space-y-1 text-sm text-foreground/70">
+                    <p><span className="font-medium text-foreground">{Number(orderFamilyRollup.order_count ?? 0)}</span> ordrar i samma struktur</p>
+                    <p><span className="font-medium text-foreground">{Number(orderFamilyRollup.total_order_value ?? 0).toFixed(2)} kr</span> totalt ordervärde</p>
+                    <p><span className="font-medium text-foreground">{Number(orderFamilyRollup.net_invoiced_total ?? 0).toFixed(2)} kr</span> nettofakturerat</p>
+                    <p><span className="font-medium text-foreground">{Number(orderFamilyRollup.remaining_total ?? 0).toFixed(2)} kr</span> kvar att fakturera</p>
+                  </div>
+                ) : (
+                  <p className="mt-1 text-sm text-foreground/65">Ingen familjesummering tillgänglig ännu.</p>
+                )}
+              </div>
             </CardContent>
           </Card>
+
+          {familyOrders.length > 1 ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>Ordrar i samma struktur</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {familyOrders.map((item) => (
+                  <div key={item.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border/70 bg-muted/15 px-3 py-2">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium">{item.order_no ?? item.id}</p>
+                      <p className="text-xs text-foreground/60">
+                        {orderKindLabel(item.order_kind)} • {Number(item.total ?? 0).toFixed(2)} kr
+                        {item.parent_order_id ? ' • under huvudorder' : ' • huvudorder'}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {item.id === order.id ? <Badge>Aktuell</Badge> : null}
+                      <Button asChild size="sm" variant="ghost">
+                        <Link href={`/orders/${item.id}`}>Öppna</Link>
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          ) : null}
 
           <Card>
             <CardHeader>
@@ -1225,9 +1308,9 @@ export default function OrderDetailsPage() {
 
                   <Button
                     onClick={() => invoiceMutation.mutate()}
-                    disabled={invoiceMutation.isPending || !canManageOrder(role) || hasActiveInvoice}
+                    disabled={invoiceMutation.isPending || !canManageOrder(role) || hasActiveInvoice || !orderIsApprovedForInvoicing}
                   >
-                    {invoiceMutation.isPending ? 'Skapar...' : hasActiveInvoice ? 'Faktura finns redan' : 'Skapa faktura'}
+                    {invoiceMutation.isPending ? 'Skapar...' : hasActiveInvoice ? 'Faktura finns redan' : !orderIsApprovedForInvoicing ? 'Fastställ först' : 'Skapa faktura'}
                   </Button>
                   <Button
                     variant="outline"
@@ -1242,10 +1325,11 @@ export default function OrderDetailsPage() {
                       partialInvoiceMutation.isPending ||
                       partialInvoiceLinesMutation.isPending ||
                       !canManageOrder(role) ||
-                      invoiceProgress.remaining <= 0
+                      invoiceProgress.remaining <= 0 ||
+                      !orderIsApprovedForInvoicing
                     }
                   >
-                    {partialInvoiceMutation.isPending || partialInvoiceLinesMutation.isPending ? 'Skapar delfaktura...' : 'Skapa delfaktura'}
+                    {partialInvoiceMutation.isPending || partialInvoiceLinesMutation.isPending ? 'Skapar delfaktura...' : !orderIsApprovedForInvoicing ? 'Fastställ först' : 'Skapa delfaktura'}
                   </Button>
                 </div>
               </RoleGate>
@@ -1272,6 +1356,11 @@ export default function OrderDetailsPage() {
                 <div className="mt-3 border-t border-border/60 pt-3">
                   <p className="mb-2 text-xs font-medium uppercase tracking-[0.16em] text-foreground/45">Det här saknas innan nästa steg</p>
                   <ReadinessChecklist items={readinessChecklist} />
+                  {!orderIsApprovedForInvoicing ? (
+                    <p className="mt-3 text-xs text-amber-700 dark:text-amber-300">
+                      Kundfaktura och delfaktura kräver att ordern först markeras som fastställd för fakturering.
+                    </p>
+                  ) : null}
                 </div>
               </div>
 

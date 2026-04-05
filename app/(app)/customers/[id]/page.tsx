@@ -43,6 +43,7 @@ type OrderSummary = {
   order_no: string | null;
   project_id: string;
   status: string;
+  invoice_readiness_status: string | null;
   total: number;
   created_at: string;
 };
@@ -160,13 +161,13 @@ export default function CustomerDetailsPage() {
 
   const ordersQuery = useQuery<OrderSummary[]>({
     queryKey: ['customer-orders', companyId, customerId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('orders')
-        .select('id,order_no,project_id,status,total,created_at')
-        .eq('company_id', companyId)
-        .in('project_id', (projectsQuery.data ?? []).map((project) => project.id))
-        .order('created_at', { ascending: false })
+      queryFn: async () => {
+        const { data, error } = await supabase
+          .from('orders')
+          .select('id,order_no,project_id,status,invoice_readiness_status,total,created_at')
+          .eq('company_id', companyId)
+          .in('project_id', (projectsQuery.data ?? []).map((project) => project.id))
+          .order('created_at', { ascending: false })
         .returns<OrderSummary[]>();
 
       if (error) throw error;
@@ -271,7 +272,12 @@ export default function CustomerDetailsPage() {
   const projects = projectsQuery.data ?? [];
   const orders = ordersQuery.data ?? [];
   const invoices = invoicesQuery.data ?? [];
-  const selectableOrders = orders.filter((order) => !['paid', 'cancelled', 'invoiced'].includes(order.status) && Number(order.total ?? 0) > 0);
+  const selectableOrders = orders.filter(
+    (order) =>
+      !['paid', 'cancelled', 'invoiced'].includes(order.status) &&
+      Number(order.total ?? 0) > 0 &&
+      order.invoice_readiness_status === 'approved_for_invoicing'
+  );
   const selectedOrders = selectableOrders.filter((order) => selectedOrderIds.includes(order.id));
   const selectedProjectCount = new Set(selectedOrders.map((order) => order.project_id)).size;
   const selectedTotal = selectedOrders.reduce((sum, order) => sum + Number(order.total ?? 0), 0);

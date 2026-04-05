@@ -240,6 +240,7 @@ export type Database = {
           order_no: string | null
           parent_order_id: string | null
           project_id: string
+          root_order_id: string
           sort_index: number
           status: string
           total: number
@@ -253,6 +254,7 @@ export type Database = {
           order_no?: string | null
           parent_order_id?: string | null
           project_id: string
+          root_order_id?: string
           sort_index?: number
           status?: string
           total?: number
@@ -266,6 +268,7 @@ export type Database = {
           order_no?: string | null
           parent_order_id?: string | null
           project_id?: string
+          root_order_id?: string
           sort_index?: number
           status?: string
           total?: number
@@ -288,6 +291,13 @@ export type Database = {
           {
             foreignKeyName: "orders_parent_order_id_fkey"
             columns: ["parent_order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_root_order_id_fkey"
+            columns: ["root_order_id"]
             isOneToOne: false
             referencedRelation: "orders"
             referencedColumns: ["id"]
@@ -1917,7 +1927,74 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      invoice_order_allocations: {
+        Row: {
+          allocation_source: string | null
+          company_id: string | null
+          gross_allocated_total: number | null
+          invoice_id: string | null
+          invoice_kind: string | null
+          invoice_status: string | null
+          order_id: string | null
+          order_kind: string | null
+          parent_order_id: string | null
+          project_id: string | null
+          root_order_id: string | null
+          signed_allocated_total: number | null
+        }
+        Relationships: []
+      }
+      order_hierarchy_nodes: {
+        Row: {
+          child_order_count: number | null
+          company_id: string | null
+          created_at: string | null
+          hierarchy_depth: number | null
+          invoice_readiness_status: string | null
+          order_id: string | null
+          order_kind: string | null
+          order_no: string | null
+          parent_order_id: string | null
+          project_id: string | null
+          root_order_id: string | null
+          root_order_no: string | null
+          sort_index: number | null
+          status: string | null
+          total: number | null
+        }
+        Relationships: []
+      }
+      project_order_rollups: {
+        Row: {
+          change_order_count: number | null
+          change_total: number | null
+          child_order_count: number | null
+          company_id: string | null
+          credited_change: number | null
+          credited_primary: number | null
+          credited_supplement: number | null
+          credited_total: number | null
+          gross_invoiced_change: number | null
+          gross_invoiced_primary: number | null
+          gross_invoiced_supplement: number | null
+          gross_invoiced_total: number | null
+          net_invoiced_change: number | null
+          net_invoiced_primary: number | null
+          net_invoiced_supplement: number | null
+          net_invoiced_total: number | null
+          order_count: number | null
+          primary_order_count: number | null
+          primary_order_id: string | null
+          primary_total: number | null
+          project_id: string | null
+          remaining_total: number | null
+          root_order_id: string | null
+          supplement_order_count: number | null
+          supplement_total: number | null
+          total_order_value: number | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       app_user_role: { Args: { p_company_id: string }; Returns: string }

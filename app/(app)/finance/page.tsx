@@ -703,6 +703,7 @@ export default function FinancePage() {
                   <MobileFinanceAction href={'/finance/verifications/drafts' as Route} label="Utkast" variant="secondary" />
                 </>
               ) : null}
+              <MobileFinanceAction href={'/billing' as Route} label="Fakturering" variant="outline" />
               <MobileFinanceAction href={'/receivables' as Route} label="Kundreskontra" variant="outline" />
               <MobileFinanceAction href={'/payables' as Route} label="Leverantörsreskontra" variant="outline" />
             </div>
@@ -989,6 +990,7 @@ export default function FinancePage() {
 
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" asChild><Link href="/orders">Ordrar</Link></Button>
+            <Button variant="outline" asChild><Link href={'/billing' as Route}>Fakturering</Link></Button>
             <Button variant="outline" asChild><Link href="/invoices">Fakturor</Link></Button>
             <Button variant="outline" asChild><Link href="/receivables">Kundreskontra</Link></Button>
             <Button variant="outline" asChild><Link href="/payables">Leverantörsreskontra</Link></Button>
@@ -1170,12 +1172,12 @@ export default function FinancePage() {
       ) : view === 'invoicing' ? (
         <div className="space-y-4">
           <Card>
-            <CardHeader className="pb-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <CardTitle>Faktureringskö</CardTitle>
-                <p className="text-sm text-foreground/60">Här jobbar ekonomi vidare med underlag som är redo, fastställda eller behöver betalningsuppföljning.</p>
-              </div>
-            </CardHeader>
+              <CardHeader className="pb-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <CardTitle>Faktureringskö</CardTitle>
+                  <p className="text-sm text-foreground/60">Den fulla arbetsytan finns nu under Fakturering. Här visas samma kö som en del av ekonomiöversikten.</p>
+                </div>
+              </CardHeader>
             <CardContent className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
               {(['ready_to_review', 'waiting_for_approval', 'approved_today', 'sent', 'awaiting_payment', 'overdue'] as InvoicingQueueStage[]).map((stage) => (
                 <MiniStatCard

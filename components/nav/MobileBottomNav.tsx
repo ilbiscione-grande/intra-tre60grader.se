@@ -30,6 +30,7 @@ const menuItems: MenuItem[] = [
   { href: '/customers', label: 'Kunder', description: 'Kundöversikt, kundkort och relationer.', visible: (role, capabilities) => canAccessCustomers(role, capabilities), icon: Building2, group: 'relationer' },
   { href: '/orders', label: 'Ordrar', description: 'Orderlista, orderdetaljer och kopplingar.', visible: (role, capabilities) => canAccessOrders(role, capabilities), icon: ScrollText, group: 'relationer' },
   { href: '/team', label: 'Medlemmar', description: 'Team, roller och medlemsåtkomst.', visible: (role, capabilities) => canAccessTeam(role, capabilities), icon: Shield, group: 'relationer' },
+  { href: '/billing' as Route, label: 'Fakturering', description: 'Kön för fastställelse, faktura och uppföljning.', visible: (role, capabilities) => canAccessFinance(role, capabilities), icon: CheckSquare2, group: 'ekonomi' },
   { href: '/finance', label: 'Ekonomi', description: 'Verifikationer, lägesbild och snabbregistrering.', visible: (role, capabilities) => canAccessFinance(role, capabilities), icon: Activity, group: 'ekonomi' },
   { href: '/invoices', label: 'Fakturor', description: 'Kundfakturor och uppföljning.', visible: (role, capabilities) => canAccessFinance(role, capabilities), icon: Receipt, group: 'ekonomi' },
   { href: '/receivables', label: 'Kundreskontra', description: 'Öppna kundfordringar och avstämning.', visible: (role, capabilities) => canAccessFinance(role, capabilities), icon: WalletCards, group: 'ekonomi' },
