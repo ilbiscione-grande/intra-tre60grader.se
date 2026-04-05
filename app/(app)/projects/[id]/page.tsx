@@ -1618,9 +1618,6 @@ export default function ProjectDetailsPage() {
     setActiveTab('planning');
   }, [hasPlanningAttention, searchParams]);
 
-  if (projectQuery.isLoading) return <p>Laddar...</p>;
-  if (!projectQuery.data) return <p>Projekt saknas.</p>;
-
   const project = projectQuery.data;
   const projectOrders = projectOrdersQuery.data ?? [];
   const primaryOrder = orderQuery.data ?? null;
@@ -1839,6 +1836,9 @@ export default function ProjectDetailsPage() {
     { value: 'change', label: 'Ändringsordrar' },
     { value: 'supplement', label: 'Tilläggsordrar' }
   ];
+
+  if (projectQuery.isLoading) return <p>Laddar...</p>;
+  if (!project) return <p>Projekt saknas.</p>;
   const latestActivityItem = activity[0] ?? null;
   const latestActivityActorLabel = latestActivityItem?.actorUserId ? memberLabelByUserId.get(latestActivityItem.actorUserId) ?? 'Intern användare' : null;
   const projectStatusLabel = projectColumnTitle(draftWorkflowStatus || project.workflow_status || project.status, statusColumns);

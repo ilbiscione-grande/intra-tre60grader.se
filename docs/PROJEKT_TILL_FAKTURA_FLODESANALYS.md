@@ -1785,17 +1785,49 @@ Bästa nästa punkt att gå vidare med är därför inte en ny roadmap-etapp, ut
 - lägga till tester eller verifieringsskript för orderhierarki, allokering och kreditflöden
 - därefter ta ställning till om nästa initiativ ska vara rapportering, automation eller extern integration
 
-- [ ] gör `Att göra` mer processnära och mindre signalbaserad för flödet projekt -> underlag -> fakturering -> betalning
-- [ ] låt pipelinekort och steg tydligt peka in i `Fakturering` som canonical arbetsyta
-- [ ] visa ansvarig, blockerare och nästa handling ännu tydligare per steg
-- [ ] skilj bättre mellan arbetsproblem, kommersiell förberedelse, ekonomisk fastställelse och betalningsuppföljning
-- [ ] minska dubbellogik mellan `Att göra` och andra finansvyer så att rollerna blir tydligare
+### Verifieringschecklista: orderfamilj, fakturering och kredit
 
-Efter detta bör nästa steg vara:
+Det här är nästa praktiska pass som bör genomföras innan större vidareutveckling.
 
-1. fortsätta förfina den samlade uppföljningspipelinen
-2. därefter scenario 1-genvägar där de fortfarande känns splittrade
-3. först därefter flerorderstöd som huvudflöde
+#### Fall 1: Endast huvudorder
+
+- [ ] skapa eller välj ett projekt med en huvudorder utan underordnade ordrar
+- [ ] verifiera att `root_order_id = order.id`
+- [ ] verifiera att ordern visas som `Huvudorder` i orderlistan
+- [ ] verifiera att projektvyn visar `1 order` och `0 underordnade`
+- [ ] verifiera att orderdetaljen visar korrekt familjesummering
+- [ ] skapa faktura och kontrollera att netto/kvar uppdateras korrekt i projekt, order och fakturalista
+
+#### Fall 2: Huvudorder + ändringsorder
+
+- [ ] skapa eller välj ett projekt med en huvudorder och en `Ändringsorder`
+- [ ] verifiera att ändringsordern får `parent_order_id = huvudorder.id`
+- [ ] verifiera att ändringsordern får samma `root_order_id` som huvudordern
+- [ ] verifiera att projektvyn visar båda ordrarna i samma familj
+- [ ] verifiera att orderlistan visar relationen korrekt för båda ordrarna
+- [ ] skapa faktura på ändringsordern och kontrollera att familjens netto/kvar räknas på hela strukturen
+
+#### Fall 3: Huvudorder + tilläggsorder + kredit
+
+- [ ] skapa eller välj ett projekt med huvudorder och `Tilläggsorder`
+- [ ] skapa faktura där orderfamiljen får fakturerat värde
+- [ ] skapa sedan kreditfaktura som träffar en rad med `order_id`
+- [ ] verifiera att `project_order_rollups` visar ökat `credited_total`
+- [ ] verifiera att `net_invoiced_total` minskar korrekt
+- [ ] verifiera att projektvyn, orderdetaljen och reskontran visar samma nettoeffekt
+
+#### Tekniska kontroller
+
+- [ ] försök skapa `change` eller `supplement` utan `parent_order_id` och verifiera att databasen stoppar det
+- [ ] försök koppla underordnad order till order i annat projekt och verifiera att databasen stoppar det
+- [ ] försök koppla underordnad order till annan underordnad order och verifiera att databasen stoppar det
+- [ ] verifiera att `order_hierarchy_nodes` och `project_order_rollups` används som canonical källa i relevanta vyer
+
+### Rekommenderad ordning efter verifiering
+
+1. genomför verifieringschecklistan ovan
+2. fixa eventuella inkonsekvenser som hittas i orderfamilj/netto/allokering
+3. först därefter välja nästa initiativ: rapportering, automation eller extern integration
 
 ## Typ av arbete per område
 
@@ -1825,28 +1857,10 @@ För att göra planeringen tydligare:
   - vem får skapa tilläggsorder
   - vad som ska vara synligt för olika roller
 
-## Rekommenderad faktiska byggordning
-
-Om arbetet ska starta i kod bör ordningen vara:
-
-1. `Redo för fakturering` och enkel statusvisning
-2. rollspecifik överlämning i projekt/order
-3. faktureringskö
-4. scenario 1-genvägar från tid till orderrad/fakturaunderlag
-5. samlad uppföljningspipeline
-6. datamodell för huvudorder + tilläggsordrar
-7. UI för flera ordrar per projekt
-
-Det ger snabb förbättring i verkligt användarflöde tidigt, utan att börja med den mest komplexa strukturförändringen.
-
----
-
 ## Slutbedömning
 
 Appen har redan en bra kärna för projekt, arbete, tid, ekonomi och uppföljning. Den stora förbättringen som behövs nu är inte fler enskilda funktioner, utan en tydligare sammanhängande affärsprocess.
 
-För scenario 1 bör systemet bli enklare och mer direkt.
+Roadmapen 1-6 är nu genomförd. Det som ger mest värde härnäst är att bevisa att orderhierarki, allokering, fakturering och kredit håller ihop på riktiga data utan att olika vyer räknar olika.
 
-För scenario 2 bör systemet bli tydligare och mer rollstyrt.
-
-Den bästa nästa förändringen är därför inte att bygga mer "ekonomi" eller fler "listor", utan att göra överlämningen från utfört arbete till fakturering tydlig, kontrollerad och synlig i hela appen.
+Den bästa nästa förändringen är därför ett verifierings- och konsolideringspass, inte en ny stor feature.
