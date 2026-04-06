@@ -689,7 +689,7 @@ export default function CreateProjectEntry({ companyId, mode }: { companyId: str
       <DialogTrigger asChild>
         <Button size="sm" className="h-8 shrink-0 whitespace-nowrap px-2.5 text-[11px] sm:h-9 sm:px-3 sm:text-sm">Nytt projekt</Button>
       </DialogTrigger>
-      <DialogContent className="max-h-[85vh] overflow-hidden">
+      <DialogContent className="max-h-[85vh] overflow-hidden sm:max-w-2xl lg:max-w-3xl">
         <DialogHeader>
           <DialogTitle>Skapa projekt</DialogTitle>
           <DialogDescription>Skapar projekt och orderutkast via RPC.</DialogDescription>

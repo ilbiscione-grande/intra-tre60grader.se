@@ -309,7 +309,7 @@ export default function ProjectCard({
           <div className="flex shrink-0 items-center gap-1">
             <button
               type="button"
-              className="inline-flex h-8 w-8 items-center justify-center rounded-full border bg-background/95 text-foreground shadow-sm transition hover:bg-muted hover:text-foreground"
+              className="inline-flex h-7 w-7 items-center justify-center rounded-full border bg-background/95 text-foreground shadow-sm transition hover:bg-muted hover:text-foreground"
               aria-label={isExpanded ? 'Visa mindre information' : 'Visa mer information'}
               aria-expanded={isExpanded}
               onClick={(event) => {
@@ -318,15 +318,15 @@ export default function ProjectCard({
                 setIsExpanded((current) => !current);
               }}
             >
-              <ChevronDown className={`h-4 w-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+              <ChevronDown className={`h-3.5 w-3.5 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
             </button>
-          {onSetWorkflowStatus ? (
+            {onSetWorkflowStatus ? (
             breakpointMode === 'mobile' ? (
               <div ref={mobileProjectMenuRef} className="relative">
                 <button
                   ref={mobileProjectMenuTriggerRef}
                   type="button"
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border bg-background/95 text-foreground shadow-sm transition hover:bg-muted hover:text-foreground"
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-full border bg-background/95 text-foreground shadow-sm transition hover:bg-muted hover:text-foreground"
                   aria-label="Projektmeny"
                   aria-expanded={mobileProjectMenuOpen}
                   onClick={(event) => {
@@ -335,7 +335,7 @@ export default function ProjectCard({
                     setMobileProjectMenuOpen((current) => !current);
                   }}
                 >
-                  <MoreHorizontal className="h-4 w-4" />
+                  <MoreHorizontal className="h-3.5 w-3.5" />
                 </button>
                 {mobileProjectMenuOpen ? (
                   <div
@@ -427,14 +427,14 @@ export default function ProjectCard({
                 <DropdownMenuTrigger asChild>
                   <button
                     type="button"
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border bg-background/95 text-foreground shadow-sm transition hover:bg-muted hover:text-foreground"
+                    className="inline-flex h-7 w-7 items-center justify-center rounded-full border bg-background/95 text-foreground shadow-sm transition hover:bg-muted hover:text-foreground"
                     aria-label="Projektmeny"
                     onClick={(event) => {
                       event.preventDefault();
                       event.stopPropagation();
                     }}
                   >
-                    <MoreHorizontal className="h-4 w-4" />
+                    <MoreHorizontal className="h-3.5 w-3.5" />
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent
@@ -509,8 +509,8 @@ export default function ProjectCard({
           </div>
         </div>
 
-        <div className="min-w-0 pb-8 pr-20">
-          <div className="mt-2 flex flex-wrap items-center gap-2">
+        <div className="min-w-0 pb-8">
+          <div className="flex flex-wrap items-center gap-2">
             <Badge className="w-fit uppercase tracking-wide">{statusLabel ?? fallbackLabel(project.workflow_status ?? project.status)}</Badge>
           </div>
           <div
@@ -519,40 +519,38 @@ export default function ProjectCard({
             }`}
           >
             <div className="min-h-0">
-              <div className="grid gap-2 md:grid-cols-[minmax(0,1.25fr)_minmax(220px,0.9fr)]">
-                <div className="space-y-2">
-                  <div className="flex flex-wrap items-center gap-2">
-                    {isMilestoneOverdue || isEndDateOverdue ? (
-                      <span
-                        className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-200"
-                        title="Projektet har ett försenat delmål eller passerat slutdatum"
-                      >
-                        <AlertTriangle className="h-3.5 w-3.5" />
-                      </span>
-                    ) : null}
-                    <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium ${planningTone}`}>
-                      {isMilestoneOverdue || isEndDateOverdue ? 'Tidsrisk' : nextMilestone ? 'Nästa delmål' : 'Tidsplan'}
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  {isMilestoneOverdue || isEndDateOverdue ? (
+                    <span
+                      className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-200"
+                      title="Projektet har ett försenat delmål eller passerat slutdatum"
+                    >
+                      <AlertTriangle className="h-3.5 w-3.5" />
                     </span>
-                    <span className={`inline-flex min-w-0 max-w-full rounded-full px-2 py-0.5 text-[10px] font-medium ${planningTone}`}>
-                      <span className="truncate">{planningLabel}</span>
-                    </span>
-                    {totalMilestones > 0 ? <span className="text-[10px] text-foreground/55">{completedMilestones}/{totalMilestones} delmål</span> : null}
-                  </div>
-                  {totalMilestones > 0 ? (
-                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted/80">
-                      <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${progressPercent}%` }} />
-                    </div>
                   ) : null}
-                  {activitySummary ? (
-                    <div className="w-full min-w-0 overflow-hidden rounded-lg bg-muted/40 px-2.5 py-2 text-[11px] text-foreground/65">
-                      <p className="truncate font-medium text-foreground/75">
-                        Senast uppdaterat av {activitySummary.actorLabel ?? 'intern användare'}
-                      </p>
-                      <p className="mt-0.5 whitespace-normal break-words">{activitySummary.text}</p>
-                    </div>
-                  ) : null}
+                  <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium ${planningTone}`}>
+                    {isMilestoneOverdue || isEndDateOverdue ? 'Tidsrisk' : nextMilestone ? 'Nästa delmål' : 'Tidsplan'}
+                  </span>
+                  <span className={`inline-flex min-w-0 max-w-full rounded-full px-2 py-0.5 text-[10px] font-medium ${planningTone}`}>
+                    <span className="truncate">{planningLabel}</span>
+                  </span>
+                  {totalMilestones > 0 ? <span className="text-[10px] text-foreground/55">{completedMilestones}/{totalMilestones} delmål</span> : null}
                 </div>
-                <div className="grid gap-2 rounded-lg border border-border/60 bg-muted/20 px-3 py-2 text-[11px] text-foreground/70 sm:grid-cols-2 md:grid-cols-1">
+                {totalMilestones > 0 ? (
+                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted/80">
+                    <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${progressPercent}%` }} />
+                  </div>
+                ) : null}
+                {activitySummary ? (
+                  <div className="w-full min-w-0 overflow-hidden rounded-lg bg-muted/40 px-2.5 py-2 text-[11px] text-foreground/65">
+                    <p className="truncate font-medium text-foreground/75">
+                      Senast uppdaterat av {activitySummary.actorLabel ?? 'intern användare'}
+                    </p>
+                    <p className="mt-0.5 whitespace-normal break-words">{activitySummary.text}</p>
+                  </div>
+                ) : null}
+                <div className="grid gap-2 rounded-lg border border-border/60 bg-muted/20 px-3 py-2 text-[11px] text-foreground/70 sm:grid-cols-2">
                   <div>
                     <p className="font-medium text-foreground/80">Tidsplan</p>
                     <p>{planningLabel}</p>
