@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, MoreHorizontal, Trash2 } from 'lucide-react';
+import { AlertTriangle, ChevronDown, MoreHorizontal, Trash2 } from 'lucide-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useAppContext } from '@/components/providers/AppContext';
@@ -80,6 +80,7 @@ export default function ProjectCard({
   const queryClient = useQueryClient();
   const [mobileProjectMenuOpen, setMobileProjectMenuOpen] = useState(false);
   const [activeMemberId, setActiveMemberId] = useState<string | null>(null);
+  const [isExpanded, setIsExpanded] = useState(false);
   const mobileProjectMenuRef = useRef<HTMLDivElement | null>(null);
   const mobileProjectMenuPanelRef = useRef<HTMLDivElement | null>(null);
   const mobileProjectMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
@@ -127,6 +128,7 @@ export default function ProjectCard({
     : isEndDateSoon || nextMilestone
       ? 'bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-200'
       : 'bg-muted text-foreground/70';
+  const planningSummary = totalMilestones > 0 ? `${completedMilestones}/${totalMilestones} delmål` : 'Inga delmål';
 
   const removeMemberMutation = useMutation({
     mutationFn: async (userId: string) => {
@@ -299,8 +301,21 @@ export default function ProjectCard({
         aria-label={`Öppna projekt ${project.title}`}
         className="absolute inset-0 z-10 rounded-[inherit]"
       />
-      <CardContent className="relative p-4">
+      <CardContent className="relative px-4 pb-3 pt-5">
         <div className="absolute right-3 top-3 z-30 flex items-start gap-1">
+          <button
+            type="button"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full border bg-background/95 text-foreground shadow-sm transition hover:bg-muted hover:text-foreground"
+            aria-label={isExpanded ? 'Visa mindre information' : 'Visa mer information'}
+            aria-expanded={isExpanded}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              setIsExpanded((current) => !current);
+            }}
+          >
+            <ChevronDown className={`h-4 w-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+          </button>
           {onSetWorkflowStatus ? (
             breakpointMode === 'mobile' ? (
               <div ref={mobileProjectMenuRef} className="relative">
@@ -489,11 +504,11 @@ export default function ProjectCard({
           {actions ? <div>{actions}</div> : null}
         </div>
 
-        <div className="min-w-0 pb-12 pr-24">
+        <div className="min-w-0 pb-8 pr-20 pt-1">
           <h3 className="font-semibold group-hover:underline">{project.title}</h3>
-          <Badge className="mt-2 w-fit uppercase tracking-wide">{statusLabel ?? fallbackLabel(project.workflow_status ?? project.status)}</Badge>
-          <div className="mt-3 max-w-full space-y-2">
-            <div className="flex items-center gap-2">
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <Badge className="w-fit uppercase tracking-wide">{statusLabel ?? fallbackLabel(project.workflow_status ?? project.status)}</Badge>
+            <div className="flex min-w-0 items-center gap-2">
               {isMilestoneOverdue || isEndDateOverdue ? (
                 <span
                   className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-200"
@@ -505,30 +520,54 @@ export default function ProjectCard({
               <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium ${planningTone}`}>
                 {isMilestoneOverdue || isEndDateOverdue ? 'Tidsrisk' : nextMilestone ? 'Nästa delmål' : 'Tidsplan'}
               </span>
-              {totalMilestones > 0 ? (
-                <span className="text-[10px] text-foreground/55">{completedMilestones}/{totalMilestones} delmål</span>
-              ) : null}
+              <span className={`inline-flex min-w-0 max-w-full rounded-full px-2 py-0.5 text-[10px] font-medium ${planningTone}`}>
+                <span className="truncate">{planningLabel}</span>
+              </span>
+              {totalMilestones > 0 ? <span className="text-[10px] text-foreground/55">{completedMilestones}/{totalMilestones} delmål</span> : null}
             </div>
-            <div className={`rounded-xl border px-3 py-2 text-xs ${planningTone}`}>
-              <p className="font-medium text-foreground/85">{planningLabel}</p>
-            </div>
-            {totalMilestones > 0 ? (
-              <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted/80">
-                <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${progressPercent}%` }} />
-              </div>
-            ) : null}
           </div>
+          {totalMilestones > 0 ? (
+            <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-muted/80">
+              <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${progressPercent}%` }} />
+            </div>
+          ) : null}
           {activitySummary ? (
-            <div className="mt-3 w-full min-w-0 overflow-hidden rounded-lg bg-muted/40 px-2.5 py-2 text-[11px] text-foreground/65">
+            <div className="mt-2 w-full min-w-0 overflow-hidden rounded-lg bg-muted/40 px-2.5 py-2 text-[11px] text-foreground/65">
               <p className="truncate font-medium text-foreground/75">
                 Senast uppdaterat av {activitySummary.actorLabel ?? 'intern användare'}
               </p>
-              <p className="truncate">{activitySummary.text}</p>
+              <p className={isExpanded ? 'mt-0.5 whitespace-normal break-words' : 'truncate'}>{activitySummary.text}</p>
             </div>
           ) : null}
+          <div
+            className={`grid overflow-hidden transition-all duration-200 ease-out ${
+              isExpanded ? 'mt-2 grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
+            }`}
+          >
+            <div className="min-h-0">
+              <div className="grid gap-2 rounded-lg border border-border/60 bg-muted/20 px-3 py-2 text-[11px] text-foreground/70 sm:grid-cols-2">
+                <div>
+                  <p className="font-medium text-foreground/80">Tidsplan</p>
+                  <p>{planningLabel}</p>
+                </div>
+                <div>
+                  <p className="font-medium text-foreground/80">Delmål</p>
+                  <p>{planningSummary}</p>
+                </div>
+                <div>
+                  <p className="font-medium text-foreground/80">Ansvarig</p>
+                  <p>{responsibleLabel ?? 'Inte satt'}</p>
+                </div>
+                <div>
+                  <p className="font-medium text-foreground/80">Medlemmar</p>
+                  <p>{visibleMemberBadges.length}</p>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
         {visibleMemberBadges.length > 0 ? (
-          <div className="relative z-10 mt-3 flex flex-wrap gap-1.5">
+          <div className="relative z-10 mt-1.5 flex flex-wrap gap-1">
             {visibleMemberBadges.map((member) => {
               const label = memberLabels.get(member.id) ?? member.user_id;
               const isActive = activeMemberId === member.id;
@@ -551,7 +590,7 @@ export default function ProjectCard({
                       color={member.color}
                       avatarUrl={member.avatar_url}
                       emoji={member.emoji}
-                      className={`h-7 w-7 border shadow-sm transition group-hover/member:scale-[1.03] ${
+                      className={`h-6 w-6 border shadow-sm transition group-hover/member:scale-[1.03] ${
                         member.isResponsible ? 'border-primary ring-2 ring-primary/25' : 'border-background'
                       }`}
                       textClassName="text-[10px] font-semibold text-white"
@@ -574,14 +613,14 @@ export default function ProjectCard({
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
-                className="absolute bottom-3 right-3 z-20 inline-flex h-8 w-8 items-center justify-center rounded-full border bg-background/95 text-foreground shadow-sm transition hover:bg-muted"
+                className="absolute bottom-2.5 right-2.5 z-20 inline-flex h-7 w-7 items-center justify-center rounded-full border bg-background/95 text-foreground shadow-sm transition hover:bg-muted"
                 aria-label="Hantera projektmedlemmar"
                 onClick={(event) => {
                   event.preventDefault();
                   event.stopPropagation();
                 }}
               >
-                <MoreHorizontal className="h-4 w-4" />
+                <MoreHorizontal className="h-3.5 w-3.5" />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="z-[240] w-64">
