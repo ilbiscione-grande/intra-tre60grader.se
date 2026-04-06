@@ -120,6 +120,8 @@ function SortableProjectCard({
   activitySummary?: React.ComponentProps<typeof ProjectCard>['activitySummary'];
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: project.id });
+  const pointerStartRef = useRef<{ x: number; y: number } | null>(null);
+  const suppressClickRef = useRef(false);
 
   return (
     <div
@@ -131,6 +133,36 @@ function SortableProjectCard({
         zIndex: isDragging ? 20 : 1
       }}
       className={isDragging ? 'touch-none' : 'touch-pan-y'}
+      onPointerDownCapture={(event) => {
+        pointerStartRef.current = { x: event.clientX, y: event.clientY };
+        suppressClickRef.current = false;
+      }}
+      onPointerMoveCapture={(event) => {
+        if (!pointerStartRef.current) return;
+        const deltaX = Math.abs(event.clientX - pointerStartRef.current.x);
+        const deltaY = Math.abs(event.clientY - pointerStartRef.current.y);
+        if (deltaX > 6 || deltaY > 6) {
+          suppressClickRef.current = true;
+        }
+      }}
+      onPointerUpCapture={() => {
+        pointerStartRef.current = null;
+        if (suppressClickRef.current) {
+          window.setTimeout(() => {
+            suppressClickRef.current = false;
+          }, 0);
+        }
+      }}
+      onPointerCancelCapture={() => {
+        pointerStartRef.current = null;
+        suppressClickRef.current = false;
+      }}
+      onClickCapture={(event) => {
+        if (!suppressClickRef.current) return;
+        event.preventDefault();
+        event.stopPropagation();
+        suppressClickRef.current = false;
+      }}
       {...attributes}
       {...listeners}
     >
