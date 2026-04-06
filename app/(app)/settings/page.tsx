@@ -31,7 +31,6 @@ import {
   DEFAULT_PROFILE_BADGE_COLOR,
   PROFILE_BADGE_COLORS,
   PROFILE_BADGE_EMOJIS,
-  PROFILE_BADGE_PREFERENCE_KEY,
   useOwnProfileBadge
 } from '@/features/profile/profileBadge';
 import { removeProfileAvatar, uploadProfileAvatar } from '@/features/profile/profileAvatarStorage';
@@ -263,37 +262,24 @@ export default function SettingsPage() {
       }
 
       const trimmedDisplayName = profileDisplayName.trim() || null;
+      const response = await fetch('/api/settings/profile', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          companyId,
+          color: profileColor,
+          emoji: profileEmoji,
+          avatarPath,
+          displayName: trimmedDisplayName
+        })
+      });
 
-      const [preferenceResult, profileResult] = await Promise.all([
-        supabase.from('user_company_preferences').upsert(
-          {
-            company_id: companyId,
-            user_id: user.id,
-            preference_key: PROFILE_BADGE_PREFERENCE_KEY,
-            preference_value: {
-              color: profileColor,
-              avatar_path: avatarPath,
-              emoji: profileEmoji
-            }
-          },
-          {
-            onConflict: 'company_id,user_id,preference_key'
-          }
-        ),
-        (supabase as any).from('profiles').upsert(
-          {
-            id: user.id,
-            email: currentUserQuery.data?.email ?? null,
-            full_name: trimmedDisplayName
-          },
-          {
-            onConflict: 'id'
-          }
-        )
-      ]);
-
-      if (preferenceResult.error) throw preferenceResult.error;
-      if (profileResult.error) throw profileResult.error;
+      const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+      if (!response.ok) {
+        throw new Error(payload?.error ?? 'Kunde inte spara profilen');
+      }
     },
     onSuccess: async () => {
       setProfileFile(null);
