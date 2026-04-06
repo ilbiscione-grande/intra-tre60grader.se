@@ -1,11 +1,10 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
 import { createClient } from '@/lib/supabase/client';
 
 function toErrorMessage(error: unknown, fallback: string) {
@@ -20,78 +19,81 @@ function toErrorMessage(error: unknown, fallback: string) {
 
 export default function PasswordSettingsCard() {
   const supabase = useMemo(() => createClient(), []);
-  const [nextPassword, setNextPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [lastSentAt, setLastSentAt] = useState<string | null>(null);
 
-  const updatePasswordMutation = useMutation({
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadUser() {
+      const {
+        data: { user }
+      } = await supabase.auth.getUser();
+
+      if (!cancelled) {
+        setUserEmail(user?.email ?? null);
+      }
+    }
+
+    void loadUser();
+    return () => {
+      cancelled = true;
+    };
+  }, [supabase]);
+
+  const sendResetMutation = useMutation({
     mutationFn: async () => {
-      const trimmedPassword = nextPassword.trim();
-      if (trimmedPassword.length < 10) {
-        throw new Error('Det nya lösenordet måste vara minst 10 tecken.');
-      }
-      if (trimmedPassword !== confirmPassword.trim()) {
-        throw new Error('Lösenorden matchar inte.');
+      if (!userEmail) {
+        throw new Error('Kunde inte läsa din e-postadress.');
       }
 
-      const { error } = await supabase.auth.updateUser({ password: trimmedPassword });
+      const redirectTo =
+        typeof window !== 'undefined'
+          ? `${window.location.origin}/auth/callback`
+          : undefined;
+
+      const { error } = await supabase.auth.resetPasswordForEmail(userEmail, {
+        redirectTo
+      });
       if (error) throw error;
     },
     onSuccess: () => {
-      setNextPassword('');
-      setConfirmPassword('');
-      setLastUpdatedAt(new Date().toISOString());
-      toast.success('Lösenord uppdaterat');
+      setLastSentAt(new Date().toISOString());
+      toast.success('Länk för lösenordsbyte skickad');
     },
     onError: (error) => {
-      toast.error(toErrorMessage(error, 'Kunde inte uppdatera lösenordet'));
+      toast.error(toErrorMessage(error, 'Kunde inte skicka länken för lösenordsbyte'));
     }
   });
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Byt lösenord</CardTitle>
+        <CardTitle>Lösenordsbyte via e-post</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-sm text-foreground/70">
-          Ändra lösenordet för ditt interna konto. Använd ett unikt lösenord som inte används i någon annan tjänst.
+          Skicka en säker länk till din e-postadress för att välja ett nytt lösenord. Det här ersätter det gamla formuläret direkt i appen.
         </p>
-        {lastUpdatedAt ? (
+        {lastSentAt ? (
           <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-900 dark:text-emerald-100">
-            Lösenordet uppdaterades {new Date(lastUpdatedAt).toLocaleString('sv-SE')}. Om du är inloggad på flera enheter kan vissa sessioner behöva logga in igen.
+            Länk skickad {new Date(lastSentAt).toLocaleString('sv-SE')} till {userEmail ?? 'din e-postadress'}.
           </div>
         ) : null}
-        <label className="space-y-1">
-          <span className="text-sm">Nytt lösenord</span>
-          <Input
-            type="password"
-            autoComplete="new-password"
-            value={nextPassword}
-            onChange={(event) => setNextPassword(event.target.value)}
-            placeholder="Minst 10 tecken"
-          />
-        </label>
-        <label className="space-y-1">
-          <span className="text-sm">Bekräfta nytt lösenord</span>
-          <Input
-            type="password"
-            autoComplete="new-password"
-            value={confirmPassword}
-            onChange={(event) => setConfirmPassword(event.target.value)}
-            placeholder="Skriv lösenordet igen"
-          />
-        </label>
+        <div className="rounded-lg border bg-muted/30 px-3 py-2 text-sm">
+          <span className="font-medium">E-post för utskick:</span>{' '}
+          <span className="text-foreground/70">{userEmail ?? 'Läser in...'}</span>
+        </div>
         <div className="flex justify-end">
           <Button
-            onClick={() => updatePasswordMutation.mutate()}
-            disabled={updatePasswordMutation.isPending || nextPassword.length === 0 || confirmPassword.length === 0}
+            onClick={() => sendResetMutation.mutate()}
+            disabled={sendResetMutation.isPending || !userEmail}
           >
-            {updatePasswordMutation.isPending ? 'Uppdaterar...' : 'Byt lösenord'}
+            {sendResetMutation.isPending ? 'Skickar...' : 'Skicka länk för lösenordsbyte'}
           </Button>
         </div>
         <p className="text-xs text-foreground/55">
-          Efter lösenordsbyte fortsätter den här sessionen normalt, men andra öppna sessioner kan påverkas beroende på klient och inloggningsläge.
+          Om kontot finns och e-postadressen är giltig skickas en återställningslänk. Öppna länken i mejlet för att ange ett nytt lösenord.
         </p>
       </CardContent>
     </Card>
