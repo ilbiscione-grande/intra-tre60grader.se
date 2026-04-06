@@ -96,6 +96,7 @@ function moveProjectBetweenColumns(current: BoardState, projectId: string, targe
 
 function SortableProjectCard({
   project,
+  customerName,
   statusLabel,
   statusOptions,
   columnOptions,
@@ -107,6 +108,7 @@ function SortableProjectCard({
   activitySummary
 }: {
   project: Project;
+  customerName?: string | null;
   statusLabel: string;
   statusOptions?: React.ComponentProps<typeof ProjectCard>['statusOptions'];
   columnOptions?: React.ComponentProps<typeof ProjectCard>['columnOptions'];
@@ -134,6 +136,7 @@ function SortableProjectCard({
     >
       <ProjectCard
         project={project}
+        customerName={customerName}
         statusLabel={statusLabel}
         statusOptions={statusOptions}
         columnOptions={columnOptions}
@@ -689,6 +692,7 @@ export default function ProjectBoardMobileSimple({
                   <SortableProjectCard
                     key={project.id}
                     project={project}
+                    customerName={customerById.get(project.customer_id ?? '') ?? null}
                     statusLabel={titleByStatus.get(project.workflow_status ?? project.status) ?? project.workflow_status ?? project.status}
                     statusOptions={columns.map((column) => ({ key: column.key, title: column.title }))}
                     columnOptions={columns.map((column) => ({ key: column.key, title: column.title }))}
@@ -719,6 +723,7 @@ export default function ProjectBoardMobileSimple({
             <div className="w-[88vw] touch-none">
               <ProjectCard
                 project={activeProject}
+                customerName={customerById.get(activeProject.customer_id ?? '') ?? null}
                 statusLabel={titleByStatus.get(activeProject.workflow_status ?? activeProject.status) ?? activeProject.workflow_status ?? activeProject.status}
                 statusOptions={columns.map((column) => ({ key: column.key, title: column.title }))}
                 columnOptions={columns.map((column) => ({ key: column.key, title: column.title }))}

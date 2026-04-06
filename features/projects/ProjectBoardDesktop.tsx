@@ -786,6 +786,7 @@ export default function ProjectBoardDesktop({
                         <SortableCardItem key={project.id} id={project.id}>
                           <ProjectCard
                             project={project}
+                            customerName={customerById.get(project.customer_id ?? '') ?? null}
                             statusLabel={titleByStatus.get(project.workflow_status ?? project.status) ?? project.workflow_status ?? project.status}
                             statusOptions={columns.map((column) => ({ key: column.key, title: column.title }))}
                             columnOptions={columns.map((column) => ({ key: column.key, title: column.title }))}

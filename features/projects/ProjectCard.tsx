@@ -13,7 +13,6 @@ import {
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu';
 import ProfileBadge from '@/components/common/ProfileBadge';
-import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import type { Project } from '@/lib/types';
@@ -29,6 +28,14 @@ function fallbackLabel(status: string) {
     done: 'Klar'
   };
   return map[status] ?? status;
+}
+
+function statusDotClass(status: string) {
+  const normalized = status.toLowerCase();
+  if (normalized === 'done') return 'bg-emerald-500';
+  if (normalized === 'in_progress') return 'bg-sky-500';
+  if (normalized === 'review') return 'bg-amber-500';
+  return 'bg-slate-400';
 }
 
 function normalizeMilestones(value: Project['milestones']) {
@@ -52,6 +59,7 @@ function todayIso() {
 
 export default function ProjectCard({
   project,
+  customerName,
   actions,
   statusLabel,
   statusOptions = [],
@@ -64,6 +72,7 @@ export default function ProjectCard({
   activitySummary
 }: {
   project: Project;
+  customerName?: string | null;
   actions?: React.ReactNode;
   statusLabel?: string;
   statusOptions?: Array<{ key: string; title: string }>;
@@ -84,6 +93,8 @@ export default function ProjectCard({
   const mobileProjectMenuRef = useRef<HTMLDivElement | null>(null);
   const mobileProjectMenuPanelRef = useRef<HTMLDivElement | null>(null);
   const mobileProjectMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const pointerStartRef = useRef<{ x: number; y: number } | null>(null);
+  const suppressOpenRef = useRef(false);
   const [mobileProjectMenuPlacement, setMobileProjectMenuPlacement] = useState<'down' | 'up'>('down');
   const [mobileProjectMenuMaxHeight, setMobileProjectMenuMaxHeight] = useState<number>(320);
   const canManageMembers = role !== 'auditor';
@@ -129,6 +140,8 @@ export default function ProjectCard({
       ? 'bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-200'
       : 'bg-muted text-foreground/70';
   const planningSummary = totalMilestones > 0 ? `${completedMilestones}/${totalMilestones} delmål` : 'Inga delmål';
+  const projectStatusKey = project.workflow_status ?? project.status;
+  const compactStatusLabel = statusLabel ?? fallbackLabel(projectStatusKey);
 
   const removeMemberMutation = useMutation({
     mutationFn: async (userId: string) => {
@@ -294,17 +307,64 @@ export default function ProjectCard({
     return () => window.removeEventListener('resize', updateMenuPlacement);
   }, [mobileProjectMenuOpen, breakpointMode, statusOptions.length, columnOptions.length]);
 
+  function toggleExpanded() {
+    setIsExpanded((current) => !current);
+  }
+
+  function handlePointerDown(event: React.PointerEvent<HTMLDivElement>) {
+    pointerStartRef.current = { x: event.clientX, y: event.clientY };
+    suppressOpenRef.current = false;
+  }
+
+  function handlePointerMove(event: React.PointerEvent<HTMLDivElement>) {
+    if (!pointerStartRef.current) return;
+    const deltaX = Math.abs(event.clientX - pointerStartRef.current.x);
+    const deltaY = Math.abs(event.clientY - pointerStartRef.current.y);
+    if (deltaX > 6 || deltaY > 6) {
+      suppressOpenRef.current = true;
+    }
+  }
+
+  function handlePointerEnd() {
+    pointerStartRef.current = null;
+    window.setTimeout(() => {
+      suppressOpenRef.current = false;
+    }, 0);
+  }
+
   return (
-    <Card className="group relative transition-shadow hover:shadow-sm">
+    <Card
+      className="group relative transition-shadow hover:shadow-sm"
+      onPointerDownCapture={handlePointerDown}
+      onPointerMoveCapture={handlePointerMove}
+      onPointerUpCapture={handlePointerEnd}
+      onPointerCancelCapture={handlePointerEnd}
+    >
       <Link
         href={`/projects/${project.id}`}
         aria-label={`Öppna projekt ${project.title}`}
         className="absolute inset-0 z-10 rounded-[inherit]"
+        onClick={(event) => {
+          if (suppressOpenRef.current) {
+            event.preventDefault();
+            event.stopPropagation();
+          }
+        }}
       />
       <CardContent className="relative px-4 pb-3 pt-4.5">
-        <div className="relative z-30 mb-2 flex items-center justify-between gap-3 border-b border-border/60 pb-2">
+        <div
+          className="relative z-30 mb-2 flex cursor-pointer items-center justify-between gap-3 border-b border-border/60 pb-2"
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            toggleExpanded();
+          }}
+        >
           <div className="min-w-0 flex-1">
             <h3 className="truncate font-semibold group-hover:underline">{project.title}</h3>
+            <p className="mt-0.5 truncate text-[11px] text-foreground/58">
+              {customerName?.trim() ? customerName : 'Ingen kund kopplad'}
+            </p>
           </div>
           <div className="flex shrink-0 items-center gap-1">
             <button
@@ -315,7 +375,7 @@ export default function ProjectCard({
               onClick={(event) => {
                 event.preventDefault();
                 event.stopPropagation();
-                setIsExpanded((current) => !current);
+                toggleExpanded();
               }}
             >
               <ChevronDown className={`h-3 w-3 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
@@ -511,7 +571,10 @@ export default function ProjectCard({
 
         <div className="min-w-0 pb-8">
           <div className="flex flex-wrap items-center gap-2">
-            <Badge className="w-fit uppercase tracking-wide">{statusLabel ?? fallbackLabel(project.workflow_status ?? project.status)}</Badge>
+            <div className="inline-flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.14em] text-foreground/78">
+              <span className={`h-2 w-2 rounded-full ${statusDotClass(projectStatusKey)}`} aria-hidden="true" />
+              <span>{compactStatusLabel}</span>
+            </div>
           </div>
           <div
             className={`grid overflow-hidden transition-all duration-200 ease-out ${
