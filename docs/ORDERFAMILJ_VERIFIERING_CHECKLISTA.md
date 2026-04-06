@@ -83,7 +83,7 @@ Forvantad familjesumma efter fakturering av huvudorder + andringsorder:
   - totalt ordervarde `23 750`
   - nettofakturerat `23 750` efter att bada ar fakturerade
   - kvar `0`
-
+ 
 ## Fall 3: huvudorder + tillaggsorder + kredit
 
 ### Testdata

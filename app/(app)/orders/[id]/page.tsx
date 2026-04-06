@@ -1040,6 +1040,7 @@ export default function OrderDetailsPage() {
                   <div className="mt-1 space-y-1 text-sm text-foreground/70">
                     <p><span className="font-medium text-foreground">{Number(orderFamilyRollup.order_count ?? 0)}</span> ordrar i samma struktur</p>
                     <p><span className="font-medium text-foreground">{Number(orderFamilyRollup.total_order_value ?? 0).toFixed(2)} kr</span> totalt ordervärde</p>
+                    <p className="text-xs text-foreground/55">Inkl. moms for hela orderfamiljen</p>
                     <p><span className="font-medium text-foreground">{Number(orderFamilyRollup.net_invoiced_total ?? 0).toFixed(2)} kr</span> nettofakturerat</p>
                     <p><span className="font-medium text-foreground">{Number(orderFamilyRollup.remaining_total ?? 0).toFixed(2)} kr</span> kvar att fakturera</p>
                   </div>

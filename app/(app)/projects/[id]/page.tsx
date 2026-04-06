@@ -684,6 +684,24 @@ export default function ProjectDetailsPage() {
     }
   });
 
+  const projectOrderLineCountQuery = useQuery<number>({
+    queryKey: ['project-order-line-count', companyId, projectId, projectOrdersQuery.data?.map((row) => row.id).join(',') ?? 'none'],
+    enabled: (projectOrdersQuery.data?.length ?? 0) > 0,
+    queryFn: async () => {
+      const orderIds = (projectOrdersQuery.data ?? []).map((row) => row.id).filter(Boolean);
+      if (orderIds.length === 0) return 0;
+
+      const { count, error } = await supabase
+        .from('order_lines')
+        .select('id', { count: 'exact', head: true })
+        .eq('company_id', companyId)
+        .in('order_id', orderIds);
+
+      if (error) throw error;
+      return count ?? 0;
+    }
+  });
+
   const companyMemberOptionsQuery = useCompanyMemberOptions(companyId);
   const projectMemberAssignmentsQuery = useQuery<ProjectMemberAssignmentRow[]>({
     queryKey: ['project-member-assignments', companyId, projectId],
@@ -1642,7 +1660,7 @@ export default function ProjectDetailsPage() {
   const statusValue = orderStatuses.includes((selectedOrder?.status ?? 'draft') as OrderStatus)
     ? (selectedOrder?.status as OrderStatus)
     : 'draft';
-  const isEconomyLocked =
+  const hasProjectInvoices =
     economyLockQuery.data ?? (invoicesQuery.data ?? []).some((invoice) => invoice.status !== 'void');
   const isEconomyBusy = economyLockQuery.isPending;
   const isProjectMetaBusy = saveProjectMutation.isPending;
@@ -1658,6 +1676,7 @@ export default function ProjectDetailsPage() {
       })()
     : [];
   const selectedOrderLatestInvoice = selectedOrderInvoices[0] ?? null;
+  const selectedOrderHasActiveInvoice = selectedOrderInvoices.some((invoice) => invoice.status !== 'void');
   const allocatedInvoiceAmountByOrderId = useMemo(() => {
     const totals = new Map<string, number>();
 
@@ -1723,6 +1742,15 @@ export default function ProjectDetailsPage() {
     .filter((line) => selectedPartialLineIds.includes(line.id))
     .reduce((sum, line) => sum + line.remainingTotal, 0);
   const projectOrderSummary = useMemo(() => {
+    if (rootOrderFamilyRollup) {
+      return {
+        primary: Number(rootOrderFamilyRollup.primary_total ?? 0),
+        change: Number(rootOrderFamilyRollup.change_total ?? 0),
+        supplement: Number(rootOrderFamilyRollup.supplement_total ?? 0),
+        total: Number(rootOrderFamilyRollup.total_order_value ?? 0)
+      };
+    }
+
     const summary = {
       primary: 0,
       change: 0,
@@ -1740,7 +1768,7 @@ export default function ProjectDetailsPage() {
     }
 
     return summary;
-  }, [projectOrders]);
+  }, [projectOrders, rootOrderFamilyRollup]);
   const projectInvoiceSummary = useMemo(() => {
     const grossIssued = (invoicesQuery.data ?? [])
       .filter((invoice) => invoice.kind !== 'credit_note')
@@ -1830,6 +1858,7 @@ export default function ProjectDetailsPage() {
     ],
     [projectOrderSummary]
   );
+  const projectOrderLineCount = projectOrderLineCountQuery.data ?? 0;
   const orderStructureFilterOptions: Array<{ value: OrderStructureFilter; label: string }> = [
     { value: 'all', label: 'Alla' },
     { value: 'primary', label: 'Huvudorder' },
@@ -1995,8 +2024,8 @@ export default function ProjectDetailsPage() {
               label="Ekonomi"
               value={getInvoiceReadinessLabel(projectInvoiceReadiness)}
               helper={
-                orderId
-                  ? `${Number(orderQuery.data?.total ?? 0).toFixed(2)} kr • ${lines.length} orderrader`
+                projectOrders.length > 0
+                  ? `${projectOrderSummary.total.toFixed(2)} kr • ${projectOrderLineCount} orderrader i orderfamiljen`
                   : 'ingen order kopplad ännu'
               }
             />
@@ -2135,11 +2164,17 @@ export default function ProjectDetailsPage() {
                     </div>
                     <div className="rounded-xl border border-border/70 p-3">
                       <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Orderrader</p>
-                      <p className="mt-1 text-2xl font-semibold">{lines.length}</p>
+                      <p className="mt-1 text-2xl font-semibold">{projectOrderLineCount}</p>
+                      {projectOrders.length > 1 ? (
+                        <p className="mt-1 text-xs text-foreground/55">Summerat for hela orderfamiljen</p>
+                      ) : null}
                     </div>
                     <div className="rounded-xl border border-border/70 p-3">
                       <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Ordertotal</p>
-                      <p className="mt-1 text-2xl font-semibold">{Number(orderQuery.data?.total ?? 0).toFixed(2)} kr</p>
+                      <p className="mt-1 text-2xl font-semibold">{projectOrderSummary.total.toFixed(2)} kr</p>
+                      {projectOrders.length > 1 ? (
+                        <p className="mt-1 text-xs text-foreground/55">Huvudorder + andringar + tillagg</p>
+                      ) : null}
                     </div>
                   </div>
                 </CardContent>
@@ -2334,25 +2369,30 @@ export default function ProjectDetailsPage() {
                   <p className="mt-1 text-sm text-foreground/65">Ägare: {getInvoiceReadinessOwner(projectInvoiceReadiness)}</p>
                 </div>
                 <div className="rounded-xl border border-border/70 bg-muted/15 p-3">
-                  <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Orderläge</p>
+                  <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Vald orders läge</p>
                   <p className="mt-1 font-medium">{selectedOrderId ? getInvoiceReadinessLabel(orderInvoiceReadiness) : 'Ingen order ännu'}</p>
                   <p className="mt-1 text-sm text-foreground/65">
                     {selectedOrderId ? `Ägare: ${getInvoiceReadinessOwner(orderInvoiceReadiness)}` : 'Nästa steg: skapa orderunderlag'}
                   </p>
+                  {selectedOrder ? (
+                    <p className="mt-1 text-xs text-foreground/55">
+                      Visar {selectedOrder.order_no ?? orderKindLabel(selectedOrder.order_kind)}
+                    </p>
+                  ) : null}
                 </div>
                 <div className="rounded-xl border border-border/70 bg-muted/15 p-3">
-                  <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Ordervärde</p>
+                  <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Vald orders värde</p>
                   <p className="mt-1 font-medium">{Number(selectedOrder?.total ?? 0).toFixed(2)} kr</p>
                   <p className="mt-1 text-sm text-foreground/65">{lines.length} orderrader{selectedOrder ? ` • ${selectedOrder.order_no ?? orderKindLabel(selectedOrder.order_kind)}` : ''}</p>
                 </div>
                 <div className="rounded-xl border border-border/70 bg-muted/15 p-3">
-                  <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Faktureringsstatus</p>
+                  <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Vald orders faktureringsstatus</p>
                   <p className="mt-1 font-medium">{getOrderInvoiceProgressLabel(selectedOrderInvoiceProgress.status)}</p>
                   <p className="mt-1 text-sm text-foreground/65">
                     Fakturerat {selectedOrderInvoiceProgress.invoicedTotal.toFixed(2)} kr • Kvar {selectedOrderInvoiceProgress.remaining.toFixed(2)} kr
                   </p>
                   <p className="mt-1 text-xs text-foreground/55">
-                    {selectedOrderLatestInvoice ? `Senast ${selectedOrderLatestInvoice.invoice_no}` : 'Ingen faktura skapad ännu'}
+                    {selectedOrderLatestInvoice ? `Senast ${selectedOrderLatestInvoice.invoice_no}` : 'Ingen faktura skapad ännu för vald order'}
                   </p>
                 </div>
                 <div className="rounded-xl border border-border/70 bg-primary/5 p-3 md:col-span-2 xl:col-span-1">
@@ -2432,13 +2472,20 @@ export default function ProjectDetailsPage() {
                         size="sm"
                         variant="outline"
                         onClick={() => setCreateSecondaryOrderDialogOpen(true)}
-                        disabled={createSupplementOrderMutation.isPending || isEconomyLocked || isEconomyBusy}
+                        disabled={createSupplementOrderMutation.isPending || isEconomyBusy}
+                        title={hasProjectInvoices ? 'Projektet har redan fakturor, men du kan fortfarande skapa nya ändringsorder eller tilläggsorder för ofakturerade delar.' : undefined}
                       >
                         {createSupplementOrderMutation.isPending ? 'Skapar underordnad order...' : 'Ny underordnad order'}
                       </Button>
                     ) : null}
                   </div>
                 </div>
+
+                {canManageOrder(role) && primaryOrder && hasProjectInvoices ? (
+                  <div className="mt-3 rounded-xl border border-amber-200/80 bg-amber-50/80 p-3 text-sm text-amber-900 dark:border-amber-900/70 dark:bg-amber-950/40 dark:text-amber-100">
+                    Projektet har redan fakturor. Redan fakturerade ordrar är låsta, men du kan fortfarande skapa nya ändringsorder eller tilläggsorder och arbeta vidare på ofakturerade ordrar i samma projekt.
+                  </div>
+                ) : null}
 
                 {rootOrderFamilyRollup ? (
                   <div className="mt-4 grid gap-3 md:grid-cols-4">
@@ -2450,7 +2497,7 @@ export default function ProjectDetailsPage() {
                     <div className="rounded-xl border border-border/70 bg-card/70 p-3">
                       <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Totalt ordervärde</p>
                       <p className="mt-1 text-sm font-semibold">{Number(rootOrderFamilyRollup.total_order_value ?? 0).toFixed(2)} kr</p>
-                      <p className="text-xs text-foreground/60">Huvud + ändringar + tillägg</p>
+                      <p className="text-xs text-foreground/60">Huvud + ändringar + tillägg inkl. moms</p>
                     </div>
                     <div className="rounded-xl border border-border/70 bg-card/70 p-3">
                       <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Nettofakturerat</p>
@@ -2623,7 +2670,7 @@ export default function ProjectDetailsPage() {
                 {!orderId ? (
                   <Button
                     onClick={() => createOrderMutation.mutate()}
-                    disabled={createOrderMutation.isPending || isEconomyLocked || isEconomyBusy}
+                    disabled={createOrderMutation.isPending || hasProjectInvoices || isEconomyBusy}
                   >
                     {createOrderMutation.isPending ? 'Skapar order...' : 'Skapa order'}
                   </Button>
@@ -2643,7 +2690,7 @@ export default function ProjectDetailsPage() {
                   <Button
                     variant="outline"
                     onClick={() => updateOrderInvoiceReadinessMutation.mutate('approved_for_invoicing')}
-                    disabled={updateOrderInvoiceReadinessMutation.isPending || isEconomyLocked || isEconomyBusy}
+                    disabled={updateOrderInvoiceReadinessMutation.isPending || selectedOrderHasActiveInvoice || isEconomyBusy}
                   >
                     Fastställ order
                   </Button>
@@ -2653,9 +2700,9 @@ export default function ProjectDetailsPage() {
                   <Button
                     variant="secondary"
                     onClick={() => invoiceMutation.mutate()}
-                    disabled={invoiceMutation.isPending || isEconomyLocked || isEconomyBusy || !selectedOrderIsApprovedForInvoicing}
+                    disabled={invoiceMutation.isPending || selectedOrderHasActiveInvoice || isEconomyBusy || !selectedOrderIsApprovedForInvoicing}
                   >
-                    {invoiceMutation.isPending ? 'Skapar faktura...' : isEconomyLocked ? 'Faktura finns redan' : !selectedOrderIsApprovedForInvoicing ? 'Fastställ först' : 'Skapa faktura'}
+                    {invoiceMutation.isPending ? 'Skapar faktura...' : selectedOrderHasActiveInvoice ? 'Faktura finns redan' : !selectedOrderIsApprovedForInvoicing ? 'Fastställ först' : 'Skapa faktura'}
                   </Button>
                 ) : null}
 
@@ -2687,7 +2734,7 @@ export default function ProjectDetailsPage() {
             </CardContent>
           </Card>
 
-          <ProjectFinancePanel companyId={companyId} projectId={projectId} role={role} isLocked={isEconomyLocked || isEconomyBusy} />
+          <ProjectFinancePanel companyId={companyId} projectId={projectId} role={role} isLocked={hasProjectInvoices || isEconomyBusy} />
 
           <Card>
             <CardHeader>
@@ -2749,7 +2796,7 @@ export default function ProjectDetailsPage() {
                       <SimpleSelect
                         value={orderInvoiceReadiness}
                         onValueChange={(value) => updateOrderInvoiceReadinessMutation.mutate(value as InvoiceReadinessStatus)}
-                        disabled={updateOrderInvoiceReadinessMutation.isPending || isEconomyLocked || isEconomyBusy || !selectedOrderId}
+                        disabled={updateOrderInvoiceReadinessMutation.isPending || selectedOrderHasActiveInvoice || isEconomyBusy || !selectedOrderId}
                         options={orderInvoiceReadinessOptions}
                       />
                     </div>
@@ -2765,10 +2812,10 @@ export default function ProjectDetailsPage() {
                   ) : null}
                 </div>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge>Total: {Number(selectedOrder?.total ?? 0).toFixed(2)} kr</Badge>
-                {selectedOrder ? <Badge>{orderKindLabel(selectedOrder.order_kind)}</Badge> : null}
-                {(isEconomyLocked || isEconomyBusy) && <Badge>Låst efter fakturering</Badge>}
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge>Total: {Number(selectedOrder?.total ?? 0).toFixed(2)} kr</Badge>
+                  {selectedOrder ? <Badge>{orderKindLabel(selectedOrder.order_kind)}</Badge> : null}
+                {(selectedOrderHasActiveInvoice || isEconomyBusy) && <Badge>Låst efter fakturering</Badge>}
 
                 <RoleGate
                   role={role}
@@ -2787,7 +2834,7 @@ export default function ProjectDetailsPage() {
                         }
                         updateOrderStatusMutation.mutate(next);
                       }}
-                      disabled={isEconomyLocked || isEconomyBusy || !selectedOrderId}
+                      disabled={selectedOrderHasActiveInvoice || isEconomyBusy || !selectedOrderId}
                       options={orderStatuses.map((status) => ({ value: status, label: orderStatusEtikett(status) }))}
                     />
                   </div>
@@ -2795,9 +2842,9 @@ export default function ProjectDetailsPage() {
                   <Button
                     variant="secondary"
                     onClick={() => invoiceMutation.mutate()}
-                    disabled={invoiceMutation.isPending || !selectedOrderId || !canManageOrder(role) || isEconomyLocked || isEconomyBusy || !selectedOrderIsApprovedForInvoicing}
+                    disabled={invoiceMutation.isPending || !selectedOrderId || !canManageOrder(role) || selectedOrderHasActiveInvoice || isEconomyBusy || !selectedOrderIsApprovedForInvoicing}
                   >
-                    {invoiceMutation.isPending ? 'Skapar...' : isEconomyLocked ? 'Faktura finns redan' : !selectedOrderIsApprovedForInvoicing ? 'Fastställ först' : 'Skapa faktura'}
+                    {invoiceMutation.isPending ? 'Skapar...' : selectedOrderHasActiveInvoice ? 'Faktura finns redan' : !selectedOrderIsApprovedForInvoicing ? 'Fastställ först' : 'Skapa faktura'}
                   </Button>
                   <Button
                     variant="outline"
@@ -2848,7 +2895,7 @@ export default function ProjectDetailsPage() {
                         size="sm"
                         variant="ghost"
                         onClick={() => setLineTitle(orderKindSuggestedLineTitle(selectedOrder.order_kind))}
-                        disabled={isEconomyLocked || isEconomyBusy}
+                        disabled={selectedOrderHasActiveInvoice || isEconomyBusy}
                       >
                         Använd standardtitel
                       </Button>
@@ -2862,12 +2909,12 @@ export default function ProjectDetailsPage() {
                       value={lineTitle}
                       onChange={(e) => setLineTitle(e.target.value)}
                       placeholder={selectedOrder ? orderKindSuggestedLineTitle(selectedOrder.order_kind) : 'T.ex. Designarbete'}
-                      disabled={isEconomyLocked || isEconomyBusy}
+                      disabled={selectedOrderHasActiveInvoice || isEconomyBusy}
                     />
                   </label>
                   <label className="space-y-1">
                     <span className="text-xs font-medium uppercase tracking-[0.16em] text-foreground/55">Antal</span>
-                    <Input value={lineQty} onChange={(e) => setLineQty(e.target.value)} type="number" min="0" step="0.01" placeholder="1" disabled={isEconomyLocked || isEconomyBusy} />
+                    <Input value={lineQty} onChange={(e) => setLineQty(e.target.value)} type="number" min="0" step="0.01" placeholder="1" disabled={selectedOrderHasActiveInvoice || isEconomyBusy} />
                   </label>
                   <label className="space-y-1">
                     <span className="text-xs font-medium uppercase tracking-[0.16em] text-foreground/55">A-pris</span>
@@ -2878,15 +2925,15 @@ export default function ProjectDetailsPage() {
                       min="0"
                       step="0.01"
                       placeholder="0.00"
-                      disabled={isEconomyLocked || isEconomyBusy}
+                      disabled={selectedOrderHasActiveInvoice || isEconomyBusy}
                     />
                   </label>
                   <label className="space-y-1">
                     <span className="text-xs font-medium uppercase tracking-[0.16em] text-foreground/55">Moms %</span>
-                    <Input value={lineVatRate} onChange={(e) => setLineVatRate(e.target.value)} type="number" min="0" step="0.01" placeholder="25" disabled={isEconomyLocked || isEconomyBusy} />
+                    <Input value={lineVatRate} onChange={(e) => setLineVatRate(e.target.value)} type="number" min="0" step="0.01" placeholder="25" disabled={selectedOrderHasActiveInvoice || isEconomyBusy} />
                   </label>
                 </div>
-                <Button className="mt-2" onClick={() => addLineMutation.mutate()} disabled={addLineMutation.isPending || isEconomyLocked || isEconomyBusy || !selectedOrderId}>
+                <Button className="mt-2" onClick={() => addLineMutation.mutate()} disabled={addLineMutation.isPending || selectedOrderHasActiveInvoice || isEconomyBusy || !selectedOrderId}>
                   {addLineMutation.isPending ? 'Lägger till...' : 'Lägg till rad'}
                 </Button>
               </div>
@@ -2917,7 +2964,7 @@ export default function ProjectDetailsPage() {
                       line={line}
                       invoicedTotal={Number(allocatedInvoiceLineTotalByLineId.get(line.id) ?? 0)}
                       saving={updateLineMutation.isPending || deleteLineMutation.isPending}
-                      canEdit={!isEconomyLocked && !isEconomyBusy}
+                      canEdit={!selectedOrderHasActiveInvoice && !isEconomyBusy}
                       onSave={(nextLine) => updateLineMutation.mutate(nextLine)}
                       onDelete={() => setDeleteTarget(line)}
                     />
