@@ -75,7 +75,7 @@ type ProjectFileActivityRow = Pick<DbRow<'project_files'>, 'id' | 'project_id' |
 type ProjectMemberAssignmentRow = Pick<DbRow<'project_members'>, 'id' | 'company_id' | 'project_id' | 'user_id' | 'created_by' | 'created_at'>;
 type InvoiceRow = Pick<
   DbRow<'invoices'>,
-  'id' | 'invoice_no' | 'status' | 'currency' | 'issue_date' | 'due_date' | 'subtotal' | 'vat_total' | 'total' | 'created_at' | 'attachment_path' | 'order_id' | 'project_id' | 'kind'
+  'id' | 'invoice_no' | 'status' | 'currency' | 'issue_date' | 'due_date' | 'subtotal' | 'vat_total' | 'total' | 'created_at' | 'attachment_path' | 'order_id' | 'project_id' | 'kind' | 'credit_for_invoice_id'
 >;
 type ActivityItem = {
   actorUserId?: string | null;
@@ -645,20 +645,42 @@ export default function ProjectDetailsPage() {
     queryKey: ['invoices', companyId, projectId, (invoiceSourceLinksQuery.data ?? []).map((row) => row.invoice_id).join(',')],
     queryFn: async () => {
       const invoiceIds = (invoiceSourceLinksQuery.data ?? []).map((row) => row.invoice_id);
-      let query = supabase
-        .from('invoices')
-        .select('id,invoice_no,status,currency,issue_date,due_date,subtotal,vat_total,total,created_at,attachment_path,order_id,project_id,kind')
-        .eq('company_id', companyId)
-        .order('created_at', { ascending: false })
-        .limit(25);
+      const selectClause =
+        'id,invoice_no,status,currency,issue_date,due_date,subtotal,vat_total,total,created_at,attachment_path,order_id,project_id,kind,credit_for_invoice_id';
 
       if (invoiceIds.length > 0) {
-        query = query.in('id', invoiceIds);
-      } else {
-        query = query.eq('project_id', projectId);
+        const [{ data: directInvoices, error: directError }, { data: creditInvoices, error: creditError }] = await Promise.all([
+          supabase
+            .from('invoices')
+            .select(selectClause)
+            .eq('company_id', companyId)
+            .in('id', invoiceIds)
+            .returns<InvoiceRow[]>(),
+          supabase
+            .from('invoices')
+            .select(selectClause)
+            .eq('company_id', companyId)
+            .eq('kind', 'credit_note')
+            .in('credit_for_invoice_id', invoiceIds)
+            .returns<InvoiceRow[]>()
+        ]);
+
+        if (directError) throw directError;
+        if (creditError) throw creditError;
+
+        return [...(directInvoices ?? []), ...(creditInvoices ?? [])].sort(
+          (a, b) => new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime()
+        );
       }
 
-      const { data, error } = await query.returns<InvoiceRow[]>();
+      const { data, error } = await supabase
+        .from('invoices')
+        .select(selectClause)
+        .eq('company_id', companyId)
+        .eq('project_id', projectId)
+        .order('created_at', { ascending: false })
+        .limit(25)
+        .returns<InvoiceRow[]>();
 
       if (error) throw error;
       return data ?? [];
@@ -1770,6 +1792,18 @@ export default function ProjectDetailsPage() {
     return summary;
   }, [projectOrders, rootOrderFamilyRollup]);
   const projectInvoiceSummary = useMemo(() => {
+    if (rootOrderFamilyRollup) {
+      const grossIssued = Number(rootOrderFamilyRollup.gross_invoiced_total ?? 0);
+      const credited = Number(rootOrderFamilyRollup.credited_total ?? 0);
+      const total = Number(rootOrderFamilyRollup.net_invoiced_total ?? 0);
+      return {
+        grossIssued,
+        credited,
+        total,
+        remaining: Math.max(Number(rootOrderFamilyRollup.remaining_total ?? 0), 0)
+      };
+    }
+
     const grossIssued = (invoicesQuery.data ?? [])
       .filter((invoice) => invoice.kind !== 'credit_note')
       .reduce((sum, invoice) => sum + Number(invoice.total ?? 0), 0);
@@ -1785,8 +1819,28 @@ export default function ProjectDetailsPage() {
       total,
       remaining: Math.max(projectOrderSummary.total - total, 0)
     };
-  }, [invoicesQuery.data, projectOrderSummary.total]);
+  }, [invoicesQuery.data, projectOrderSummary.total, rootOrderFamilyRollup]);
   const projectInvoicedByKind = useMemo(() => {
+    if (rootOrderFamilyRollup) {
+      const primaryNet = Number(rootOrderFamilyRollup.net_invoiced_primary ?? 0);
+      const changeNet = Number(rootOrderFamilyRollup.net_invoiced_change ?? 0);
+      const supplementNet = Number(rootOrderFamilyRollup.net_invoiced_supplement ?? 0);
+      return {
+        primary: {
+          invoiced: primaryNet,
+          remaining: Math.max(projectOrderSummary.primary - primaryNet, 0)
+        },
+        change: {
+          invoiced: changeNet,
+          remaining: Math.max(projectOrderSummary.change - changeNet, 0)
+        },
+        supplement: {
+          invoiced: supplementNet,
+          remaining: Math.max(projectOrderSummary.supplement - supplementNet, 0)
+        }
+      };
+    }
+
     const orderKindById = new Map(projectOrders.map((order) => [order.id, order.order_kind]));
     const summary = {
       primary: 0,
@@ -1831,7 +1885,7 @@ export default function ProjectDetailsPage() {
         remaining: Math.max(projectOrderSummary.supplement - summary.supplement, 0)
       }
     };
-  }, [invoiceSourceLinksQuery.data, invoicesQuery.data, projectOrderSummary.change, projectOrderSummary.primary, projectOrderSummary.supplement, projectOrders]);
+  }, [invoiceSourceLinksQuery.data, invoicesQuery.data, projectOrderSummary.change, projectOrderSummary.primary, projectOrderSummary.supplement, projectOrders, rootOrderFamilyRollup]);
   const projectOrderMixSegments = useMemo(
     () => [
       {
