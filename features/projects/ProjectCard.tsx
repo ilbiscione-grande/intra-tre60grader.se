@@ -301,15 +301,15 @@ export default function ProjectCard({
         aria-label={`Öppna projekt ${project.title}`}
         className="absolute inset-0 z-10 rounded-[inherit]"
       />
-      <CardContent className="relative px-4 pb-3 pt-4">
-        <div className="relative z-30 mb-2 flex items-start justify-between gap-3 border-b border-border/60 pb-2">
+      <CardContent className="relative px-4 pb-3 pt-4.5">
+        <div className="relative z-30 mb-2 flex items-center justify-between gap-3 border-b border-border/60 pb-2">
           <div className="min-w-0 flex-1">
             <h3 className="truncate font-semibold group-hover:underline">{project.title}</h3>
           </div>
           <div className="flex shrink-0 items-center gap-1">
             <button
               type="button"
-              className="inline-flex h-7 w-7 items-center justify-center rounded-full border bg-background/95 text-foreground shadow-sm transition hover:bg-muted hover:text-foreground"
+              className="inline-flex h-6.5 w-6.5 items-center justify-center rounded-full border bg-background/95 text-foreground shadow-sm transition hover:bg-muted hover:text-foreground"
               aria-label={isExpanded ? 'Visa mindre information' : 'Visa mer information'}
               aria-expanded={isExpanded}
               onClick={(event) => {
@@ -318,7 +318,7 @@ export default function ProjectCard({
                 setIsExpanded((current) => !current);
               }}
             >
-              <ChevronDown className={`h-3.5 w-3.5 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+              <ChevronDown className={`h-3 w-3 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
             </button>
             {onSetWorkflowStatus ? (
             breakpointMode === 'mobile' ? (
@@ -326,7 +326,7 @@ export default function ProjectCard({
                 <button
                   ref={mobileProjectMenuTriggerRef}
                   type="button"
-                  className="inline-flex h-7 w-7 items-center justify-center rounded-full border bg-background/95 text-foreground shadow-sm transition hover:bg-muted hover:text-foreground"
+                  className="inline-flex h-6.5 w-6.5 items-center justify-center rounded-full border bg-background/95 text-foreground shadow-sm transition hover:bg-muted hover:text-foreground"
                   aria-label="Projektmeny"
                   aria-expanded={mobileProjectMenuOpen}
                   onClick={(event) => {
@@ -335,7 +335,7 @@ export default function ProjectCard({
                     setMobileProjectMenuOpen((current) => !current);
                   }}
                 >
-                  <MoreHorizontal className="h-3.5 w-3.5" />
+                  <MoreHorizontal className="h-3 w-3" />
                 </button>
                 {mobileProjectMenuOpen ? (
                   <div
@@ -427,14 +427,14 @@ export default function ProjectCard({
                 <DropdownMenuTrigger asChild>
                   <button
                     type="button"
-                    className="inline-flex h-7 w-7 items-center justify-center rounded-full border bg-background/95 text-foreground shadow-sm transition hover:bg-muted hover:text-foreground"
+                    className="inline-flex h-6.5 w-6.5 items-center justify-center rounded-full border bg-background/95 text-foreground shadow-sm transition hover:bg-muted hover:text-foreground"
                     aria-label="Projektmeny"
                     onClick={(event) => {
                       event.preventDefault();
                       event.stopPropagation();
                     }}
                   >
-                    <MoreHorizontal className="h-3.5 w-3.5" />
+                    <MoreHorizontal className="h-3 w-3" />
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent
@@ -572,63 +572,63 @@ export default function ProjectCard({
             </div>
           </div>
         </div>
-        {visibleMemberBadges.length > 0 ? (
-          <div className="relative z-10 mt-1.5 flex flex-wrap gap-1">
-            {visibleMemberBadges.map((member) => {
-              const label = memberLabels.get(member.id) ?? member.user_id;
-              const isActive = activeMemberId === member.id;
-              const tooltipLabel = member.isResponsible ? `Ansvarig: ${label}` : label;
+        {(visibleMemberBadges.length > 0 || members.length > 0) ? (
+          <div className="relative z-10 mt-2 flex items-center justify-between gap-3 border-t border-border/60 pt-2">
+            <div className="flex min-w-0 flex-wrap gap-1">
+              {visibleMemberBadges.map((member) => {
+                const label = memberLabels.get(member.id) ?? member.user_id;
+                const isActive = activeMemberId === member.id;
+                const tooltipLabel = member.isResponsible ? `Ansvarig: ${label}` : label;
 
-              return (
-                <div key={member.id} className="group/member relative" data-project-member-avatar="true">
+                return (
+                  <div key={member.id} className="group/member relative" data-project-member-avatar="true">
+                    <button
+                      type="button"
+                      className="rounded-full"
+                      aria-label={tooltipLabel}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        setActiveMemberId((current) => (current === member.id ? null : member.id));
+                      }}
+                    >
+                      <ProfileBadge
+                        label={label}
+                        color={member.color}
+                        avatarUrl={member.avatar_url}
+                        emoji={member.emoji}
+                        className={`h-6 w-6 border shadow-sm transition group-hover/member:scale-[1.03] ${
+                          member.isResponsible ? 'border-primary ring-2 ring-primary/25' : 'border-background'
+                        }`}
+                        textClassName="text-[10px] font-semibold text-white"
+                      />
+                    </button>
+                    <div
+                      className={`pointer-events-none absolute bottom-[calc(100%+0.45rem)] left-1/2 z-30 -translate-x-1/2 whitespace-nowrap rounded-md border border-border/70 bg-card px-2 py-1 text-[11px] font-medium text-foreground shadow-md transition ${
+                        isActive ? 'opacity-100 translate-y-0' : 'translate-y-1 opacity-0 group-hover/member:translate-y-0 group-hover/member:opacity-100 group-focus-within/member:translate-y-0 group-focus-within/member:opacity-100'
+                      }`}
+                    >
+                      {tooltipLabel}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            {members.length > 0 ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
                   <button
                     type="button"
-                    className="rounded-full"
-                    aria-label={tooltipLabel}
+                    className="inline-flex h-6.5 w-6.5 shrink-0 items-center justify-center rounded-full border bg-background/95 text-foreground shadow-sm transition hover:bg-muted"
+                    aria-label="Hantera projektmedlemmar"
                     onClick={(event) => {
                       event.preventDefault();
                       event.stopPropagation();
-                      setActiveMemberId((current) => (current === member.id ? null : member.id));
                     }}
                   >
-                    <ProfileBadge
-                      label={label}
-                      color={member.color}
-                      avatarUrl={member.avatar_url}
-                      emoji={member.emoji}
-                      className={`h-6 w-6 border shadow-sm transition group-hover/member:scale-[1.03] ${
-                        member.isResponsible ? 'border-primary ring-2 ring-primary/25' : 'border-background'
-                      }`}
-                      textClassName="text-[10px] font-semibold text-white"
-                    />
+                    <MoreHorizontal className="h-3 w-3" />
                   </button>
-                  <div
-                    className={`pointer-events-none absolute bottom-[calc(100%+0.45rem)] left-1/2 z-30 -translate-x-1/2 whitespace-nowrap rounded-md border border-border/70 bg-card px-2 py-1 text-[11px] font-medium text-foreground shadow-md transition ${
-                      isActive ? 'opacity-100 translate-y-0' : 'translate-y-1 opacity-0 group-hover/member:translate-y-0 group-hover/member:opacity-100 group-focus-within/member:translate-y-0 group-focus-within/member:opacity-100'
-                    }`}
-                  >
-                    {tooltipLabel}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        ) : null}
-        {members.length > 0 ? (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                className="absolute bottom-2.5 right-2.5 z-20 inline-flex h-7 w-7 items-center justify-center rounded-full border bg-background/95 text-foreground shadow-sm transition hover:bg-muted"
-                aria-label="Hantera projektmedlemmar"
-                onClick={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                }}
-              >
-                <MoreHorizontal className="h-3.5 w-3.5" />
-              </button>
-            </DropdownMenuTrigger>
+                </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="z-[240] w-64">
               <div className="px-2 pb-2 pt-1">
                 <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-foreground/45">Projektmedlemmar</p>
@@ -738,7 +738,9 @@ export default function ProjectCard({
                 </Link>
               </DropdownMenuItem>
             </DropdownMenuContent>
-          </DropdownMenu>
+              </DropdownMenu>
+            ) : null}
+          </div>
         ) : null}
       </CardContent>
     </Card>
