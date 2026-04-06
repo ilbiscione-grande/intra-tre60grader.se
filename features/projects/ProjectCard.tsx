@@ -334,7 +334,9 @@ export default function ProjectCard({
 
   return (
     <Card
-      className="group relative transition-shadow hover:shadow-sm"
+      className={`group relative transition-shadow hover:shadow-sm ${
+        mobileProjectMenuOpen ? 'z-[360]' : 'z-0'
+      }`}
       onPointerDownCapture={handlePointerDown}
       onPointerMoveCapture={handlePointerMove}
       onPointerUpCapture={handlePointerEnd}
@@ -400,8 +402,8 @@ export default function ProjectCard({
                 {mobileProjectMenuOpen ? (
                   <div
                     ref={mobileProjectMenuPanelRef}
-                  className={`absolute right-0 z-[320] w-56 overflow-y-auto rounded-xl border border-border bg-card p-2 shadow-xl ${
-                      mobileProjectMenuPlacement === 'up' ? 'bottom-[calc(100%+0.5rem)]' : 'top-[calc(100%+0.5rem)]'
+                    className={`absolute right-0 z-[420] w-56 overflow-y-auto rounded-xl border border-border bg-card p-2 shadow-xl ${
+                      mobileProjectMenuPlacement === 'up' ? 'bottom-[calc(100%+0.625rem)]' : 'top-[calc(100%+0.625rem)]'
                     }`}
                     style={{ maxHeight: `${mobileProjectMenuMaxHeight}px` }}
                     onClick={(event) => event.stopPropagation()}

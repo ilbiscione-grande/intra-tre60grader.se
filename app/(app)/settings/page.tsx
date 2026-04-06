@@ -3,11 +3,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import type { Route } from 'next';
+import { useSearchParams } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import RoleGate from '@/components/common/RoleGate';
 import ProfileBadge from '@/components/common/ProfileBadge';
 import MfaSettingsCard from '@/components/security/MfaSettingsCard';
+import PasswordSettingsCard from '@/components/security/PasswordSettingsCard';
 import { useAppContext } from '@/components/providers/AppContext';
 import {
   useAppPreferences,
@@ -24,6 +26,7 @@ import { createClient } from '@/lib/supabase/client';
 import BackupRetentionCard from '@/components/settings/BackupRetentionCard';
 import ProjectTemplatesCard from '@/components/settings/ProjectTemplatesCard';
 import ProjectAutomationCard from '@/components/settings/ProjectAutomationCard';
+import SettingsTabs from '@/components/settings/SettingsTabs';
 import {
   DEFAULT_PROFILE_BADGE_COLOR,
   PROFILE_BADGE_COLORS,
@@ -84,8 +87,10 @@ const SIDEBAR_KEY = 'desktop_sidebar_collapsed';
 export default function SettingsPage() {
   const { role, companyId } = useAppContext();
   const { theme, setTheme, interfaceMode, setInterfaceMode } = useAppPreferences();
+  const searchParams = useSearchParams();
   const queryClient = useQueryClient();
   const supabase = useMemo(() => createClient(), []);
+  const currentTab = (searchParams.get('tab') ?? 'general') as 'general' | 'profile' | 'company' | 'finance' | 'automation' | 'security';
 
   const [sidebarDefault, setSidebarDefault] = useState<'expanded' | 'collapsed'>('expanded');
   const [companyDraft, setCompanyDraft] = useState<Partial<CompanyRow>>({});
@@ -353,6 +358,14 @@ export default function SettingsPage() {
 
   return (
     <section className="space-y-4">
+      <div className="space-y-2">
+        <h1 className="text-2xl font-semibold">Inställningar</h1>
+        <p className="text-sm text-muted-foreground">Dela upp app, profil, bolag, ekonomi, automation och säkerhet i egna vyer för bättre överblick.</p>
+      </div>
+
+      <SettingsTabs />
+
+      {currentTab === 'general' ? (
       <Card>
         <CardHeader>
           <CardTitle>Appinställningar</CardTitle>
@@ -416,7 +429,9 @@ export default function SettingsPage() {
           </Button>
         </CardContent>
       </Card>
+      ) : null}
 
+      {currentTab === 'profile' ? (
       <Card>
         <CardHeader>
           <CardTitle>Profilutseende</CardTitle>
@@ -512,14 +527,23 @@ export default function SettingsPage() {
           </div>
         </CardContent>
       </Card>
+      ) : null}
 
-      <MfaSettingsCard />
+      {currentTab === 'security' ? <PasswordSettingsCard /> : null}
+      {currentTab === 'security' ? <MfaSettingsCard /> : null}
 
       <RoleGate role={role} allow={['admin']} fallback={null}>
+        {currentTab === 'finance' ? (
         <BackupRetentionCard companyId={companyId} isAdmin={role === 'admin'} canWrite={role === 'admin'} />
+        ) : null}
+        {currentTab === 'automation' ? (
         <ProjectTemplatesCard companyId={companyId} />
+        ) : null}
+        {currentTab === 'automation' ? (
         <ProjectAutomationCard companyId={companyId} />
+        ) : null}
 
+        {currentTab === 'security' ? (
         <Card>
           <CardHeader>
             <CardTitle>Säkerhetshändelser</CardTitle>
@@ -560,7 +584,9 @@ export default function SettingsPage() {
             )}
           </CardContent>
         </Card>
+        ) : null}
 
+        {currentTab === 'security' ? (
         <Card>
           <CardHeader>
             <CardTitle>Säkerhetslarm</CardTitle>
@@ -585,7 +611,9 @@ export default function SettingsPage() {
             )}
           </CardContent>
         </Card>
+        ) : null}
 
+        {currentTab === 'finance' ? (
         <Card>
           <CardHeader>
             <CardTitle>Stangningschecklista (manad)</CardTitle>
@@ -614,6 +642,8 @@ export default function SettingsPage() {
             )}
           </CardContent>
         </Card>
+        ) : null}
+        {currentTab === 'finance' ? (
         <Card>
           <CardHeader>
             <CardTitle>Periodstängning</CardTitle>
@@ -648,7 +678,9 @@ export default function SettingsPage() {
             <Badge>Nuvarande lås: {companyQuery.data?.locked_until ?? 'Inget'}</Badge>
           </CardContent>
         </Card>
+        ) : null}
 
+        {currentTab === 'company' ? (
         <Card>
           <CardHeader>
             <CardTitle>Företagsinställningar</CardTitle>
@@ -703,6 +735,7 @@ export default function SettingsPage() {
             </div>
           </CardContent>
         </Card>
+        ) : null}
       </RoleGate>
     </section>
   );
